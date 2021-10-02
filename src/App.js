@@ -1,4 +1,10 @@
-import { PerspectiveCamera, Stats } from "@react-three/drei";
+import {
+  Environment,
+  Loader,
+  PerspectiveCamera,
+  Sky,
+  Stats,
+} from "@react-three/drei";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import {
   forwardRef,
@@ -10,6 +16,10 @@ import {
 import { Quaternion, Vector2, Vector3 } from "three";
 import Character from "./Character";
 import Building from "./Building";
+import { Layers } from "three";
+
+const layers = new Layers();
+layers.enable(1);
 
 export function App() {
   const cameraRef = useRef();
@@ -19,24 +29,30 @@ export function App() {
   return (
     <>
       <Canvas shadows mode="concurrent">
-        <Stats />
-        <fog attach="fog" args={["#171720", 10, 50]} />
-        <gridHelper args={[100, 100]} />
-        <axesHelper args={[1]} />
-        <hemisphereLight
-          args={[0xffffff, 0xffffff, 0.6]}
-          position={[0, 20, 0]}
-        />
-        <directionalLight
-          args={[0xffffff, 1]}
-          castShadow
-          position={[3, 10, 10]}
-        />
-        <mesh receiveShadow rotation={[-Math.PI / 2, 0, 0]}>
-          <planeGeometry args={[100, 100]}></planeGeometry>
-          <meshPhongMaterial color={0x999999} depthWrite />
-        </mesh>
         <Suspense fallback={null}>
+          <Stats />
+          <gridHelper args={[100, 100]} />
+          <axesHelper args={[1]} />
+          <fog attach="fog" args={["white", 0, 500]} />
+          <Sky sunPosition={[100, 10, 100]} />
+          <ambientLight layers={layers} intensity={0.1} />
+          <directionalLight
+            layers={layers}
+            position={[0, 50, 150]}
+            intensity={1}
+            shadow-bias={-0.001}
+            shadow-mapSize={[4096, 4096]}
+            shadow-camera-left={-150}
+            shadow-camera-right={150}
+            shadow-camera-top={150}
+            shadow-camera-bottom={-150}
+            castShadow
+          />
+          <Environment preset="city" />
+          <mesh receiveShadow rotation={[-Math.PI / 2, 0, 0]}>
+            <planeGeometry args={[100, 100]}></planeGeometry>
+            <meshPhongMaterial color={0x999999} depthWrite />
+          </mesh>
           <Building
             position={[0, 0, 10]}
             scale={2.2}
@@ -58,6 +74,7 @@ export function App() {
           />
         </Suspense>
       </Canvas>
+      <Loader />
     </>
   );
 }
