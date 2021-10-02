@@ -3,16 +3,18 @@ import { useGraph } from "@react-three/fiber";
 import { forwardRef, useEffect, useMemo, useRef } from "react";
 import { SkeletonUtils } from "three-stdlib";
 
-// import { createMachine } from "@xstate/fsm";
-// const characterMachine = createMachine({
-//   id: "character",
-//   initial: "idle",
-//   states: {
-//     idle: { on: { WALK: "walk" } },
-//     walk: { on: { RUN: "run" } },
-//     run: { on: { WALK: "walk" } },
-//   },
-// });
+import { createMachine } from "@xstate/fsm";
+const characterMachine = createMachine({
+  id: "character",
+  initial: "idle",
+  states: {
+    idle: { on: { WALK: "walk" } },
+    walk: { on: { RUN: "run" } },
+    run: { on: { WALK: "walk" } },
+  },
+});
+
+console.log(characterMachine.transition(characterMachine.initialState, "WALK"));
 
 const Character = forwardRef(function Character(props, forwardedRef) {
   const ref = useRef();
@@ -25,26 +27,26 @@ const Character = forwardRef(function Character(props, forwardedRef) {
 
   const state = "Idle";
   useEffect(() => {
-    actions[state].reset().play();
-    return () => actions[state].stop();
+    const action = actions[state];
+    action.play();
+    return () => action.stop();
   });
 
   return (
-    <group ref={characterRef}>
-      <group
-        {...props}
-        dispose={null}
-        scale={0.01}
-        rotation={[Math.PI / 2, 0, 0]}
-      >
+    <group ref={characterRef} {...props}>
+      <group dispose={null} scale={0.01} rotation={[Math.PI / 2, 0, 0]}>
         <primitive object={nodes.mixamorigHips} />
         <skinnedMesh
+          castShadow
+          receiveShadow
           geometry={nodes.Alpha_Joints.geometry}
           material={materials.Alpha_Joints_MAT}
           skeleton={nodes.Alpha_Joints.skeleton}
           frustumCulled={false}
         />
         <skinnedMesh
+          castShadow
+          receiveShadow
           geometry={nodes.Alpha_Surface.geometry}
           material={materials.Alpha_Body_MAT}
           skeleton={nodes.Alpha_Surface.skeleton}

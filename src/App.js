@@ -9,6 +9,7 @@ import {
 } from "react";
 import { Quaternion, Vector2, Vector3 } from "three";
 import Character from "./Character";
+import Building from "./Building";
 
 export function App() {
   const cameraRef = useRef();
@@ -22,15 +23,30 @@ export function App() {
         <fog attach="fog" args={["#171720", 10, 50]} />
         <gridHelper args={[100, 100]} />
         <axesHelper args={[1]} />
-        <ambientLight intensity={0.1} />
-        <spotLight
-          position={[10, 10, 10]}
-          angle={0.5}
-          intensity={1}
-          castShadow
-          penumbra={1}
+        <hemisphereLight
+          args={[0xffffff, 0xffffff, 0.6]}
+          position={[0, 20, 0]}
         />
+        <directionalLight
+          args={[0xffffff, 1]}
+          castShadow
+          position={[3, 10, 10]}
+        />
+        <mesh receiveShadow rotation={[-Math.PI / 2, 0, 0]}>
+          <planeGeometry args={[100, 100]}></planeGeometry>
+          <meshPhongMaterial color={0x999999} depthWrite />
+        </mesh>
         <Suspense fallback={null}>
+          <Building
+            position={[0, 0, 10]}
+            scale={2.2}
+            rotation={[0, Math.PI / 1, 0]}
+          />
+          <Building
+            position={[6, 0, 10]}
+            scale={2.2}
+            rotation={[0, Math.PI / 1, 0]}
+          />
           <InputControls ref={inputRef} cameraRef={cameraRef} />
           <Player ref={playerRef} inputRef={inputRef} />
           <Character position={[-1, 0, 0]} />
