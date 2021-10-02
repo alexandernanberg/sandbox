@@ -1,22 +1,13 @@
-import {
-  OrbitControls,
-  PerspectiveCamera,
-  Stats,
-  useAnimations,
-  useFBX,
-  useGLTF,
-} from "@react-three/drei";
-import { Canvas, useFrame, useGraph, useThree } from "@react-three/fiber";
+import { PerspectiveCamera, Stats } from "@react-three/drei";
+import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import {
   forwardRef,
   Suspense,
   useEffect,
   useImperativeHandle,
-  useMemo,
   useRef,
 } from "react";
-import { Euler, Quaternion, Spherical, Vector2, Vector3 } from "three";
-import { SkeletonUtils } from "three-stdlib";
+import { Quaternion, Vector2, Vector3 } from "three";
 import Character from "./Character";
 
 export function App() {
@@ -197,9 +188,9 @@ const InputControls = forwardRef(function InputControls(
       state.lookAt.y -= movementY;
     };
 
-    const onClick = () => {
-      domElement.requestPointerLock();
-    };
+    // const onClick = () => {
+    //   domElement.requestPointerLock();
+    // };
 
     const onPointerLockChange = () => {
       state.pointerLocked = document.pointerLockElement === domElement;

@@ -1,18 +1,18 @@
 import { useAnimations, useGLTF } from "@react-three/drei";
 import { useGraph } from "@react-three/fiber";
-import { createMachine } from "@xstate/fsm";
 import { forwardRef, useEffect, useMemo, useRef } from "react";
 import { SkeletonUtils } from "three-stdlib";
 
-const characterMachine = createMachine({
-  id: "character",
-  initial: "idle",
-  states: {
-    idle: { on: { WALK: "walk" } },
-    walk: { on: { RUN: "run" } },
-    run: { on: { WALK: "walk" } },
-  },
-});
+// import { createMachine } from "@xstate/fsm";
+// const characterMachine = createMachine({
+//   id: "character",
+//   initial: "idle",
+//   states: {
+//     idle: { on: { WALK: "walk" } },
+//     walk: { on: { RUN: "run" } },
+//     run: { on: { WALK: "walk" } },
+//   },
+// });
 
 const Character = forwardRef(function Character(props, forwardedRef) {
   const ref = useRef();
