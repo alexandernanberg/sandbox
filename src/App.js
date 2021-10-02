@@ -1,21 +1,27 @@
-/*eslint-disable */
-import { PerspectiveCamera, Stats, useGLTF } from "@react-three/drei";
-import { Canvas, useFrame, useThree } from "@react-three/fiber";
+import {
+  OrbitControls,
+  PerspectiveCamera,
+  Stats,
+  useAnimations,
+  useFBX,
+  useGLTF,
+} from "@react-three/drei";
+import { Canvas, useFrame, useGraph, useThree } from "@react-three/fiber";
 import {
   forwardRef,
   Suspense,
   useEffect,
   useImperativeHandle,
+  useMemo,
   useRef,
 } from "react";
 import { Euler, Quaternion, Spherical, Vector2, Vector3 } from "three";
-import Car from "./Car";
-
-useGLTF.preload("/car.glb");
+import { SkeletonUtils } from "three-stdlib";
+import Character from "./Character";
 
 export function App() {
   const cameraRef = useRef();
-  const characterRef = useRef();
+  const playerRef = useRef();
   const inputRef = useRef();
 
   return (
@@ -35,10 +41,12 @@ export function App() {
         />
         <Suspense fallback={null}>
           <InputControls ref={inputRef} cameraRef={cameraRef} />
-          <Character ref={characterRef} inputRef={inputRef} />
+          <Player ref={playerRef} inputRef={inputRef} />
+          <Character position={[-1, 0, 0]} />
+          {/* <OrbitControls /> */}
           <ThirdPersonCamera
             ref={cameraRef}
-            targetRef={characterRef}
+            targetRef={playerRef}
             inputRef={inputRef}
           />
         </Suspense>
@@ -57,48 +65,27 @@ const ThirdPersonCamera = forwardRef(function ThirdPersonCamera(
 
   const currentPosition = useConstant(() => new Vector3());
   const currentLookAt = useConstant(() => new Vector3());
-  const targetRotation = useConstant(() => new Vector3());
-
-  const spherical = new Spherical();
-  const sphericalDelta = new Spherical();
 
   useFrame((_, delta) => {
     const camera = cameraRef.current;
-    const group = groupRef.current;
     const target = targetRef.current;
-    const input = inputRef.current.getInput();
+    // const group = groupRef.current;
+    // const input = inputRef.current.getInput();
 
-    // sphericalDelta.theta -= 0.01;
-    targetRotation.x = input.lookAt.y * -0.002;
-    targetRotation.y = input.lookAt.x * -0.002;
+    const idealOffset = new Vector3(-0.5, 2.5, -2);
+    idealOffset.applyQuaternion(target.quaternion);
+    idealOffset.add(target.position);
 
-    // const rot = new Euler().setFromVector3(targetRotation)
-    // const quat =new Quaternion()
+    const idealLookAt = new Vector3(0, 0, 5);
+    idealLookAt.applyQuaternion(target.quaternion);
+    idealLookAt.add(target.position);
 
-    group.rotation.setFromVector3(targetRotation);
+    const t = 1.05 - Math.pow(0.001, delta);
+    currentPosition.lerp(idealOffset, t);
+    currentLookAt.lerp(idealLookAt, t);
 
-    // group.rotation.x = input.lookAt.y * delta;
-    // group.rotation.y = input.lookAt.x * delta;
-    // group.rotation.z = input.lookAt.y;
-
-    // console.log(targetRotation);
-
-    // const idealOffset = new Vector3(0, 4, -10);
-    // // idealOffset.applyQuaternion(target.quaternion);
-    // idealOffset.add(target.position);
-
-    // const idealLookAt = new Vector3(0, 0, 20);
-    // idealLookAt.applyQuaternion(target.quaternion);
-    // idealLookAt.add(target.position);
-
-    // const t = 1.05 - Math.pow(0.001, delta);
-    // currentPosition.lerp(idealOffset, t);
-    // currentLookAt.lerp(idealLookAt, t);
-
-    // camera.position.copy(currentPosition);
-    // camera.lookAt(currentLookAt);
-
-    // camera.lookAt(target.position);
+    camera.position.copy(currentPosition);
+    camera.lookAt(currentLookAt);
   });
 
   return (
@@ -106,14 +93,21 @@ const ThirdPersonCamera = forwardRef(function ThirdPersonCamera(
       <PerspectiveCamera
         makeDefault
         ref={cameraRef}
-        fov={75}
+        fov={90}
         position={[0, 4, 8]}
-        near={1.0}
+        zoom={1.2}
+        near={0.1}
         far={1000}
       />
     </group>
   );
 });
+
+/*
+=============================================
+  InputControls
+=============================================
+*/
 
 function applyDeadzone(number, threshold) {
   let percentage = (Math.abs(number) - threshold) / (1 - threshold);
@@ -211,7 +205,7 @@ const InputControls = forwardRef(function InputControls(
       state.pointerLocked = document.pointerLockElement === domElement;
     };
 
-    domElement.addEventListener("click", onClick, false);
+    // domElement.addEventListener("click", onClick, false);
     domElement.addEventListener("pointerlockchange", onPointerLockChange);
     domElement.addEventListener("pointerlockerror", (e) => {
       console.log("err", e);
@@ -261,18 +255,21 @@ const InputControls = forwardRef(function InputControls(
   return null;
 });
 
-const Character = forwardRef(function Character({ inputRef }, forwardedRef) {
-  const ref = useRef();
-  const meshRef = forwardedRef || ref;
+/**
+ * Player
+ */
 
-  const decceleration = useConstant(() => new Vector3(-0.0005, 1, -5));
-  const acceleration = useConstant(() => new Vector3(0.25, 75, 50));
+const Player = forwardRef(function Player({ inputRef }, forwardedRef) {
+  const ref = useRef();
+  const playerRef = forwardedRef || ref;
+
+  const decceleration = useConstant(() => new Vector3(-0.001, 1, -10));
+  const acceleration = useConstant(() => new Vector3(0.25, 10, 20));
   const velocity = useConstant(() => new Vector3(0, 0, 0));
 
   useFrame((state, delta) => {
-    // console.group("frame");
     const input = inputRef.current.getInput();
-    const mesh = meshRef.current;
+    const player = playerRef.current;
 
     const frameDecceleration = new Vector3(
       velocity.x * decceleration.x,
@@ -288,12 +285,8 @@ const Character = forwardRef(function Character({ inputRef }, forwardedRef) {
 
     const axis = new Vector3();
     const quat = new Quaternion();
-    const meshQuat = mesh.quaternion.clone();
+    const playerQuat = player.quaternion.clone();
     const acc = acceleration.clone();
-
-    if (input.keyboard.ShiftLeft) {
-      acc.setZ(100);
-    }
 
     velocity.z += input.movement.y * acc.z * delta;
 
@@ -302,55 +295,28 @@ const Character = forwardRef(function Character({ inputRef }, forwardedRef) {
       axis,
       4.0 * input.movement.x * Math.PI * delta * acc.x
     );
-    meshQuat.multiply(quat);
-
-    // if (controls.space && mesh.position.y === 2) {
-    //   velocity.y = 100;
-    // }
-
-    mesh.quaternion.copy(meshQuat);
+    playerQuat.multiply(quat);
+    player.quaternion.copy(playerQuat);
 
     const forward = new Vector3(0, 0, 1);
-    forward.applyQuaternion(mesh.quaternion);
+    forward.applyQuaternion(player.quaternion);
     forward.normalize();
 
     const sideways = new Vector3(1, 0, 0);
-    sideways.applyQuaternion(mesh.quaternion);
+    sideways.applyQuaternion(player.quaternion);
     sideways.normalize();
-
-    const upwards = new Vector3(0, 0, 0);
-    upwards.applyQuaternion(mesh.quaternion);
-    upwards.normalize();
-
-    // console.log(velocity.y, velocity.y + acc.y * -0.5);
-    // upwards.y += delta * (velocity.y + acc.y * 0.5);
-    // upwards.y = Math.max(upwards.y, 0.0);
 
     velocity.y += acc.y;
     velocity.y = Math.max(velocity.y, -100);
 
-    // console.log(velocity.y, upwards.y);
-
     sideways.multiplyScalar(velocity.x * delta);
     forward.multiplyScalar(velocity.z * delta);
-    upwards.multiplyScalar(velocity.y * delta);
 
-    // console.log(mesh.position);
-    mesh.position.add(forward);
-    // console.log(mesh.position);
-    mesh.position.add(sideways);
-    // console.log(mesh.position);
-    mesh.position.add(upwards);
-    // console.log(mesh.position);
-
-    // console.groupEnd();
+    player.position.add(forward);
+    player.position.add(sideways);
   });
 
-  return (
-    <group ref={meshRef}>
-      <Car />
-    </group>
-  );
+  return <Character ref={playerRef} />;
 });
 
 /**
