@@ -2,7 +2,24 @@ import { useAnimations, useGLTF } from '@react-three/drei'
 import { useGraph } from '@react-three/fiber'
 import { createMachine } from '@xstate/fsm'
 import { forwardRef, useEffect, useMemo, useRef } from 'react'
-import { SkeletonUtils } from 'three-stdlib'
+import { Object3D } from 'three'
+import { GLTF } from 'three/examples/jsm/loaders/GLTFLoader'
+import { SkeletonUtils } from 'three/examples/jsm/utils/SkeletonUtils'
+
+type GLTFResult = GLTF & {
+  nodes: {
+    Alpha_Joints: THREE.SkinnedMesh
+    Alpha_Surface: THREE.SkinnedMesh
+    mixamorigHips: THREE.Bone
+  }
+  materials: {
+    Alpha_Joints_MAT: THREE.MeshStandardMaterial
+    Alpha_Body_MAT: THREE.MeshStandardMaterial
+  }
+}
+
+type ActionName = 'Idle' | 'Run' | 'TPose' | 'Walk'
+type GLTFActions = Record<ActionName, THREE.AnimationAction>
 
 const characterMachine = createMachine({
   id: 'character',
@@ -17,19 +34,24 @@ const characterMachine = createMachine({
 console.log(characterMachine.transition(characterMachine.initialState, 'WALK'))
 
 const Character = forwardRef(function Character(props, forwardedRef) {
-  const ref = useRef()
+  const ref = useRef<Object3D>()
   const characterRef = forwardedRef || ref
-  const { scene, materials, animations } = useGLTF('/ybot.gltf')
+  const { scene, materials, animations } = useGLTF('/ybot.gltf') as GLTFResult
   const clone = useMemo(() => SkeletonUtils.clone(scene), [scene])
-  const { nodes } = useGraph(clone)
+  const { nodes } = useGraph(clone) as unknown as Pick<
+    GLTFResult,
+    'nodes' | 'materials'
+  >
 
-  const { actions } = useAnimations(animations, characterRef)
+  const { actions } = useAnimations<GLTFActions>(animations, ref)
 
   const state = 'Idle'
   useEffect(() => {
     const action = actions[state]
     action.play()
-    return () => action.stop()
+    return () => {
+      action.stop()
+    }
   })
 
   return (
