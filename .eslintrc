@@ -1,0 +1,11 @@
+{
+  "extends": ["alexandernanberg", "alexandernanberg/typescript"],
+  "parserOptions": {
+    "babelOptions": {
+      "presets": ["@babel/preset-env", "@babel/preset-react"]
+    }
+  },
+  "rules": {
+    "react/prop-types": "off"
+  }
+}
