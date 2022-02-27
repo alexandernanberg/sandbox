@@ -6,6 +6,7 @@ import {
   useHelper,
   useTexture,
 } from '@react-three/drei'
+import type { Object3DNode } from '@react-three/fiber'
 import { Canvas } from '@react-three/fiber'
 import { button, useControls } from 'leva'
 import { Perf } from 'r3f-perf'
@@ -14,14 +15,22 @@ import {
   Suspense,
   useContext,
   useEffect,
+  useLayoutEffect,
   useRef,
   useState,
 } from 'react'
-import {
+import seedrandom from 'seedrandom'
+import type {
+  BufferGeometry,
   DirectionalLight,
-  DirectionalLightHelper,
   HemisphereLight,
+  Uint32BufferAttribute,
+} from 'three'
+import {
+  DirectionalLightHelper,
+  DoubleSide,
   HemisphereLightHelper,
+  RepeatWrapping,
   Vector3,
 } from 'three'
 import {
@@ -31,8 +40,23 @@ import {
   CylinderCollider,
   Physics,
   RigidBody,
+  TrimeshCollider,
 } from './components/Physics'
 import { useConstant } from './utils'
+
+// Temporary solution
+export type Uint32BufferAttributeProps = Object3DNode<
+  THREE.Uint32BufferAttribute,
+  typeof Uint32BufferAttribute
+>
+declare global {
+  // eslint-disable-next-line @typescript-eslint/no-namespace
+  namespace JSX {
+    interface IntrinsicElements {
+      uint32BufferAttribute: Uint32BufferAttributeProps
+    }
+  }
+}
 
 export function Root() {
   return (
@@ -89,13 +113,32 @@ export function App() {
   //   })
   // }, 250)
 
-  const texture = useTexture(
-    'https://cdn.jsdelivr.net/gh/pmndrs/drei-assets@latest/prototype/purple/texture_01.png',
+  const boxTexture = useTexture(
+    'https://cdn.jsdelivr.net/gh/pmndrs/drei-assets@latest/prototype/dark/texture_01.png',
   )
+  const wallTexture = useTexture(
+    'https://cdn.jsdelivr.net/gh/pmndrs/drei-assets@latest/prototype/light/texture_12.png',
+  )
+  const tileTexture = useTexture(
+    'https://cdn.jsdelivr.net/gh/pmndrs/drei-assets@latest/prototype/light/texture_07.png',
+  )
+  tileTexture.wrapS = RepeatWrapping
+  tileTexture.wrapT = RepeatWrapping
+  tileTexture.repeat.set(10, 10)
+
+  const trimesh = generateTriMesh(20, 20.0, 2, 20)
+
+  console.log(trimesh)
+
+  const ref = useRef<BufferGeometry>()
+
+  useLayoutEffect(() => {
+    ref.current?.computeVertexNormals()
+  })
 
   return (
     <LightDebugContext.Provider value={lightsControl.debug}>
-      <Perf position="bottom-right" trackCPU />
+      <Perf position="bottom-right" />
       <fog attach="fog" args={[0xffffff, 10, 90]} />
       <Sky />
 
@@ -103,10 +146,27 @@ export function App() {
 
       <Physics debug={physicsControls.debug} key={physicsKey}>
         <RigidBody type="static">
+          <TrimeshCollider args={[trimesh.vertices, trimesh.indices]}>
+            <mesh receiveShadow>
+              <bufferGeometry ref={ref}>
+                <bufferAttribute attach="index" args={[trimesh.indices, 1]} />
+                <bufferAttribute
+                  attachObject={['attributes', 'position']}
+                  count={trimesh.vertices.length / 3}
+                  array={trimesh.vertices}
+                  itemSize={3}
+                />
+              </bufferGeometry>
+              <meshPhongMaterial color="white" side={DoubleSide} />
+            </mesh>
+          </TrimeshCollider>
+        </RigidBody>
+
+        <RigidBody type="static">
           <CuboidCollider args={[30, 0, 30]}>
-            <mesh castShadow receiveShadow>
-              <boxGeometry args={[30, 0.1, 30]} />
-              <meshStandardMaterial color="white" />
+            <mesh castShadow receiveShadow rotation={[-Math.PI / 2, 0, 0]}>
+              <planeGeometry args={[30, 30]} />
+              <meshPhongMaterial map={tileTexture} />
             </mesh>
           </CuboidCollider>
         </RigidBody>
@@ -115,7 +175,7 @@ export function App() {
           <CuboidCollider args={[1, 3, 6]}>
             <mesh castShadow>
               <boxGeometry args={[1, 3, 6]} />
-              <meshStandardMaterial color="gray" />
+              <meshPhongMaterial map={wallTexture} />
             </mesh>
           </CuboidCollider>
         </RigidBody>
@@ -125,7 +185,7 @@ export function App() {
             <CuboidCollider args={[1, 1, 1]}>
               <mesh castShadow>
                 <boxGeometry args={[1, 1, 1]} />
-                <meshStandardMaterial color="blue" />
+                <meshPhongMaterial color="blue" />
               </mesh>
             </CuboidCollider>
           </RigidBody>
@@ -140,7 +200,7 @@ export function App() {
           >
             <mesh castShadow>
               <sphereGeometry args={[0.5]} />
-              <meshStandardMaterial color="red" />
+              <meshPhongMaterial color="red" />
             </mesh>
           </BallCollider>
         </RigidBody>
@@ -149,7 +209,7 @@ export function App() {
           <ConeCollider args={[0.5, 1]}>
             <mesh castShadow>
               <coneGeometry args={[0.5, 1]} />
-              <meshStandardMaterial color="red" />
+              <meshPhongMaterial color="red" />
             </mesh>
           </ConeCollider>
         </RigidBody>
@@ -158,7 +218,7 @@ export function App() {
           <CylinderCollider args={[0.5, 1]}>
             <mesh castShadow>
               <cylinderGeometry args={[0.5, 0.5, 1]} />
-              <meshStandardMaterial color="red" />
+              <meshPhongMaterial color="red" />
             </mesh>
           </CylinderCollider>
         </RigidBody>
@@ -167,7 +227,7 @@ export function App() {
           <CuboidCollider args={[1, 1, 1]}>
             <mesh castShadow>
               <boxGeometry args={[1, 1, 1]} />
-              <meshStandardMaterial map={texture} />
+              <meshPhongMaterial color="purple" />
             </mesh>
           </CuboidCollider>
         </RigidBody>
@@ -246,4 +306,41 @@ function useInterval<T extends () => void>(cb: T, delay?: number) {
       return () => clearInterval(id)
     }
   }, [delay])
+}
+
+function generateTriMesh(nsubdivs: number, wx: number, wy: number, wz: number) {
+  let vertices = []
+  let indices = []
+
+  let elementWidth = 1.0 / nsubdivs
+  let rng = seedrandom('trimesh')
+
+  let i: number
+  let j: number
+  for (i = 0; i <= nsubdivs; ++i) {
+    for (j = 0; j <= nsubdivs; ++j) {
+      let x = (j * elementWidth - 0.5) * wx
+      let y = rng() * wy
+      let z = (i * elementWidth - 0.5) * wz
+
+      vertices.push(x, y, z)
+    }
+  }
+
+  for (i = 0; i < nsubdivs; ++i) {
+    for (j = 0; j < nsubdivs; ++j) {
+      let i1 = (i + 0) * (nsubdivs + 1) + (j + 0)
+      let i2 = (i + 0) * (nsubdivs + 1) + (j + 1)
+      let i3 = (i + 1) * (nsubdivs + 1) + (j + 0)
+      let i4 = (i + 1) * (nsubdivs + 1) + (j + 1)
+
+      indices.push(i1, i3, i2)
+      indices.push(i3, i4, i2)
+    }
+  }
+
+  return {
+    vertices: new Float32Array(vertices),
+    indices: new Uint32Array(indices),
+  }
 }

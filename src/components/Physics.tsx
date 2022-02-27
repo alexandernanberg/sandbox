@@ -78,17 +78,23 @@ export function Physics({ children, debug = false }: PhysicsProps) {
 
 const RigidBodyContext = createContext<RAPIER.RigidBody | null>(null)
 
-type RigidBodyType = 'dynamic' | 'static'
+type RigidBodyType =
+  | 'dynamic'
+  | 'static'
+  | 'kinematic-velocity-based'
+  | 'kinematic-position-based'
 
 interface RigidBodyProps {
   children: ReactNode
   position?: [x: number, y: number, z: number]
+  rotation?: [x: number, y: number, z: number, w: number]
   type?: RigidBodyType
 }
 
 export function RigidBody({
   children,
   position,
+  rotation,
   type = 'dynamic',
 }: RigidBodyProps) {
   const { world } = usePhysicsContext()
@@ -103,12 +109,23 @@ export function RigidBody({
       case 'static':
         rigidBodyDesc = RAPIER.RigidBodyDesc.newStatic()
         break
+      case 'kinematic-velocity-based':
+        rigidBodyDesc = RAPIER.RigidBodyDesc.newKinematicVelocityBased()
+        break
+      case 'kinematic-position-based':
+        rigidBodyDesc = RAPIER.RigidBodyDesc.newKinematicPositionBased()
+        break
       default:
         throw new Error(`Unsupported RigidBody.type: "${type}"`)
     }
 
     if (position) {
       rigidBodyDesc.setTranslation(...position)
+    }
+
+    if (rotation) {
+      const [x, y, z, w] = rotation
+      rigidBodyDesc.setRotation({ x, y, z, w })
     }
 
     return world.createRigidBody(rigidBodyDesc)
@@ -376,21 +393,69 @@ export function ConvexHullCollider({
   ...props
 }: ConvexHullColliderProps) {
   const { debug } = usePhysicsContext()
+  const itemSize = 3
 
   const collider = useCollider(
     () => RAPIER.ColliderDesc.convexHull(args),
     props,
   )
 
-  // TODO: fix debug shape
-
-  console.log(collider)
+  const vertices = collider.vertices()
+  const indices = collider.indices()
 
   return (
     <object3D>
       {debug && (
         <mesh>
-          {/* <bufferGeometry args={[radius, radius, height, 32]} /> */}
+          <bufferGeometry>
+            <bufferAttribute attach="index" args={[indices, 1]} />
+            <bufferAttribute
+              attachObject={['attributes', 'position']}
+              count={vertices.length / itemSize}
+              array={vertices}
+              itemSize={itemSize}
+            />
+          </bufferGeometry>
+          <meshBasicMaterial wireframe color={0x00ff00} />
+        </mesh>
+      )}
+      {children}
+    </object3D>
+  )
+}
+
+///////////////////////////////////////////////////////////////
+// TrimeshCollider
+///////////////////////////////////////////////////////////////
+
+interface TrimeshColliderProps extends ColliderProps {
+  args: [vertices: Float32Array, indices: Uint32Array]
+}
+
+export function TrimeshCollider({
+  children,
+  args,
+  ...props
+}: TrimeshColliderProps) {
+  const [vertices, indices] = args
+  const { debug } = usePhysicsContext()
+  const itemSize = 3
+
+  useCollider(() => RAPIER.ColliderDesc.trimesh(vertices, indices), props)
+
+  return (
+    <object3D>
+      {debug && (
+        <mesh>
+          <bufferGeometry>
+            <bufferAttribute attach="index" args={[indices, 1]} />
+            <bufferAttribute
+              attachObject={['attributes', 'position']}
+              count={vertices.length / itemSize}
+              array={vertices}
+              itemSize={itemSize}
+            />
+          </bufferGeometry>
           <meshBasicMaterial wireframe color={0x00ff00} />
         </mesh>
       )}
