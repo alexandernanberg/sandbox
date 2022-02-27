@@ -465,3 +465,98 @@ export function TrimeshCollider({
     </object3D>
   )
 }
+
+///////////////////////////////////////////////////////////////
+// HeightfieldCollider
+///////////////////////////////////////////////////////////////
+
+interface HeightfieldColliderProps extends ColliderProps {
+  args: [
+    nrows: number,
+    ncols: number,
+    heights: Float32Array,
+    scale: RAPIER.Vector,
+  ]
+}
+
+export function HeightfieldCollider({
+  children,
+  args,
+  ...props
+}: HeightfieldColliderProps) {
+  const [nrows, ncols, heights, scale] = args
+  const { debug } = usePhysicsContext()
+  const itemSize = 3
+
+  useCollider(
+    () => RAPIER.ColliderDesc.heightfield(nrows, ncols, heights, scale),
+    props,
+  )
+
+  // TODO: only calculate when debug=true
+  const { vertices, indices } = useConstant(() =>
+    geometryFromHeightfield(nrows, ncols, heights, scale),
+  )
+
+  return (
+    <object3D>
+      {debug && (
+        <mesh>
+          <bufferGeometry>
+            <bufferAttribute attach="index" args={[indices, 1]} />
+            <bufferAttribute
+              attachObject={['attributes', 'position']}
+              count={vertices.length / itemSize}
+              array={vertices}
+              itemSize={itemSize}
+            />
+          </bufferGeometry>
+          <meshBasicMaterial wireframe color={0x00ff00} />
+        </mesh>
+      )}
+      {children}
+    </object3D>
+  )
+}
+
+function geometryFromHeightfield(
+  nrows: number,
+  ncols: number,
+  heights: Float32Array,
+  scale: RAPIER.Vector,
+) {
+  const vertices = []
+  const indices = []
+  const eltWX = 1.0 / nrows
+  const eltWY = 1.0 / ncols
+
+  let i: number
+  let j: number
+
+  for (j = 0; j <= ncols; ++j) {
+    for (i = 0; i <= nrows; ++i) {
+      const x = (j * eltWX - 0.5) * scale.x
+      const y = heights[j * (nrows + 1) + i] * scale.y
+      const z = (i * eltWY - 0.5) * scale.z
+
+      vertices.push(x, y, z)
+    }
+  }
+
+  for (j = 0; j < ncols; ++j) {
+    for (i = 0; i < nrows; ++i) {
+      const i1 = (i + 0) * (ncols + 1) + (j + 0)
+      const i2 = (i + 0) * (ncols + 1) + (j + 1)
+      const i3 = (i + 1) * (ncols + 1) + (j + 0)
+      const i4 = (i + 1) * (ncols + 1) + (j + 1)
+
+      indices.push(i1, i3, i2)
+      indices.push(i3, i4, i2)
+    }
+  }
+
+  return {
+    vertices: new Float32Array(vertices),
+    indices: new Uint32Array(indices),
+  }
+}

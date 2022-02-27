@@ -3,34 +3,26 @@ import {
   Loader,
   OrbitControls,
   Sky as SkyShader,
-  useHelper,
   useTexture,
 } from '@react-three/drei'
 import type { Object3DNode } from '@react-three/fiber'
 import { Canvas } from '@react-three/fiber'
 import { button, useControls } from 'leva'
 import { Perf } from 'r3f-perf'
-import {
-  createContext,
-  Suspense,
-  useContext,
-  useEffect,
-  useRef,
-  useState,
-} from 'react'
+import { Suspense, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import seedrandom from 'seedrandom'
-import type {
+import type { Uint32BufferAttribute } from 'three'
+import {
+  BufferAttribute,
+  BufferGeometry,
+  DoubleSide,
+  RepeatWrapping,
+} from 'three'
+import {
   DirectionalLight,
   HemisphereLight,
-  Uint32BufferAttribute,
-} from 'three'
-import {
-  DirectionalLightHelper,
-  DoubleSide,
-  HemisphereLightHelper,
-  RepeatWrapping,
-  Vector3,
-} from 'three'
+  LightProvider,
+} from './components/Lights'
 import {
   BallCollider,
   ConeCollider,
@@ -68,8 +60,6 @@ export function Root() {
     </>
   )
 }
-
-const LightDebugContext = createContext<boolean>(false)
 
 export function App() {
   const [physicsKey, setPhysicsKey] = useState(1)
@@ -124,10 +114,21 @@ export function App() {
   tileTexture.wrapT = RepeatWrapping
   tileTexture.repeat.set(10, 10)
 
-  const trimesh = useConstant(() => generateTriMesh(20, 20.0, 2, 20))
+  const trimesh = useConstant(() => generateTrimesh(20, 20.0, 2, 20))
+
+  const geometry = useConstant(() => {
+    const geo = new BufferGeometry()
+    geo.setIndex(new BufferAttribute(trimesh.indices, 1))
+    geo.setAttribute('position', new BufferAttribute(trimesh.vertices, 3))
+    return geo
+  })
+
+  useLayoutEffect(() => {
+    geometry.computeVertexNormals()
+  }, [geometry])
 
   return (
-    <LightDebugContext.Provider value={lightsControl.debug}>
+    <LightProvider debug={lightsControl.debug}>
       <Perf position="bottom-right" />
       <fog attach="fog" args={[0xffffff, 10, 90]} />
       <Sky />
@@ -137,18 +138,7 @@ export function App() {
       <Physics debug={physicsControls.debug} key={physicsKey}>
         <RigidBody type="static">
           <TrimeshCollider args={[trimesh.vertices, trimesh.indices]}>
-            <mesh receiveShadow>
-              <bufferGeometry
-                ref={(geometry) => geometry?.computeVertexNormals()}
-              >
-                <bufferAttribute attach="index" args={[trimesh.indices, 1]} />
-                <bufferAttribute
-                  attachObject={['attributes', 'position']}
-                  count={trimesh.vertices.length / 3}
-                  array={trimesh.vertices}
-                  itemSize={3}
-                />
-              </bufferGeometry>
+            <mesh receiveShadow geometry={geometry}>
               <meshPhongMaterial color="white" side={DoubleSide} />
             </mesh>
           </TrimeshCollider>
@@ -224,14 +214,11 @@ export function App() {
           </CuboidCollider>
         </RigidBody>
       </Physics>
-    </LightDebugContext.Provider>
+    </LightProvider>
   )
 }
 
 function Sky() {
-  const debugLights = useContext(LightDebugContext)
-  const sunPosition = useConstant(() => new Vector3(100, 200, 100))
-
   const controls = useControls(
     'Sky',
     {
@@ -243,14 +230,6 @@ function Sky() {
     { collapsed: true },
   )
 
-  const dirLightRef = useRef<DirectionalLight>()
-  useHelper(debugLights && dirLightRef, DirectionalLightHelper, 1, 'red')
-
-  const hemiLightRef = useRef<HemisphereLight>()
-  useHelper(debugLights && hemiLightRef, HemisphereLightHelper, 1, 'red')
-
-  HemisphereLightHelper
-
   return (
     <>
       <SkyShader
@@ -258,15 +237,13 @@ function Sky() {
         distance={10000}
         mieDirectionalG={0.9}
       />
-      <hemisphereLight
-        ref={hemiLightRef}
+      <HemisphereLight
         args={[0xffffff, 0xffffff, 1.0]}
         color={0x7095c1}
         position={[0, 50, 0]}
         groundColor={0xcbc1b2}
       />
-      <directionalLight
-        ref={dirLightRef}
+      <DirectionalLight
         position={controls.sun}
         castShadow
         // shadow-mapSize={[1024, 1024]}
@@ -300,20 +277,20 @@ function useInterval<T extends () => void>(cb: T, delay?: number) {
   }, [delay])
 }
 
-function generateTriMesh(nsubdivs: number, wx: number, wy: number, wz: number) {
-  let vertices = []
-  let indices = []
+function generateTrimesh(nsubdivs: number, wx: number, wy: number, wz: number) {
+  const vertices = []
+  const indices = []
 
-  let elementWidth = 1.0 / nsubdivs
-  let rng = seedrandom('trimesh')
+  const elementWidth = 1.0 / nsubdivs
+  const rng = seedrandom('trimesh')
 
   let i: number
   let j: number
   for (i = 0; i <= nsubdivs; ++i) {
     for (j = 0; j <= nsubdivs; ++j) {
-      let x = (j * elementWidth - 0.5) * wx
-      let y = rng() * wy
-      let z = (i * elementWidth - 0.5) * wz
+      const x = (j * elementWidth - 0.5) * wx
+      const y = rng() * wy
+      const z = (i * elementWidth - 0.5) * wz
 
       vertices.push(x, y, z)
     }
@@ -321,10 +298,10 @@ function generateTriMesh(nsubdivs: number, wx: number, wy: number, wz: number) {
 
   for (i = 0; i < nsubdivs; ++i) {
     for (j = 0; j < nsubdivs; ++j) {
-      let i1 = (i + 0) * (nsubdivs + 1) + (j + 0)
-      let i2 = (i + 0) * (nsubdivs + 1) + (j + 1)
-      let i3 = (i + 1) * (nsubdivs + 1) + (j + 0)
-      let i4 = (i + 1) * (nsubdivs + 1) + (j + 1)
+      const i1 = (i + 0) * (nsubdivs + 1) + (j + 0)
+      const i2 = (i + 0) * (nsubdivs + 1) + (j + 1)
+      const i3 = (i + 1) * (nsubdivs + 1) + (j + 0)
+      const i4 = (i + 1) * (nsubdivs + 1) + (j + 1)
 
       indices.push(i1, i3, i2)
       indices.push(i3, i4, i2)

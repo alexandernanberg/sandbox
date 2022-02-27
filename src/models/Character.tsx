@@ -2,8 +2,8 @@ import { useAnimations, useGLTF } from '@react-three/drei'
 import { useGraph } from '@react-three/fiber'
 import { createMachine } from '@xstate/fsm'
 import { forwardRef, useEffect, useMemo, useRef } from 'react'
-import { Object3D } from 'three'
-import { GLTF } from 'three/examples/jsm/loaders/GLTFLoader'
+import type { Object3D } from 'three'
+import type { GLTF } from 'three/examples/jsm/loaders/GLTFLoader'
 import { SkeletonUtils } from 'three/examples/jsm/utils/SkeletonUtils'
 
 type GLTFResult = GLTF & {
