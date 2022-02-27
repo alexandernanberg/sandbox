@@ -140,7 +140,7 @@ export function RigidBody({
     const object3d = ref.current
     if (!object3d) return
 
-    if (!rigidBody.isSleeping()) {
+    if (!rigidBody.isSleeping() && !rigidBody.isStatic()) {
       const pos = rigidBody.translation()
       const rot = rigidBody.rotation()
 
@@ -151,7 +151,9 @@ export function RigidBody({
 
   return (
     <RigidBodyContext.Provider value={rigidBody}>
-      <object3D ref={ref}>{children}</object3D>
+      <object3D ref={ref} position={position} quaternion={rotation}>
+        {children}
+      </object3D>
     </RigidBodyContext.Provider>
   )
 }

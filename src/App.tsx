@@ -15,13 +15,11 @@ import {
   Suspense,
   useContext,
   useEffect,
-  useLayoutEffect,
   useRef,
   useState,
 } from 'react'
 import seedrandom from 'seedrandom'
 import type {
-  BufferGeometry,
   DirectionalLight,
   HemisphereLight,
   Uint32BufferAttribute,
@@ -126,15 +124,7 @@ export function App() {
   tileTexture.wrapT = RepeatWrapping
   tileTexture.repeat.set(10, 10)
 
-  const trimesh = generateTriMesh(20, 20.0, 2, 20)
-
-  console.log(trimesh)
-
-  const ref = useRef<BufferGeometry>()
-
-  useLayoutEffect(() => {
-    ref.current?.computeVertexNormals()
-  })
+  const trimesh = useConstant(() => generateTriMesh(20, 20.0, 2, 20))
 
   return (
     <LightDebugContext.Provider value={lightsControl.debug}>
@@ -148,7 +138,9 @@ export function App() {
         <RigidBody type="static">
           <TrimeshCollider args={[trimesh.vertices, trimesh.indices]}>
             <mesh receiveShadow>
-              <bufferGeometry ref={ref}>
+              <bufferGeometry
+                ref={(geometry) => geometry?.computeVertexNormals()}
+              >
                 <bufferAttribute attach="index" args={[trimesh.indices, 1]} />
                 <bufferAttribute
                   attachObject={['attributes', 'position']}
