@@ -1,5 +1,5 @@
 import type { MutableRefObject, Ref, RefCallback } from 'react'
-import { useMemo, useRef } from 'react'
+import { useEffect, useMemo, useRef } from 'react'
 
 export function useConstant<T>(fn: () => T): T {
   const ref = useRef<{ v: T }>()
@@ -42,4 +42,22 @@ export function useForkRef<T>(
     // eslint-disable-next-line react-hooks/exhaustive-deps
     refs,
   )
+}
+
+export function useInterval<T extends () => void>(cb: T, delay?: number) {
+  const ref = useRef<T>()
+
+  useEffect(() => {
+    ref.current = cb
+  }, [cb])
+
+  useEffect(() => {
+    function tick() {
+      ref.current?.()
+    }
+    if (delay !== null) {
+      const id = setInterval(tick, delay)
+      return () => clearInterval(id)
+    }
+  }, [delay])
 }

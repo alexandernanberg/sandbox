@@ -5,13 +5,11 @@ import {
   Sky as SkyShader,
   useTexture,
 } from '@react-three/drei'
-import type { Object3DNode } from '@react-three/fiber'
 import { Canvas } from '@react-three/fiber'
 import { button, useControls } from 'leva'
 import { Perf } from 'r3f-perf'
-import { Suspense, useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { Suspense, useLayoutEffect, useState } from 'react'
 import seedrandom from 'seedrandom'
-import type { Uint32BufferAttribute } from 'three'
 import {
   BufferAttribute,
   BufferGeometry,
@@ -33,20 +31,6 @@ import {
   TrimeshCollider,
 } from './components/Physics'
 import { useConstant } from './utils'
-
-// Temporary solution
-export type Uint32BufferAttributeProps = Object3DNode<
-  THREE.Uint32BufferAttribute,
-  typeof Uint32BufferAttribute
->
-declare global {
-  // eslint-disable-next-line @typescript-eslint/no-namespace
-  namespace JSX {
-    interface IntrinsicElements {
-      uint32BufferAttribute: Uint32BufferAttributeProps
-    }
-  }
-}
 
 export function Root() {
   return (
@@ -155,7 +139,7 @@ export function App() {
 
         <RigidBody type="static" position={[5, 3 / 2, 2]}>
           <CuboidCollider args={[1, 3, 6]}>
-            <mesh castShadow>
+            <mesh castShadow receiveShadow>
               <boxGeometry args={[1, 3, 6]} />
               <meshPhongMaterial map={wallTexture} />
             </mesh>
@@ -165,7 +149,7 @@ export function App() {
         {items.map((item) => (
           <RigidBody key={item} position={[0, 6, 0]}>
             <CuboidCollider args={[1, 1, 1]}>
-              <mesh castShadow>
+              <mesh castShadow receiveShadow>
                 <boxGeometry args={[1, 1, 1]} />
                 <meshPhongMaterial color="blue" />
               </mesh>
@@ -180,7 +164,7 @@ export function App() {
             friction={0.9}
             density={12}
           >
-            <mesh castShadow>
+            <mesh castShadow receiveShadow>
               <sphereGeometry args={[0.5]} />
               <meshPhongMaterial color="red" />
             </mesh>
@@ -189,7 +173,7 @@ export function App() {
 
         <RigidBody position={[2, 5, 0]}>
           <ConeCollider args={[0.5, 1]}>
-            <mesh castShadow>
+            <mesh castShadow receiveShadow>
               <coneGeometry args={[0.5, 1]} />
               <meshPhongMaterial color="red" />
             </mesh>
@@ -198,7 +182,7 @@ export function App() {
 
         <RigidBody position={[0, 2, 0]}>
           <CylinderCollider args={[0.5, 1]}>
-            <mesh castShadow>
+            <mesh castShadow receiveShadow>
               <cylinderGeometry args={[0.5, 0.5, 1]} />
               <meshPhongMaterial color="red" />
             </mesh>
@@ -207,7 +191,7 @@ export function App() {
 
         <RigidBody position={[0.5, 5, 0]}>
           <CuboidCollider args={[1, 1, 1]}>
-            <mesh castShadow>
+            <mesh castShadow receiveShadow>
               <boxGeometry args={[1, 1, 1]} />
               <meshPhongMaterial color="purple" />
             </mesh>
@@ -257,24 +241,6 @@ function Sky() {
       <Environment preset="park" />
     </>
   )
-}
-
-function useInterval<T extends () => void>(cb: T, delay?: number) {
-  const ref = useRef<T>()
-
-  useEffect(() => {
-    ref.current = cb
-  }, [cb])
-
-  useEffect(() => {
-    function tick() {
-      ref.current?.()
-    }
-    if (delay !== null) {
-      const id = setInterval(tick, delay)
-      return () => clearInterval(id)
-    }
-  }, [delay])
 }
 
 function generateTrimesh(nsubdivs: number, wx: number, wy: number, wz: number) {
