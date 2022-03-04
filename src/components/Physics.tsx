@@ -302,6 +302,10 @@ export function useCollider<T extends () => RAPIER.ColliderDesc | null>(
     return world.createCollider(colliderDesc)
   })
 
+  useEffect(() => {
+    return () => world.removeCollider(collider, true)
+  }, [world, collider])
+
   return collider as unknown as UseColliderReturn<T>
 }
 

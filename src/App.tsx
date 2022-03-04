@@ -118,7 +118,9 @@ export function App() {
       <Physics debug={physicsControls.debug} key={physicsKey}>
         <Tower />
 
-        <Stone position={[0, 4, 0]} />
+        <RigidBody position={[0, 4, 0]}>
+          <Stone />
+        </RigidBody>
 
         {/* <RigidBody type="static">
           <HeightfieldCollider
@@ -182,7 +184,7 @@ export function App() {
           </ConeCollider>
         </RigidBody>
 
-        <RigidBody position={[-5, 6, 0]}>
+        <RigidBody position={[-5, 10, 0]}>
           <CylinderCollider args={[0.5, 1]}>
             <mesh castShadow receiveShadow>
               <cylinderGeometry args={[0.5, 0.5, 1]} />
@@ -191,7 +193,7 @@ export function App() {
           </CylinderCollider>
         </RigidBody>
 
-        <RigidBody position={[-5, 6, -4]}>
+        <RigidBody position={[-5, 10, -4]}>
           <CylinderCollider args={[0.5, 1]}>
             <mesh castShadow receiveShadow>
               <cylinderGeometry args={[0.5, 0.5, 1]} />
@@ -200,7 +202,7 @@ export function App() {
           </CylinderCollider>
         </RigidBody>
 
-        <RigidBody position={[-10, 6, 0]}>
+        <RigidBody position={[-10, 8, 0]}>
           <CylinderCollider args={[0.5, 1]}>
             <mesh castShadow receiveShadow>
               <cylinderGeometry args={[0.5, 0.5, 1]} />
@@ -209,7 +211,7 @@ export function App() {
           </CylinderCollider>
         </RigidBody>
 
-        <RigidBody position={[-10, 6, -4]}>
+        <RigidBody position={[-10, 8, -4]}>
           <CylinderCollider args={[0.5, 1]}>
             <mesh castShadow receiveShadow>
               <cylinderGeometry args={[0.5, 0.5, 1]} />
@@ -218,7 +220,7 @@ export function App() {
           </CylinderCollider>
         </RigidBody>
 
-        <RigidBody position={[0.5, 5, 5]}>
+        <RigidBody position={[0.5, 8, 5]}>
           <CuboidCollider args={[1, 1, 1]}>
             <mesh castShadow receiveShadow>
               <boxGeometry args={[1, 1, 1]} />
