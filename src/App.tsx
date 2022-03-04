@@ -8,19 +8,15 @@ import {
 import { Canvas } from '@react-three/fiber'
 import { button, useControls } from 'leva'
 import { Perf } from 'r3f-perf'
-import { Suspense, useLayoutEffect, useState } from 'react'
+import { Suspense, useState } from 'react'
 import seedrandom from 'seedrandom'
-import {
-  BufferAttribute,
-  BufferGeometry,
-  DoubleSide,
-  RepeatWrapping,
-} from 'three'
+import { RepeatWrapping } from 'three'
 import {
   DirectionalLight,
   HemisphereLight,
   LightProvider,
 } from './components/Lights'
+import type { CuboidColliderProps, RigidBodyProps } from './components/Physics'
 import {
   BallCollider,
   ConeCollider,
@@ -28,9 +24,9 @@ import {
   CylinderCollider,
   Physics,
   RigidBody,
-  TrimeshCollider,
 } from './components/Physics'
-import { useConstant } from './utils'
+import Ramp from './models/Ramp'
+import Stone from './models/Stone'
 
 export function Root() {
   return (
@@ -96,20 +92,20 @@ export function App() {
   )
   tileTexture.wrapS = RepeatWrapping
   tileTexture.wrapT = RepeatWrapping
-  tileTexture.repeat.set(10, 10)
+  tileTexture.repeat.set(7.5, 7.5)
 
-  const trimesh = useConstant(() => generateTrimesh(20, 20.0, 2, 20))
+  // const trimesh = useConstant(() => generateTrimesh(5, 10, 2, 10))
 
-  const geometry = useConstant(() => {
-    const geo = new BufferGeometry()
-    geo.setIndex(new BufferAttribute(trimesh.indices, 1))
-    geo.setAttribute('position', new BufferAttribute(trimesh.vertices, 3))
-    return geo
-  })
+  // const geometry = useConstant(() => {
+  //   const geo = new BufferGeometry()
+  //   geo.setIndex(new BufferAttribute(trimesh.indices, 1))
+  //   geo.setAttribute('position', new BufferAttribute(trimesh.vertices, 3))
+  //   return geo
+  // })
 
-  useLayoutEffect(() => {
-    geometry.computeVertexNormals()
-  }, [geometry])
+  // useLayoutEffect(() => {
+  //   geometry.computeVertexNormals()
+  // }, [geometry])
 
   return (
     <LightProvider debug={lightsControl.debug}>
@@ -120,13 +116,19 @@ export function App() {
       <OrbitControls />
 
       <Physics debug={physicsControls.debug} key={physicsKey}>
-        <RigidBody type="static">
-          <TrimeshCollider args={[trimesh.vertices, trimesh.indices]}>
-            <mesh receiveShadow geometry={geometry}>
+        <Tower />
+
+        <Stone position={[0, 4, 0]} />
+
+        {/* <RigidBody type="static">
+          <HeightfieldCollider
+            args={[nsubdivs, nsubdivs, heights, { x: 70, y: 4, z: 70 }]}
+          >
+            <mesh receiveShadow>
               <meshPhongMaterial color="white" side={DoubleSide} />
             </mesh>
-          </TrimeshCollider>
-        </RigidBody>
+          </HeightfieldCollider>
+        </RigidBody> */}
 
         <RigidBody type="static">
           <CuboidCollider args={[30, 0, 30]}>
@@ -171,7 +173,7 @@ export function App() {
           </BallCollider>
         </RigidBody>
 
-        <RigidBody position={[2, 5, 0]}>
+        <RigidBody position={[2, 5, 0.5]}>
           <ConeCollider args={[0.5, 1]}>
             <mesh castShadow receiveShadow>
               <coneGeometry args={[0.5, 1]} />
@@ -180,7 +182,7 @@ export function App() {
           </ConeCollider>
         </RigidBody>
 
-        <RigidBody position={[0, 2, 0]}>
+        <RigidBody position={[-5, 6, 0]}>
           <CylinderCollider args={[0.5, 1]}>
             <mesh castShadow receiveShadow>
               <cylinderGeometry args={[0.5, 0.5, 1]} />
@@ -189,7 +191,34 @@ export function App() {
           </CylinderCollider>
         </RigidBody>
 
-        <RigidBody position={[0.5, 5, 0]}>
+        <RigidBody position={[-5, 6, -4]}>
+          <CylinderCollider args={[0.5, 1]}>
+            <mesh castShadow receiveShadow>
+              <cylinderGeometry args={[0.5, 0.5, 1]} />
+              <meshPhongMaterial color="red" />
+            </mesh>
+          </CylinderCollider>
+        </RigidBody>
+
+        <RigidBody position={[-10, 6, 0]}>
+          <CylinderCollider args={[0.5, 1]}>
+            <mesh castShadow receiveShadow>
+              <cylinderGeometry args={[0.5, 0.5, 1]} />
+              <meshPhongMaterial color="red" />
+            </mesh>
+          </CylinderCollider>
+        </RigidBody>
+
+        <RigidBody position={[-10, 6, -4]}>
+          <CylinderCollider args={[0.5, 1]}>
+            <mesh castShadow receiveShadow>
+              <cylinderGeometry args={[0.5, 0.5, 1]} />
+              <meshPhongMaterial color="red" />
+            </mesh>
+          </CylinderCollider>
+        </RigidBody>
+
+        <RigidBody position={[0.5, 5, 5]}>
           <CuboidCollider args={[1, 1, 1]}>
             <mesh castShadow receiveShadow>
               <boxGeometry args={[1, 1, 1]} />
@@ -199,6 +228,51 @@ export function App() {
         </RigidBody>
       </Physics>
     </LightProvider>
+  )
+}
+
+interface BoxProps {
+  args?: CuboidColliderProps['args']
+  position?: RigidBodyProps['position']
+  quaternion?: RigidBodyProps['quaternion']
+  rotation?: RigidBodyProps['rotation']
+}
+
+function Box({ args = [1, 1, 1], position, quaternion, rotation }: BoxProps) {
+  return (
+    <CuboidCollider
+      args={args}
+      position={position}
+      quaternion={quaternion}
+      rotation={rotation}
+    >
+      <mesh castShadow receiveShadow>
+        <boxGeometry args={args} />
+        <meshPhongMaterial color={0xfffff0} />
+      </mesh>
+    </CuboidCollider>
+  )
+}
+
+function Tower() {
+  return (
+    <RigidBody type="static" position={[-6, 0, 0]}>
+      <group>
+        <Box args={[1, 7, 1]} position={[0.5, 3.5, 0.5]} />
+        <Box args={[1, 7, 1]} position={[0.5, 3.5, -2.5]} />
+        <Box args={[1, 7, 1]} position={[-2.5, 3.5, 0.5]} />
+        <Box args={[1, 7, 1]} position={[-2.5, 3.5, -2.5]} />
+      </group>
+      <Ramp position={[-1, 1, 2]} />
+      <Box args={[2, 0.5, 2]} position={[-4, 1.75, 2]} />
+      <Ramp position={[-4, 3, -1]} rotation={[0, -Math.PI / 2, 0]} />
+      <Box args={[2, 0.5, 2]} position={[-4, 3.75, -4]} />
+      <Ramp position={[-1, 5, -4]} rotation={[0, -Math.PI, 0]} />
+      <Box args={[2, 0.5, 2]} position={[2, 5.75, -4]} />
+      <Ramp position={[2, 7, -1]} rotation={[0, Math.PI / 2, 0]} />
+      <Box args={[2, 0.5, 4]} position={[2, 7.75, 3]} />
+      <Box args={[6, 1, 8]} position={[-2, 7.5, 1]} />
+    </RigidBody>
   )
 }
 
@@ -241,6 +315,34 @@ function Sky() {
       <Environment preset="park" />
     </>
   )
+}
+
+function generateHeightfield(nsubdivs: number): Float32Array {
+  const heights: Array<number> = []
+
+  const rng = seedrandom('heightfield')
+
+  let i: number
+  let j: number
+  for (i = 0; i <= nsubdivs; ++i) {
+    for (j = 0; j <= nsubdivs; ++j) {
+      heights.push(rng())
+    }
+  }
+
+  return new Float32Array(heights)
+}
+
+function generateConvexPolyhedron() {
+  const rng = seedrandom('convexPolyhedron')
+  const scale = 2.0
+
+  const vertices = []
+  for (let l = 0; l < 10; ++l) {
+    vertices.push(rng() * scale, rng() * scale, rng() * scale)
+  }
+
+  return { vertices: new Float32Array(vertices) }
 }
 
 function generateTrimesh(nsubdivs: number, wx: number, wy: number, wz: number) {

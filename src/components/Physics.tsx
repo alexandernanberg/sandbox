@@ -2,14 +2,22 @@ import * as RAPIER from '@dimforge/rapier3d-compat'
 import type { Object3DNode } from '@react-three/fiber'
 import { useFrame } from '@react-three/fiber'
 import type { ReactNode } from 'react'
-import { createContext, useContext, useEffect, useMemo, useRef } from 'react'
+import {
+  createContext,
+  useContext,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+} from 'react'
 import { suspend } from 'suspend-react'
 import type { Object3D } from 'three'
+import { Euler, Quaternion, Vector3 } from 'three'
 import { useConstant } from '../utils'
 
 // Temporary solution until the PR is merged.
 // https://github.com/pmndrs/react-three-fiber/pull/2099#issuecomment-1050891821
-export type Object3DProps = Object3DNode<THREE.Object3D, typeof Object3D>
+export type Object3DProps = Object3DNode<Object3D, typeof Object3D>
 declare global {
   // eslint-disable-next-line @typescript-eslint/no-namespace
   namespace JSX {
@@ -19,11 +27,15 @@ declare global {
   }
 }
 
+type Vector3Like = Vector3 | Parameters<Vector3['set']>
+type QuaternionLike = Quaternion | Parameters<Quaternion['set']>
+type EulerLike = Euler | Parameters<Euler['set']>
+
 ///////////////////////////////////////////////////////////////
 // PhysicsContext
 ///////////////////////////////////////////////////////////////
 
-interface PhysicsContextValue {
+export interface PhysicsContextValue {
   world: RAPIER.World
   debug: boolean
 }
@@ -46,8 +58,8 @@ function usePhysicsContext() {
 // Physics
 ///////////////////////////////////////////////////////////////
 
-interface PhysicsProps {
-  children: ReactNode
+export interface PhysicsProps {
+  children?: ReactNode
   debug?: boolean
 }
 
@@ -59,6 +71,7 @@ export function Physics({ children, debug = false }: PhysicsProps) {
     return new RAPIER.World(gravity)
   })
 
+  // TODO: investigate using a fixed update frequency.
   useFrame(() => {
     world.step()
   })
@@ -84,16 +97,18 @@ type RigidBodyType =
   | 'kinematic-velocity-based'
   | 'kinematic-position-based'
 
-interface RigidBodyProps {
-  children: ReactNode
-  position?: [x: number, y: number, z: number]
-  rotation?: [x: number, y: number, z: number, w: number]
+export interface RigidBodyProps {
+  children?: ReactNode
+  position?: Vector3Like
+  quaternion?: QuaternionLike
+  rotation?: EulerLike
   type?: RigidBodyType
 }
 
 export function RigidBody({
   children,
   position,
+  quaternion,
   rotation,
   type = 'dynamic',
 }: RigidBodyProps) {
@@ -119,39 +134,83 @@ export function RigidBody({
         throw new Error(`Unsupported RigidBody.type: "${type}"`)
     }
 
-    if (position) {
-      rigidBodyDesc.setTranslation(...position)
+    return world.createRigidBody(rigidBodyDesc)
+  })
+
+  // Set rotation/quaternion
+  const rotationQuat = useConstant(() => {
+    const quat = new Quaternion()
+
+    if (quaternion) {
+      if (Array.isArray(quaternion)) {
+        return quat.fromArray(quaternion)
+      }
+      return quat.copy(quaternion)
     }
 
     if (rotation) {
-      const [x, y, z, w] = rotation
-      rigidBodyDesc.setRotation({ x, y, z, w })
+      const euler = Array.isArray(rotation)
+        ? new Euler().fromArray(rotation)
+        : rotation
+      return quat.setFromEuler(euler)
     }
 
-    return world.createRigidBody(rigidBodyDesc)
+    return quat
   })
+
+  useLayoutEffect(() => {
+    const object3d = ref.current
+    if (!object3d) return
+
+    object3d.getWorldQuaternion(rotationQuat)
+    rigidBody.setRotation(rotationQuat, false)
+  }, [rigidBody, rotationQuat])
+
+  // Set position/translation
+  const positionVec = useConstant(() => {
+    const vec = new Vector3()
+
+    if (!position) {
+      return vec
+    }
+
+    if (Array.isArray(position)) {
+      return vec.fromArray(position)
+    }
+
+    return vec.copy(position)
+  })
+
+  useLayoutEffect(() => {
+    const object3d = ref.current
+    if (!object3d) return
+
+    object3d.getWorldPosition(positionVec)
+    rigidBody.setTranslation(positionVec, false)
+  }, [rigidBody, positionVec])
 
   // Remove the rigid body whenever the component unmounts.
   useEffect(() => {
     return () => world.removeRigidBody(rigidBody)
   }, [rigidBody, world])
 
+  // TODO: investigate if we can iterate through all bodies in <Physics> and
+  // remove the useFrame for each body.
   useFrame(() => {
     const object3d = ref.current
-    if (!object3d) return
 
-    if (!rigidBody.isSleeping() && !rigidBody.isStatic()) {
-      const pos = rigidBody.translation()
-      const rot = rigidBody.rotation()
+    if (object3d && !rigidBody.isSleeping() && !rigidBody.isStatic()) {
+      const vec = rigidBody.translation()
+      const quat = rigidBody.rotation()
 
-      object3d.position.set(pos.x, pos.y, pos.z)
-      object3d.quaternion.set(rot.x, rot.y, rot.z, rot.w)
+      object3d.position.set(vec.x, vec.y, vec.z)
+      object3d.quaternion.set(quat.x, quat.y, quat.z, quat.w)
     }
   })
 
   return (
     <RigidBodyContext.Provider value={rigidBody}>
-      <object3D ref={ref} position={position} quaternion={rotation}>
+      <object3D ref={ref} position={position} quaternion={rotationQuat}>
         {children}
       </object3D>
     </RigidBodyContext.Provider>
@@ -162,13 +221,14 @@ export function RigidBody({
 // Colliders
 ///////////////////////////////////////////////////////////////
 
-interface ColliderProps {
-  position?: [x: number, y: number, z: number]
-  rotation?: [x: number, y: number, z: number, w: number]
+export interface ColliderProps {
+  position?: Vector3Like
+  quaternion?: QuaternionLike
+  rotation?: EulerLike
   friction?: number
   restitution?: number
   density?: number
-  children: ReactNode
+  children?: ReactNode
 }
 
 type UseColliderReturn<T extends () => void> =
@@ -182,7 +242,8 @@ export function useCollider<T extends () => RAPIER.ColliderDesc | null>(
   cb: T,
   props: Omit<ColliderProps, 'children'>,
 ): UseColliderReturn<T> {
-  const { position, rotation, friction, restitution, density } = props
+  const { position, quaternion, rotation, friction, restitution, density } =
+    props
   const rigidBody = useContext(RigidBodyContext)
   const { world } = usePhysicsContext()
 
@@ -194,13 +255,31 @@ export function useCollider<T extends () => RAPIER.ColliderDesc | null>(
     }
 
     if (position) {
-      colliderDesc.setTranslation(...position)
+      const arr = Array.isArray(position)
+        ? position
+        : (Object.values(position) as [number, number, number])
+      colliderDesc.setTranslation(...arr)
     }
 
+    const quat = new Quaternion()
+
     if (rotation) {
-      const [x, y, z, w] = rotation
-      colliderDesc.setRotation({ x, y, z, w })
+      const euler = Array.isArray(rotation)
+        ? new Euler().fromArray(rotation)
+        : rotation
+
+      quat.setFromEuler(euler)
     }
+
+    if (quaternion) {
+      if (Array.isArray(quaternion)) {
+        quat.fromArray(quaternion)
+      } else {
+        quat.copy(quaternion)
+      }
+    }
+
+    colliderDesc.setRotation(quat)
 
     if (friction) {
       colliderDesc.setFriction(friction)
@@ -230,7 +309,7 @@ export function useCollider<T extends () => RAPIER.ColliderDesc | null>(
 // CuboidCollier
 ///////////////////////////////////////////////////////////////
 
-interface CuboidColliderProps extends ColliderProps {
+export interface CuboidColliderProps extends ColliderProps {
   args: [width: number, height: number, depth: number]
 }
 
@@ -248,7 +327,11 @@ export function CuboidCollider({
   )
 
   return (
-    <object3D>
+    <object3D
+      position={props.position}
+      quaternion={props.quaternion}
+      rotation={props.rotation}
+    >
       {debug && (
         <mesh>
           <boxGeometry args={args} />
@@ -266,7 +349,7 @@ export const BoxCollider = CuboidCollider
 // BallCollider
 ///////////////////////////////////////////////////////////////
 
-interface BallColliderProps extends ColliderProps {
+export interface BallColliderProps extends ColliderProps {
   args: [radius: number]
 }
 
@@ -277,7 +360,11 @@ export function BallCollider({ children, args, ...props }: BallColliderProps) {
   useCollider(() => RAPIER.ColliderDesc.ball(radius), props)
 
   return (
-    <object3D>
+    <object3D
+      position={props.position}
+      quaternion={props.quaternion}
+      rotation={props.rotation}
+    >
       {debug && (
         <mesh>
           <sphereGeometry args={args} />
@@ -295,7 +382,7 @@ export const SphereCollider = BallCollider
 // CylinderCollider
 ///////////////////////////////////////////////////////////////
 
-interface CylinderColliderProps extends ColliderProps {
+export interface CylinderColliderProps extends ColliderProps {
   args: [radius: number, height: number]
 }
 
@@ -310,7 +397,11 @@ export function CylinderCollider({
   useCollider(() => RAPIER.ColliderDesc.cylinder(height / 2, radius), props)
 
   return (
-    <object3D>
+    <object3D
+      position={props.position}
+      quaternion={props.quaternion}
+      rotation={props.rotation}
+    >
       {debug && (
         <mesh>
           <cylinderGeometry args={[radius, radius, height, 32]} />
@@ -326,7 +417,7 @@ export function CylinderCollider({
 // CapsuleCollider
 ///////////////////////////////////////////////////////////////
 
-interface CapsuleColliderProps extends ColliderProps {
+export interface CapsuleColliderProps extends ColliderProps {
   args: [radius: number, height: number]
 }
 
@@ -341,7 +432,11 @@ export function CapsuleCollider({
   useCollider(() => RAPIER.ColliderDesc.capsule(radius, height / 2), props)
 
   return (
-    <object3D>
+    <object3D
+      position={props.position}
+      quaternion={props.quaternion}
+      rotation={props.rotation}
+    >
       {debug && (
         // TODO: use <capsuleGeometry> once it's released
         <mesh>
@@ -358,7 +453,7 @@ export function CapsuleCollider({
 // ConeCollider
 ///////////////////////////////////////////////////////////////
 
-interface ConeColliderProps extends ColliderProps {
+export interface ConeColliderProps extends ColliderProps {
   args: [radius: number, height: number]
 }
 
@@ -369,7 +464,11 @@ export function ConeCollider({ children, args, ...props }: ConeColliderProps) {
   useCollider(() => RAPIER.ColliderDesc.cone(height / 2, radius), props)
 
   return (
-    <object3D>
+    <object3D
+      position={props.position}
+      quaternion={props.quaternion}
+      rotation={props.rotation}
+    >
       {debug && (
         <mesh>
           <coneGeometry args={[radius, height, 32]} />
@@ -382,11 +481,58 @@ export function ConeCollider({ children, args, ...props }: ConeColliderProps) {
 }
 
 ///////////////////////////////////////////////////////////////
+// ConvexMeshCollider
+///////////////////////////////////////////////////////////////
+
+export interface ConvexMeshColliderProps extends ColliderProps {
+  args: [vertices: Float32Array, indices: Uint32Array]
+}
+
+export function ConvexMeshCollider({
+  children,
+  args,
+  ...props
+}: ConvexMeshColliderProps) {
+  const { debug } = usePhysicsContext()
+  const [vertices, indices] = args
+  const itemSize = 3
+
+  const collider = useCollider(
+    () => RAPIER.ColliderDesc.convexMesh(vertices, indices),
+    props,
+  )
+
+  return (
+    <object3D
+      position={props.position}
+      quaternion={props.quaternion}
+      rotation={props.rotation}
+    >
+      {debug && (
+        <mesh>
+          <bufferGeometry>
+            <bufferAttribute attach="index" args={[indices, 1]} />
+            <bufferAttribute
+              attachObject={['attributes', 'position']}
+              count={vertices.length / itemSize}
+              array={vertices}
+              itemSize={itemSize}
+            />
+          </bufferGeometry>
+          <meshBasicMaterial wireframe color={0x00ff00} />
+        </mesh>
+      )}
+      {children}
+    </object3D>
+  )
+}
+
+///////////////////////////////////////////////////////////////
 // ConvexHullCollider
 ///////////////////////////////////////////////////////////////
 
-interface ConvexHullColliderProps extends ColliderProps {
-  args: Float32Array
+export interface ConvexHullColliderProps extends ColliderProps {
+  args: [Float32Array]
 }
 
 export function ConvexHullCollider({
@@ -394,11 +540,12 @@ export function ConvexHullCollider({
   args,
   ...props
 }: ConvexHullColliderProps) {
+  const [points] = args
   const { debug } = usePhysicsContext()
   const itemSize = 3
 
   const collider = useCollider(
-    () => RAPIER.ColliderDesc.convexHull(args),
+    () => RAPIER.ColliderDesc.convexHull(points),
     props,
   )
 
@@ -406,7 +553,11 @@ export function ConvexHullCollider({
   const indices = collider.indices()
 
   return (
-    <object3D>
+    <object3D
+      position={props.position}
+      quaternion={props.quaternion}
+      rotation={props.rotation}
+    >
       {debug && (
         <mesh>
           <bufferGeometry>
@@ -430,7 +581,7 @@ export function ConvexHullCollider({
 // TrimeshCollider
 ///////////////////////////////////////////////////////////////
 
-interface TrimeshColliderProps extends ColliderProps {
+export interface TrimeshColliderProps extends ColliderProps {
   args: [vertices: Float32Array, indices: Uint32Array]
 }
 
@@ -446,7 +597,11 @@ export function TrimeshCollider({
   useCollider(() => RAPIER.ColliderDesc.trimesh(vertices, indices), props)
 
   return (
-    <object3D>
+    <object3D
+      position={props.position}
+      quaternion={props.quaternion}
+      rotation={props.rotation}
+    >
       {debug && (
         <mesh>
           <bufferGeometry>
@@ -470,7 +625,7 @@ export function TrimeshCollider({
 // HeightfieldCollider
 ///////////////////////////////////////////////////////////////
 
-interface HeightfieldColliderProps extends ColliderProps {
+export interface HeightfieldColliderProps extends ColliderProps {
   args: [
     nrows: number,
     ncols: number,
@@ -499,7 +654,11 @@ export function HeightfieldCollider({
   )
 
   return (
-    <object3D>
+    <object3D
+      position={props.position}
+      quaternion={props.quaternion}
+      rotation={props.rotation}
+    >
       {debug && (
         <mesh>
           <bufferGeometry>
