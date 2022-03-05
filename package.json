@@ -22,7 +22,8 @@
   "scripts": {
     "build": "vite build",
     "dev": "vite --host",
-    "serve": "vite preview"
+    "serve": "vite preview",
+    "lint": "eslint ."
   },
   "browserslist": [
     "last 1 chrome version",

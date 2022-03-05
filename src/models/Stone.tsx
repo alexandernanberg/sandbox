@@ -19,14 +19,11 @@ type GLTFResult = GLTF & {
 
 export default function Stone(props: Omit<ConvexHullColliderProps, 'args'>) {
   const { nodes, materials } = useGLTF('/stone.gltf') as GLTFResult
-  const { position } = nodes.Stone.geometry.attributes
+  const { geometry } = nodes.Stone
+  const vertices = geometry.attributes.position.array as Float32Array
 
   return (
-    <ConvexHullCollider
-      args={[position.array as Float32Array]}
-      density={4}
-      {...props}
-    >
+    <ConvexHullCollider args={[vertices]} density={4} {...props}>
       <mesh
         castShadow
         receiveShadow

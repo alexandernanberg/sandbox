@@ -202,7 +202,7 @@ export function App() {
           </CylinderCollider>
         </RigidBody>
 
-        <RigidBody position={[-10, 8, 0]}>
+        <RigidBody position={[-10, 10, 0]}>
           <CylinderCollider args={[0.5, 1]}>
             <mesh castShadow receiveShadow>
               <cylinderGeometry args={[0.5, 0.5, 1]} />
@@ -211,7 +211,7 @@ export function App() {
           </CylinderCollider>
         </RigidBody>
 
-        <RigidBody position={[-10, 8, -4]}>
+        <RigidBody position={[-10, 10, -4]}>
           <CylinderCollider args={[0.5, 1]}>
             <mesh castShadow receiveShadow>
               <cylinderGeometry args={[0.5, 0.5, 1]} />
@@ -220,7 +220,7 @@ export function App() {
           </CylinderCollider>
         </RigidBody>
 
-        <RigidBody position={[0.5, 8, 5]}>
+        <RigidBody position={[0.5, 10, 5]}>
           <CuboidCollider args={[1, 1, 1]}>
             <mesh castShadow receiveShadow>
               <boxGeometry args={[1, 1, 1]} />

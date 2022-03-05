@@ -23,7 +23,7 @@ interface LightProviderProps {
   children?: ReactNode
 }
 
-export function LightProvider({ debug, children }: LightProviderProps) {
+export function LightProvider({ debug = false, children }: LightProviderProps) {
   const context = useMemo(() => ({ debug }), [debug])
   return (
     <LightContext.Provider value={context}>{children}</LightContext.Provider>

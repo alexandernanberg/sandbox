@@ -303,7 +303,9 @@ export function useCollider<T extends () => RAPIER.ColliderDesc | null>(
   })
 
   useEffect(() => {
-    return () => world.removeCollider(collider, true)
+    if (collider) {
+      return () => world.removeCollider(collider, true)
+    }
   }, [world, collider])
 
   return collider as unknown as UseColliderReturn<T>
@@ -553,8 +555,8 @@ export function ConvexHullCollider({
     props,
   )
 
-  const vertices = collider.vertices()
-  const indices = collider.indices()
+  const vertices = collider?.vertices()
+  const indices = collider?.indices()
 
   return (
     <object3D
@@ -562,7 +564,7 @@ export function ConvexHullCollider({
       quaternion={props.quaternion}
       rotation={props.rotation}
     >
-      {debug && (
+      {debug && vertices && indices && (
         <mesh>
           <bufferGeometry>
             <bufferAttribute attach="index" args={[indices, 1]} />
