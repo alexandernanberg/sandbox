@@ -5,10 +5,10 @@ import type { ReactNode } from 'react'
 import {
   createContext,
   useContext,
-  useEffect,
   useLayoutEffect,
   useMemo,
   useRef,
+  useState,
 } from 'react'
 import { suspend } from 'suspend-react'
 import type { Object3D } from 'three'
@@ -138,28 +138,26 @@ export function RigidBody({
   type = 'dynamic',
 }: RigidBodyProps) {
   const { world, bodies } = usePhysicsContext()
-  const ref = useRef<Object3D>(null)
+  const object3dRef = useRef<Object3D>()
+  const [rigidBody, setRigidBody] = useState<RAPIER.RigidBody | null>(null)
 
-  const rigidBody = useConstant(() => {
-    let rigidBodyDesc: RAPIER.RigidBodyDesc
+  const rigidBodyDesc = useConstant<RAPIER.RigidBodyDesc>(() => {
     switch (type) {
       case 'dynamic':
-        rigidBodyDesc = RAPIER.RigidBodyDesc.newDynamic()
+        return RAPIER.RigidBodyDesc.newDynamic()
         break
       case 'static':
-        rigidBodyDesc = RAPIER.RigidBodyDesc.newStatic()
+        return RAPIER.RigidBodyDesc.newStatic()
         break
       case 'kinematic-velocity-based':
-        rigidBodyDesc = RAPIER.RigidBodyDesc.newKinematicVelocityBased()
+        return RAPIER.RigidBodyDesc.newKinematicVelocityBased()
         break
       case 'kinematic-position-based':
-        rigidBodyDesc = RAPIER.RigidBodyDesc.newKinematicPositionBased()
+        return RAPIER.RigidBodyDesc.newKinematicPositionBased()
         break
       default:
         throw new Error(`Unsupported RigidBody.type: "${type}"`)
     }
-
-    return world.createRigidBody(rigidBodyDesc)
   })
 
   // Set rotation/quaternion
@@ -199,8 +197,8 @@ export function RigidBody({
   })
 
   useLayoutEffect(() => {
-    const object3d = ref.current
-    if (!object3d) return
+    const object3d = object3dRef.current
+    if (!object3d || !rigidBody) return
 
     object3d.getWorldPosition(positionVec)
     object3d.getWorldQuaternion(rotationQuat)
@@ -210,20 +208,28 @@ export function RigidBody({
   }, [rigidBody, positionVec, rotationQuat])
 
   useLayoutEffect(() => {
-    const object3d = ref.current
-    if (!object3d) return
+    const body = world.createRigidBody(rigidBodyDesc)
+    setRigidBody(body)
+
+    return () => world.removeRigidBody(body)
+  }, [world, rigidBodyDesc])
+
+  useLayoutEffect(() => {
+    const object3d = object3dRef.current
+    if (!object3d || !rigidBody) return
 
     bodies.set(rigidBody.handle, object3d)
 
-    return () => {
-      bodies.delete(rigidBody.handle)
-      world.removeRigidBody(rigidBody)
-    }
-  }, [bodies, rigidBody, world])
+    return () => void bodies.delete(rigidBody.handle)
+  }, [world, bodies, rigidBody])
+
+  if (!rigidBody) {
+    return null
+  }
 
   return (
     <RigidBodyContext.Provider value={rigidBody}>
-      <object3D ref={ref} position={position} quaternion={rotationQuat}>
+      <object3D ref={object3dRef} position={position} quaternion={rotationQuat}>
         {children}
       </object3D>
     </RigidBodyContext.Provider>
@@ -254,16 +260,17 @@ type UseColliderReturn<T extends () => void> =
 export function useCollider<T extends () => RAPIER.ColliderDesc | null>(
   cb: T,
   props: Omit<ColliderProps, 'children'>,
-): UseColliderReturn<T> {
+): UseColliderReturn<T> | null {
   const { position, quaternion, rotation, friction, restitution, density } =
     props
   const rigidBody = useContext(RigidBodyContext)
   const { world } = usePhysicsContext()
+  const [collider, setCollider] = useState<RAPIER.Collider>()
 
-  const collider = useConstant(() => {
-    const colliderDesc = cb()
+  const colliderDesc = useConstant(() => {
+    const desc = cb()
 
-    if (colliderDesc === null) {
+    if (desc === null) {
       return null
     }
 
@@ -271,7 +278,7 @@ export function useCollider<T extends () => RAPIER.ColliderDesc | null>(
       const arr = Array.isArray(position)
         ? position
         : (Object.values(position) as [number, number, number])
-      colliderDesc.setTranslation(...arr)
+      desc.setTranslation(...arr)
     }
 
     const quat = new Quaternion()
@@ -292,34 +299,37 @@ export function useCollider<T extends () => RAPIER.ColliderDesc | null>(
       }
     }
 
-    colliderDesc.setRotation(quat)
+    desc.setRotation(quat)
 
     if (friction) {
-      colliderDesc.setFriction(friction)
+      desc.setFriction(friction)
     }
 
     if (restitution) {
-      colliderDesc.setRestitution(restitution)
+      desc.setRestitution(restitution)
     }
 
     if (density) {
-      colliderDesc.setDensity(density)
+      desc.setDensity(density)
     }
 
     // TODO: add mass etc
 
-    if (rigidBody) {
-      return world.createCollider(colliderDesc, rigidBody.handle)
-    }
-
-    return world.createCollider(colliderDesc)
+    return desc
   })
 
-  useEffect(() => {
-    if (collider) {
-      return () => world.removeCollider(collider, true)
-    }
-  }, [world, collider])
+  useLayoutEffect(() => {
+    if (!colliderDesc) return
+
+    const coll = world.createCollider(colliderDesc, rigidBody?.handle)
+    setCollider(coll)
+
+    return () => world.removeCollider(coll, true)
+  }, [world, colliderDesc, rigidBody?.handle])
+
+  if (!collider) {
+    return null
+  }
 
   return collider as unknown as UseColliderReturn<T>
 }
@@ -564,6 +574,10 @@ export function ConvexHullCollider({
     () => RAPIER.ColliderDesc.convexHull(points),
     props,
   )
+
+  if (!collider) {
+    return null
+  }
 
   const vertices = collider?.vertices()
   const indices = collider?.indices()
