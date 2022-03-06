@@ -15,6 +15,11 @@ import type { Object3D } from 'three'
 import { Euler, Quaternion, Vector3 } from 'three'
 import { useConstant } from '../utils'
 
+/* TODO's
+  - Event handlers, onCollision, onCollisionStart & onCollisionEnd
+  - Use web worker
+*/
+
 // Temporary solution until the PR is merged.
 // https://github.com/pmndrs/react-three-fiber/pull/2099#issuecomment-1050891821
 export type Object3DProps = Object3DNode<Object3D, typeof Object3D>
@@ -38,6 +43,7 @@ type EulerLike = Euler | Parameters<Euler['set']>
 export interface PhysicsContextValue {
   world: RAPIER.World
   debug: boolean
+  bodies: Map<number, Object3D>
 }
 
 const PhysicsContext = createContext<PhysicsContextValue | null>(null)
@@ -71,12 +77,31 @@ export function Physics({ children, debug = false }: PhysicsProps) {
     return new RAPIER.World(gravity)
   })
 
+  const eventQueue = useConstant(() => new RAPIER.EventQueue(true))
+
+  const bodies = useConstant(() => new Map<number, Object3D>())
+
   // TODO: investigate using a fixed update frequency.
   useFrame(() => {
-    world.step()
+    world.step(eventQueue)
+
+    world.forEachActiveRigidBody((rigidBody) => {
+      const object3d = bodies.get(rigidBody.handle)
+
+      if (object3d && !rigidBody.isSleeping() && !rigidBody.isStatic()) {
+        const vec = rigidBody.translation()
+        const quat = rigidBody.rotation()
+
+        object3d.position.set(vec.x, vec.y, vec.z)
+        object3d.quaternion.set(quat.x, quat.y, quat.z, quat.w)
+      }
+    })
   })
 
-  const context = useMemo(() => ({ world, debug }), [debug, world])
+  const context = useMemo(
+    () => ({ world, debug, bodies }),
+    [bodies, debug, world],
+  )
 
   return (
     <PhysicsContext.Provider value={context}>
@@ -112,7 +137,7 @@ export function RigidBody({
   rotation,
   type = 'dynamic',
 }: RigidBodyProps) {
-  const { world } = usePhysicsContext()
+  const { world, bodies } = usePhysicsContext()
   const ref = useRef<Object3D>(null)
 
   const rigidBody = useConstant(() => {
@@ -158,14 +183,6 @@ export function RigidBody({
     return quat
   })
 
-  useLayoutEffect(() => {
-    const object3d = ref.current
-    if (!object3d) return
-
-    object3d.getWorldQuaternion(rotationQuat)
-    rigidBody.setRotation(rotationQuat, false)
-  }, [rigidBody, rotationQuat])
-
   // Set position/translation
   const positionVec = useConstant(() => {
     const vec = new Vector3()
@@ -186,27 +203,23 @@ export function RigidBody({
     if (!object3d) return
 
     object3d.getWorldPosition(positionVec)
-    rigidBody.setTranslation(positionVec, false)
-  }, [rigidBody, positionVec])
+    object3d.getWorldQuaternion(rotationQuat)
 
-  // Remove the rigid body whenever the component unmounts.
-  useEffect(() => {
-    return () => world.removeRigidBody(rigidBody)
-  }, [rigidBody, world])
+    rigidBody.setTranslation(positionVec, true)
+    rigidBody.setRotation(rotationQuat, true)
+  }, [rigidBody, positionVec, rotationQuat])
 
-  // TODO: investigate if we can iterate through all bodies in <Physics> and
-  // remove the useFrame for each body.
-  useFrame(() => {
+  useLayoutEffect(() => {
     const object3d = ref.current
+    if (!object3d) return
 
-    if (object3d && !rigidBody.isSleeping() && !rigidBody.isStatic()) {
-      const vec = rigidBody.translation()
-      const quat = rigidBody.rotation()
+    bodies.set(rigidBody.handle, object3d)
 
-      object3d.position.set(vec.x, vec.y, vec.z)
-      object3d.quaternion.set(quat.x, quat.y, quat.z, quat.w)
+    return () => {
+      bodies.delete(rigidBody.handle)
+      world.removeRigidBody(rigidBody)
     }
-  })
+  }, [bodies, rigidBody, world])
 
   return (
     <RigidBodyContext.Provider value={rigidBody}>
@@ -503,10 +516,7 @@ export function ConvexMeshCollider({
   const [vertices, indices] = args
   const itemSize = 3
 
-  const collider = useCollider(
-    () => RAPIER.ColliderDesc.convexMesh(vertices, indices),
-    props,
-  )
+  useCollider(() => RAPIER.ColliderDesc.convexMesh(vertices, indices), props)
 
   return (
     <object3D
