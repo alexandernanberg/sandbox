@@ -8,7 +8,7 @@ import {
 import { Canvas } from '@react-three/fiber'
 import { button, useControls } from 'leva'
 import { Perf } from 'r3f-perf'
-import { Suspense, useState } from 'react'
+import { Suspense, useMemo, useState } from 'react'
 import seedrandom from 'seedrandom'
 import { RepeatWrapping } from 'three'
 import {
@@ -31,7 +31,7 @@ import Stone from './models/Stone'
 export function Root() {
   return (
     <>
-      <Canvas shadows mode="concurrent" camera={{ position: [5, 4, -4] }}>
+      <Canvas mode="concurrent" camera={{ position: [5, 4, -4] }} shadows>
         <Suspense fallback={null}>
           <App />
         </Suspense>
@@ -44,7 +44,6 @@ export function Root() {
 export function App() {
   const [physicsKey, setPhysicsKey] = useState(1)
 
-  const controls = useControls({})
   const cameraControls = useControls(
     'Camera',
     {
@@ -67,46 +66,6 @@ export function App() {
     },
   })
 
-  const [items, setItems] = useState<Array<number>>([])
-
-  // useInterval(() => {
-  //   setItems((state) => {
-  //     const arr = [...state]
-  //     const num = (arr[arr.length - 1] || 0) + 1
-  //     arr.push(num)
-  //     if (arr.length > 20) {
-  //       arr.shift()
-  //     }
-  //     return arr
-  //   })
-  // }, 250)
-
-  const boxTexture = useTexture(
-    'https://cdn.jsdelivr.net/gh/pmndrs/drei-assets@latest/prototype/dark/texture_01.png',
-  )
-  const wallTexture = useTexture(
-    'https://cdn.jsdelivr.net/gh/pmndrs/drei-assets@latest/prototype/light/texture_12.png',
-  )
-  const tileTexture = useTexture(
-    'https://cdn.jsdelivr.net/gh/pmndrs/drei-assets@latest/prototype/light/texture_07.png',
-  )
-  tileTexture.wrapS = RepeatWrapping
-  tileTexture.wrapT = RepeatWrapping
-  tileTexture.repeat.set(7.5, 7.5)
-
-  // const trimesh = useConstant(() => generateTrimesh(5, 10, 2, 10))
-
-  // const geometry = useConstant(() => {
-  //   const geo = new BufferGeometry()
-  //   geo.setIndex(new BufferAttribute(trimesh.indices, 1))
-  //   geo.setAttribute('position', new BufferAttribute(trimesh.vertices, 3))
-  //   return geo
-  // })
-
-  // useLayoutEffect(() => {
-  //   geometry.computeVertexNormals()
-  // }, [geometry])
-
   return (
     <LightProvider debug={lightsControl.debug}>
       <Perf position="bottom-right" />
@@ -116,50 +75,15 @@ export function App() {
       <OrbitControls />
 
       <Physics debug={physicsControls.debug} key={physicsKey}>
+        <Floor />
+
         <Tower />
+
+        <Wall />
 
         <RigidBody position={[0, 4, 0]}>
           <Stone />
         </RigidBody>
-
-        {/* <RigidBody type="static">
-          <HeightfieldCollider
-            args={[nsubdivs, nsubdivs, heights, { x: 70, y: 4, z: 70 }]}
-          >
-            <mesh receiveShadow>
-              <meshPhongMaterial color="white" side={DoubleSide} />
-            </mesh>
-          </HeightfieldCollider>
-        </RigidBody> */}
-
-        <RigidBody type="static">
-          <CuboidCollider args={[30, 0, 30]}>
-            <mesh castShadow receiveShadow rotation={[-Math.PI / 2, 0, 0]}>
-              <planeGeometry args={[30, 30]} />
-              <meshPhongMaterial map={tileTexture} />
-            </mesh>
-          </CuboidCollider>
-        </RigidBody>
-
-        <RigidBody type="static" position={[5, 3 / 2, 2]}>
-          <CuboidCollider args={[1, 3, 6]}>
-            <mesh castShadow receiveShadow>
-              <boxGeometry args={[1, 3, 6]} />
-              <meshPhongMaterial map={wallTexture} />
-            </mesh>
-          </CuboidCollider>
-        </RigidBody>
-
-        {items.map((item) => (
-          <RigidBody key={item} position={[0, 6, 0]}>
-            <CuboidCollider args={[1, 1, 1]}>
-              <mesh castShadow receiveShadow>
-                <boxGeometry args={[1, 1, 1]} />
-                <meshPhongMaterial color="blue" />
-              </mesh>
-            </CuboidCollider>
-          </RigidBody>
-        ))}
 
         <RigidBody position={[2, 4, 0]}>
           <BallCollider
@@ -253,6 +177,48 @@ function Box({ args = [1, 1, 1], position, quaternion, rotation }: BoxProps) {
         <meshPhongMaterial color={0xfffff0} />
       </mesh>
     </CuboidCollider>
+  )
+}
+
+function Floor() {
+  const tileTexture = useTexture(
+    'https://cdn.jsdelivr.net/gh/pmndrs/drei-assets@latest/prototype/light/texture_07.png',
+  )
+
+  const texture = useMemo(() => {
+    const t = tileTexture.clone()
+    t.wrapS = RepeatWrapping
+    t.wrapT = RepeatWrapping
+    t.repeat.set(7.5, 7.5)
+    return t
+  }, [tileTexture])
+
+  return (
+    <RigidBody type="static">
+      <CuboidCollider args={[30, 0, 30]}>
+        <mesh castShadow receiveShadow rotation={[-Math.PI / 2, 0, 0]}>
+          <planeGeometry args={[30, 30]} />
+          <meshPhongMaterial map={texture} />
+        </mesh>
+      </CuboidCollider>
+    </RigidBody>
+  )
+}
+
+function Wall() {
+  const wallTexture = useTexture(
+    'https://cdn.jsdelivr.net/gh/pmndrs/drei-assets@latest/prototype/light/texture_12.png',
+  )
+
+  return (
+    <RigidBody type="static" position={[5, 3 / 2, 2]}>
+      <CuboidCollider args={[1, 3, 6]}>
+        <mesh castShadow receiveShadow>
+          <boxGeometry args={[1, 3, 6]} />
+          <meshPhongMaterial map={wallTexture} />
+        </mesh>
+      </CuboidCollider>
+    </RigidBody>
   )
 }
 
