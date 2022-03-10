@@ -49,7 +49,7 @@ export function useInterval<T extends () => void>(cb: T, delay?: number) {
 
   useEffect(() => {
     ref.current = cb
-  }, [cb])
+  })
 
   useEffect(() => {
     function tick() {
