@@ -1,10 +1,11 @@
 import * as RAPIER from '@dimforge/rapier3d-compat'
 import type { Object3DNode } from '@react-three/fiber'
 import { useFrame } from '@react-three/fiber'
-import type { ReactNode } from 'react'
+import type { ReactNode, RefObject } from 'react'
 import {
   createContext,
   useContext,
+  useEffect,
   useLayoutEffect,
   useMemo,
   useRef,
@@ -14,11 +15,6 @@ import { suspend } from 'suspend-react'
 import type { Object3D } from 'three'
 import { Euler, Quaternion, Vector3 } from 'three'
 import { useConstant } from '../utils'
-
-/* TODO's
-  - Event handlers, onCollision, onCollisionStart & onCollisionEnd
-  - Use web worker
-*/
 
 // Temporary solution until the PR is merged.
 // https://github.com/pmndrs/react-three-fiber/pull/2099#issuecomment-1050891821
@@ -36,6 +32,15 @@ type Vector3Like = Vector3 | Parameters<Vector3['set']>
 type QuaternionLike = Quaternion | Parameters<Quaternion['set']>
 type EulerLike = Euler | Parameters<Euler['set']>
 
+interface CollideEvent {
+  target: Object3D
+}
+type CollideEventCallback = (event: CollideEvent) => void
+
+function uuid(type: string, id: number) {
+  return `${type}:${id}`
+}
+
 ///////////////////////////////////////////////////////////////
 // PhysicsContext
 ///////////////////////////////////////////////////////////////
@@ -44,6 +49,14 @@ export interface PhysicsContextValue {
   world: RAPIER.World
   debug: boolean
   bodies: Map<number, Object3D>
+  colliders: Map<number, Object3D>
+  events: Map<
+    string,
+    {
+      onCollideBegin?: CollideEventCallback
+      onCollideEnd?: CollideEventCallback
+    }
+  >
 }
 
 const PhysicsContext = createContext<PhysicsContextValue | null>(null)
@@ -74,12 +87,14 @@ export function Physics({ children, debug = false }: PhysicsProps) {
 
   const world = useConstant(() => {
     const gravity = { x: 0.0, y: -9.81, z: 0.0 }
+    // TODO: move side effect to effect
     return new RAPIER.World(gravity)
   })
 
   const eventQueue = useConstant(() => new RAPIER.EventQueue(true))
-
   const bodies = useConstant(() => new Map<number, Object3D>())
+  const colliders = useConstant(() => new Map<number, Object3D>())
+  const events = useConstant<PhysicsContextValue['events']>(() => new Map())
 
   // TODO: investigate using a fixed update frequency.
   useFrame(() => {
@@ -96,11 +111,38 @@ export function Physics({ children, debug = false }: PhysicsProps) {
         object3d.quaternion.set(quat.x, quat.y, quat.z, quat.w)
       }
     })
+
+    eventQueue.drainContactEvents((handle1, handle2, started) => {
+      const body1Handle = world.getCollider(handle1).parent()
+      const body2Handle = world.getCollider(handle2).parent()
+
+      const event1 = events.get(uuid('collider', handle1))
+      const event2 = events.get(uuid('collider', handle2))
+      const bodyEvent1 = events.get(uuid('rigidBody', body1Handle))
+      const bodyEvent2 = events.get(uuid('rigidBody', body2Handle))
+
+      const collider1 = colliders.get(handle1)
+      const collider2 = colliders.get(handle2)
+      const body1 = bodies.get(body1Handle)
+      const body2 = bodies.get(body2Handle)
+
+      if (started) {
+        collider1 && event1?.onCollideBegin?.({ target: collider1 })
+        collider2 && event2?.onCollideBegin?.({ target: collider2 })
+        body1 && bodyEvent1?.onCollideBegin?.({ target: body1 })
+        body2 && bodyEvent2?.onCollideBegin?.({ target: body2 })
+      } else {
+        collider1 && event1?.onCollideEnd?.({ target: collider1 })
+        collider2 && event2?.onCollideEnd?.({ target: collider2 })
+        body1 && bodyEvent1?.onCollideEnd?.({ target: body1 })
+        body2 && bodyEvent2?.onCollideEnd?.({ target: body2 })
+      }
+    })
   })
 
   const context = useMemo(
-    () => ({ world, debug, bodies }),
-    [bodies, debug, world],
+    () => ({ world, debug, bodies, colliders, events }),
+    [bodies, colliders, debug, events, world],
   )
 
   return (
@@ -114,7 +156,15 @@ export function Physics({ children, debug = false }: PhysicsProps) {
 // RigidBody
 ///////////////////////////////////////////////////////////////
 
-const RigidBodyContext = createContext<RAPIER.RigidBody | null>(null)
+interface RigidBodyContextValue {
+  rigidBody: RAPIER.RigidBody | null
+  shouldCollidersListenForContactEvents: boolean
+}
+
+const RigidBodyContext = createContext<RigidBodyContextValue>({
+  rigidBody: null,
+  shouldCollidersListenForContactEvents: false,
+})
 
 type RigidBodyType =
   | 'dynamic'
@@ -128,16 +178,18 @@ export interface RigidBodyProps {
   quaternion?: QuaternionLike
   rotation?: EulerLike
   type?: RigidBodyType
+  onCollide?: CollideEventCallback
 }
 
 export function RigidBody({
-  children,
+  type = 'dynamic',
   position,
   quaternion,
   rotation,
-  type = 'dynamic',
+  children,
+  onCollide,
 }: RigidBodyProps) {
-  const { world, bodies } = usePhysicsContext()
+  const { world, bodies, events } = usePhysicsContext()
   const object3dRef = useRef<Object3D>()
   const [rigidBody, setRigidBody] = useState<RAPIER.RigidBody | null>(null)
 
@@ -223,12 +275,29 @@ export function RigidBody({
     return () => void bodies.delete(rigidBody.handle)
   }, [world, bodies, rigidBody])
 
+  useEffect(() => {
+    if (!rigidBody || !onCollide) return
+    const id = uuid('rigidBody', rigidBody.handle)
+    events.set(id, { onCollideBegin: onCollide })
+    return () => void events.delete(id)
+  })
+
+  const hasEventListeners = !!onCollide
+
+  const context = useMemo(
+    () => ({
+      rigidBody,
+      shouldCollidersListenForContactEvents: hasEventListeners,
+    }),
+    [rigidBody, hasEventListeners],
+  )
+
   if (!rigidBody) {
     return null
   }
 
   return (
-    <RigidBodyContext.Provider value={rigidBody}>
+    <RigidBodyContext.Provider value={context}>
       <object3D ref={object3dRef} position={position} quaternion={rotationQuat}>
         {children}
       </object3D>
@@ -248,6 +317,7 @@ export interface ColliderProps {
   restitution?: number
   density?: number
   children?: ReactNode
+  onCollide?: CollideEventCallback
 }
 
 type UseColliderReturn<T extends () => void> =
@@ -260,12 +330,22 @@ type UseColliderReturn<T extends () => void> =
 export function useCollider<T extends () => RAPIER.ColliderDesc | null>(
   cb: T,
   props: Omit<ColliderProps, 'children'>,
+  object3dRef: RefObject<Object3D | undefined>,
 ): UseColliderReturn<T> | null {
-  const { position, quaternion, rotation, friction, restitution, density } =
-    props
-  const rigidBody = useContext(RigidBodyContext)
-  const { world } = usePhysicsContext()
+  const {
+    position,
+    quaternion,
+    rotation,
+    friction,
+    restitution,
+    density,
+    onCollide,
+  } = props
+  const { world, events, colliders } = usePhysicsContext()
+  const { rigidBody, shouldCollidersListenForContactEvents } =
+    useContext(RigidBodyContext)
   const [collider, setCollider] = useState<RAPIER.Collider>()
+  const shouldListenForContactEvents = !!onCollide
 
   const colliderDesc = useConstant(() => {
     const desc = cb()
@@ -313,6 +393,10 @@ export function useCollider<T extends () => RAPIER.ColliderDesc | null>(
       desc.setDensity(density)
     }
 
+    if (shouldListenForContactEvents || shouldCollidersListenForContactEvents) {
+      desc.setActiveEvents(RAPIER.ActiveEvents.CONTACT_EVENTS)
+    }
+
     // TODO: add mass etc
 
     return desc
@@ -326,6 +410,21 @@ export function useCollider<T extends () => RAPIER.ColliderDesc | null>(
 
     return () => world.removeCollider(coll, true)
   }, [world, colliderDesc, rigidBody?.handle])
+
+  useLayoutEffect(() => {
+    const object3d = object3dRef.current
+    if (!object3d || !collider) return
+
+    colliders.set(collider.handle, object3d)
+    return () => void colliders.delete(collider.handle)
+  }, [world, colliders, object3dRef, collider])
+
+  useEffect(() => {
+    if (!collider || !onCollide) return
+    const id = uuid('collider', collider.handle)
+    events.set(id, { onCollideBegin: onCollide })
+    return () => void events.delete(id)
+  })
 
   if (!collider) {
     return null
@@ -349,14 +448,17 @@ export function CuboidCollider({
 }: CuboidColliderProps) {
   const [width, height, depth] = args
   const { debug } = usePhysicsContext()
+  const object3dRef = useRef<Object3D>()
 
   useCollider(
     () => RAPIER.ColliderDesc.cuboid(width / 2, height / 2, depth / 2),
     props,
+    object3dRef,
   )
 
   return (
     <object3D
+      ref={object3dRef}
       position={props.position}
       quaternion={props.quaternion}
       rotation={props.rotation}
@@ -385,11 +487,12 @@ export interface BallColliderProps extends ColliderProps {
 export function BallCollider({ children, args, ...props }: BallColliderProps) {
   const [radius] = args
   const { debug } = usePhysicsContext()
-
-  useCollider(() => RAPIER.ColliderDesc.ball(radius), props)
+  const object3dRef = useRef<Object3D>()
+  useCollider(() => RAPIER.ColliderDesc.ball(radius), props, object3dRef)
 
   return (
     <object3D
+      ref={object3dRef}
       position={props.position}
       quaternion={props.quaternion}
       rotation={props.rotation}
@@ -422,11 +525,16 @@ export function CylinderCollider({
 }: CylinderColliderProps) {
   const [radius, height] = args
   const { debug } = usePhysicsContext()
-
-  useCollider(() => RAPIER.ColliderDesc.cylinder(height / 2, radius), props)
+  const object3dRef = useRef<Object3D>()
+  useCollider(
+    () => RAPIER.ColliderDesc.cylinder(height / 2, radius),
+    props,
+    object3dRef,
+  )
 
   return (
     <object3D
+      ref={object3dRef}
       position={props.position}
       quaternion={props.quaternion}
       rotation={props.rotation}
@@ -457,11 +565,16 @@ export function CapsuleCollider({
 }: CapsuleColliderProps) {
   const [radius, height] = args
   const { debug } = usePhysicsContext()
-
-  useCollider(() => RAPIER.ColliderDesc.capsule(radius, height / 2), props)
+  const object3dRef = useRef<Object3D>()
+  useCollider(
+    () => RAPIER.ColliderDesc.capsule(radius, height / 2),
+    props,
+    object3dRef,
+  )
 
   return (
     <object3D
+      ref={object3dRef}
       position={props.position}
       quaternion={props.quaternion}
       rotation={props.rotation}
@@ -489,11 +602,16 @@ export interface ConeColliderProps extends ColliderProps {
 export function ConeCollider({ children, args, ...props }: ConeColliderProps) {
   const [radius, height] = args
   const { debug } = usePhysicsContext()
-
-  useCollider(() => RAPIER.ColliderDesc.cone(height / 2, radius), props)
+  const object3dRef = useRef<Object3D>()
+  useCollider(
+    () => RAPIER.ColliderDesc.cone(height / 2, radius),
+    props,
+    object3dRef,
+  )
 
   return (
     <object3D
+      ref={object3dRef}
       position={props.position}
       quaternion={props.quaternion}
       rotation={props.rotation}
@@ -525,11 +643,16 @@ export function ConvexMeshCollider({
   const { debug } = usePhysicsContext()
   const [vertices, indices] = args
   const itemSize = 3
-
-  useCollider(() => RAPIER.ColliderDesc.convexMesh(vertices, indices), props)
+  const object3dRef = useRef<Object3D>()
+  useCollider(
+    () => RAPIER.ColliderDesc.convexMesh(vertices, indices),
+    props,
+    object3dRef,
+  )
 
   return (
     <object3D
+      ref={object3dRef}
       position={props.position}
       quaternion={props.quaternion}
       rotation={props.rotation}
@@ -569,10 +692,11 @@ export function ConvexHullCollider({
   const [points] = args
   const { debug } = usePhysicsContext()
   const itemSize = 3
-
+  const object3dRef = useRef<Object3D>()
   const collider = useCollider(
     () => RAPIER.ColliderDesc.convexHull(points),
     props,
+    object3dRef,
   )
 
   if (!collider) {
@@ -584,6 +708,7 @@ export function ConvexHullCollider({
 
   return (
     <object3D
+      ref={object3dRef}
       position={props.position}
       quaternion={props.quaternion}
       rotation={props.rotation}
@@ -623,11 +748,16 @@ export function TrimeshCollider({
   const [vertices, indices] = args
   const { debug } = usePhysicsContext()
   const itemSize = 3
-
-  useCollider(() => RAPIER.ColliderDesc.trimesh(vertices, indices), props)
+  const object3dRef = useRef<Object3D>()
+  useCollider(
+    () => RAPIER.ColliderDesc.trimesh(vertices, indices),
+    props,
+    object3dRef,
+  )
 
   return (
     <object3D
+      ref={object3dRef}
       position={props.position}
       quaternion={props.quaternion}
       rotation={props.rotation}
@@ -672,10 +802,11 @@ export function HeightfieldCollider({
   const [nrows, ncols, heights, scale] = args
   const { debug } = usePhysicsContext()
   const itemSize = 3
-
+  const object3dRef = useRef<Object3D>()
   useCollider(
     () => RAPIER.ColliderDesc.heightfield(nrows, ncols, heights, scale),
     props,
+    object3dRef,
   )
 
   // TODO: only calculate when debug=true
@@ -685,6 +816,7 @@ export function HeightfieldCollider({
 
   return (
     <object3D
+      ref={object3dRef}
       position={props.position}
       quaternion={props.quaternion}
       rotation={props.rotation}

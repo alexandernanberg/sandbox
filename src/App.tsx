@@ -8,9 +8,8 @@ import {
 import { Canvas } from '@react-three/fiber'
 import { button, useControls } from 'leva'
 import { Perf } from 'r3f-perf'
-import { Suspense, useMemo, useState } from 'react'
+import { Suspense, useState } from 'react'
 import seedrandom from 'seedrandom'
-import { RepeatWrapping } from 'three'
 import {
   DirectionalLight,
   HemisphereLight,
@@ -77,6 +76,20 @@ export function App() {
       <Physics debug={physicsControls.debug} key={physicsKey}>
         <Floor />
 
+        <RigidBody position={[0.5, 10, 5]}>
+          <CuboidCollider
+            args={[1, 1, 1]}
+            // onCollide={() => {
+            //   console.log('cuboid')
+            // }}
+          >
+            <mesh castShadow receiveShadow>
+              <boxGeometry args={[1, 1, 1]} />
+              <meshPhongMaterial color="purple" />
+            </mesh>
+          </CuboidCollider>
+        </RigidBody>
+
         <Tower />
 
         <Wall />
@@ -85,19 +98,7 @@ export function App() {
           <Stone />
         </RigidBody>
 
-        <RigidBody position={[2, 4, 0]}>
-          <BallCollider
-            args={[0.5]}
-            restitution={1}
-            friction={0.9}
-            density={12}
-          >
-            <mesh castShadow receiveShadow>
-              <sphereGeometry args={[0.5]} />
-              <meshPhongMaterial color="red" />
-            </mesh>
-          </BallCollider>
-        </RigidBody>
+        <Ball />
 
         <RigidBody position={[2, 5, 0.5]}>
           <ConeCollider args={[0.5, 1]}>
@@ -143,17 +144,34 @@ export function App() {
             </mesh>
           </CylinderCollider>
         </RigidBody>
-
-        <RigidBody position={[0.5, 10, 5]}>
-          <CuboidCollider args={[1, 1, 1]}>
-            <mesh castShadow receiveShadow>
-              <boxGeometry args={[1, 1, 1]} />
-              <meshPhongMaterial color="purple" />
-            </mesh>
-          </CuboidCollider>
-        </RigidBody>
       </Physics>
     </LightProvider>
+  )
+}
+
+function Ball() {
+  const colors = ['red', 'blue', 'green', 'yellow', 'purple', 'black']
+  const [color, setColor] = useState(colors[0])
+  return (
+    <RigidBody
+      position={[2, 4, 0]}
+      onCollide={(e) => {
+        console.log('ball', e)
+        setColor((s) => {
+          const currentIndex = colors.indexOf(s)
+          const arr = [...colors]
+          arr.splice(currentIndex, 1)
+          return arr[Math.floor(Math.random() * arr.length)]
+        })
+      }}
+    >
+      <BallCollider args={[0.5]} restitution={1} friction={0.9} density={12}>
+        <mesh castShadow receiveShadow>
+          <sphereGeometry args={[0.5]} />
+          <meshPhongMaterial color={color} />
+        </mesh>
+      </BallCollider>
+    </RigidBody>
   )
 }
 
@@ -181,24 +199,18 @@ function Box({ args = [1, 1, 1], position, quaternion, rotation }: BoxProps) {
 }
 
 function Floor() {
-  const tileTexture = useTexture(
-    'https://cdn.jsdelivr.net/gh/pmndrs/drei-assets@latest/prototype/light/texture_07.png',
-  )
-
-  const texture = useMemo(() => {
-    const t = tileTexture.clone()
-    t.wrapS = RepeatWrapping
-    t.wrapT = RepeatWrapping
-    t.repeat.set(7.5, 7.5)
-    return t
-  }, [tileTexture])
+  // const tileTexture = useTexture(
+  //   'https://cdn.jsdelivr.net/gh/pmndrs/drei-assets@latest/prototype/light/texture_07.png',
+  // )
+  // tileTexture.wrapS = tileTexture.wrapT = RepeatWrapping
+  // tileTexture.repeat.set(7.5, 7.5)
 
   return (
     <RigidBody type="static">
       <CuboidCollider args={[30, 0, 30]}>
         <mesh castShadow receiveShadow rotation={[-Math.PI / 2, 0, 0]}>
           <planeGeometry args={[30, 30]} />
-          <meshPhongMaterial map={texture} />
+          <meshPhongMaterial color={0xffffff} />
         </mesh>
       </CuboidCollider>
     </RigidBody>
@@ -252,9 +264,14 @@ function Sky() {
         label: 'Sun position',
         value: [100, 200, 100],
       },
+      d: 10,
+      near: 1,
+      far: 20,
     },
     { collapsed: true },
   )
+
+  const d = controls.d
 
   return (
     <>
@@ -272,13 +289,13 @@ function Sky() {
       <DirectionalLight
         position={controls.sun}
         castShadow
-        // shadow-mapSize={[1024, 1024]}
-        // shadow-camera-left={-5}
-        // shadow-camera-right={5}
-        // shadow-camera-top={5}
-        // shadow-camera-bottom={-5}
-        // shadow-camera-near={1}
-        // shadow-camera-far={20}
+        shadow-mapSize={[4096, 4096]}
+        // shadow-camera-left={-d}
+        // shadow-camera-right={d}
+        // shadow-camera-top={d}
+        // shadow-camera-bottom={-d}
+        // shadow-camera-near={controls.near}
+        // shadow-camera-far={controls.far}
       />
       <Environment preset="park" />
     </>
