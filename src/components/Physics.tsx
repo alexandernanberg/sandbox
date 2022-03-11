@@ -84,20 +84,24 @@ export interface PhysicsProps {
 
 export function Physics({ children, debug = false }: PhysicsProps) {
   suspend(() => RAPIER.init(), ['rapier'])
+  const [world, setWorld] = useState<RAPIER.World | null>(null)
 
-  const world = useConstant(() => {
+  useLayoutEffect(() => {
     const gravity = { x: 0.0, y: -9.81, z: 0.0 }
-    // TODO: move side effect to effect
-    return new RAPIER.World(gravity)
-  })
+    const physicsWorld = new RAPIER.World(gravity)
+    setWorld(physicsWorld)
+    return () => physicsWorld.free()
+  }, [])
 
   const eventQueue = useConstant(() => new RAPIER.EventQueue(true))
   const bodies = useConstant(() => new Map<number, Object3D>())
   const colliders = useConstant(() => new Map<number, Object3D>())
   const events = useConstant<PhysicsContextValue['events']>(() => new Map())
 
-  // TODO: investigate using a fixed update frequency.
+  // TODO: investigate using a fixed update frequency + fix 60 vs 120 hz.
   useFrame(() => {
+    if (!world) return
+
     world.step(eventQueue)
 
     world.forEachActiveRigidBody((rigidBody) => {
@@ -141,9 +145,14 @@ export function Physics({ children, debug = false }: PhysicsProps) {
   })
 
   const context = useMemo(
-    () => ({ world, debug, bodies, colliders, events }),
+    // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+    () => ({ world: world!, debug, bodies, colliders, events }),
     [bodies, colliders, debug, events, world],
   )
+
+  if (!world) {
+    return null
+  }
 
   return (
     <PhysicsContext.Provider value={context}>
@@ -263,7 +272,12 @@ export function RigidBody({
     const body = world.createRigidBody(rigidBodyDesc)
     setRigidBody(body)
 
-    return () => world.removeRigidBody(body)
+    return () => {
+      // Check if bodies already have been removed by world.free().
+      if (world.bodies) {
+        world.removeRigidBody(body)
+      }
+    }
   }, [world, rigidBodyDesc])
 
   useLayoutEffect(() => {
@@ -408,7 +422,12 @@ export function useCollider<T extends () => RAPIER.ColliderDesc | null>(
     const coll = world.createCollider(colliderDesc, rigidBody?.handle)
     setCollider(coll)
 
-    return () => world.removeCollider(coll, true)
+    return () => {
+      // Check if colliders already have been removed by world.free().
+      if (world.colliders) {
+        world.removeCollider(coll, true)
+      }
+    }
   }, [world, colliderDesc, rigidBody?.handle])
 
   useLayoutEffect(() => {
