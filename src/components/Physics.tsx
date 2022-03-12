@@ -1,11 +1,13 @@
 import * as RAPIER from '@dimforge/rapier3d-compat'
 import type { Object3DNode } from '@react-three/fiber'
 import { useFrame } from '@react-three/fiber'
-import type { ReactNode, RefObject } from 'react'
+import type { ForwardedRef, ReactNode, RefObject } from 'react'
 import {
   createContext,
+  forwardRef,
   useContext,
   useEffect,
+  useImperativeHandle,
   useLayoutEffect,
   useMemo,
   useRef,
@@ -53,8 +55,8 @@ export interface PhysicsContextValue {
   events: Map<
     string,
     {
-      onCollideBegin?: CollideEventCallback
-      onCollideEnd?: CollideEventCallback
+      onCollisionEnter?: CollideEventCallback
+      onCollisionExit?: CollideEventCallback
     }
   >
 }
@@ -104,7 +106,7 @@ export function Physics({ children, debug = false }: PhysicsProps) {
 
     world.step(eventQueue)
 
-    world.forEachActiveRigidBody((rigidBody) => {
+    world.forEachRigidBody((rigidBody) => {
       const object3d = bodies.get(rigidBody.handle)
 
       if (object3d && !rigidBody.isSleeping() && !rigidBody.isStatic()) {
@@ -131,15 +133,15 @@ export function Physics({ children, debug = false }: PhysicsProps) {
       const body2 = bodies.get(body2Handle)
 
       if (started) {
-        collider1 && event1?.onCollideBegin?.({ target: collider1 })
-        collider2 && event2?.onCollideBegin?.({ target: collider2 })
-        body1 && bodyEvent1?.onCollideBegin?.({ target: body1 })
-        body2 && bodyEvent2?.onCollideBegin?.({ target: body2 })
+        collider1 && event1?.onCollisionEnter?.({ target: collider1 })
+        collider2 && event2?.onCollisionEnter?.({ target: collider2 })
+        body1 && bodyEvent1?.onCollisionEnter?.({ target: body1 })
+        body2 && bodyEvent2?.onCollisionEnter?.({ target: body2 })
       } else {
-        collider1 && event1?.onCollideEnd?.({ target: collider1 })
-        collider2 && event2?.onCollideEnd?.({ target: collider2 })
-        body1 && bodyEvent1?.onCollideEnd?.({ target: body1 })
-        body2 && bodyEvent2?.onCollideEnd?.({ target: body2 })
+        collider1 && event1?.onCollisionExit?.({ target: collider1 })
+        collider2 && event2?.onCollisionExit?.({ target: collider2 })
+        body1 && bodyEvent1?.onCollisionExit?.({ target: body1 })
+        body2 && bodyEvent2?.onCollisionExit?.({ target: body2 })
       }
     })
   })
@@ -187,35 +189,42 @@ export interface RigidBodyProps {
   quaternion?: QuaternionLike
   rotation?: EulerLike
   type?: RigidBodyType
-  onCollide?: CollideEventCallback
+  onCollision?: CollideEventCallback
+  onCollisionEnter?: CollideEventCallback
+  onCollisionExit?: CollideEventCallback
 }
 
-export function RigidBody({
-  type = 'dynamic',
-  position,
-  quaternion,
-  rotation,
-  children,
-  onCollide,
-}: RigidBodyProps) {
+export interface RigidBodyApi extends RAPIER.RigidBody {}
+
+export const RigidBody = forwardRef(function RigidBody(
+  {
+    type = 'dynamic',
+    position,
+    quaternion,
+    rotation,
+    children,
+    onCollision,
+    onCollisionEnter,
+    onCollisionExit,
+  }: RigidBodyProps,
+  ref?: ForwardedRef<RigidBodyApi | null>,
+) {
   const { world, bodies, events } = usePhysicsContext()
   const object3dRef = useRef<Object3D>()
   const [rigidBody, setRigidBody] = useState<RAPIER.RigidBody | null>(null)
+
+  useImperativeHandle(ref, () => rigidBody as RAPIER.RigidBody)
 
   const rigidBodyDesc = useConstant<RAPIER.RigidBodyDesc>(() => {
     switch (type) {
       case 'dynamic':
         return RAPIER.RigidBodyDesc.newDynamic()
-        break
       case 'static':
         return RAPIER.RigidBodyDesc.newStatic()
-        break
       case 'kinematic-velocity-based':
         return RAPIER.RigidBodyDesc.newKinematicVelocityBased()
-        break
       case 'kinematic-position-based':
         return RAPIER.RigidBodyDesc.newKinematicPositionBased()
-        break
       default:
         throw new Error(`Unsupported RigidBody.type: "${type}"`)
     }
@@ -283,20 +292,21 @@ export function RigidBody({
   useLayoutEffect(() => {
     const object3d = object3dRef.current
     if (!object3d || !rigidBody) return
-
     bodies.set(rigidBody.handle, object3d)
-
     return () => void bodies.delete(rigidBody.handle)
   }, [world, bodies, rigidBody])
 
   useEffect(() => {
-    if (!rigidBody || !onCollide) return
+    if (!rigidBody || !onCollision) return
     const id = uuid('rigidBody', rigidBody.handle)
-    events.set(id, { onCollideBegin: onCollide })
+    events.set(id, {
+      onCollisionEnter: onCollisionEnter || onCollision,
+      onCollisionExit,
+    })
     return () => void events.delete(id)
   })
 
-  const hasEventListeners = !!onCollide
+  const hasEventListeners = !!onCollision
 
   const context = useMemo(
     () => ({
@@ -317,7 +327,7 @@ export function RigidBody({
       </object3D>
     </RigidBodyContext.Provider>
   )
-}
+})
 
 ///////////////////////////////////////////////////////////////
 // Colliders
@@ -331,7 +341,9 @@ export interface ColliderProps {
   restitution?: number
   density?: number
   children?: ReactNode
-  onCollide?: CollideEventCallback
+  onCollision?: CollideEventCallback
+  onCollisionEnter?: CollideEventCallback
+  onCollisionExit?: CollideEventCallback
 }
 
 type UseColliderReturn<T extends () => void> =
@@ -353,13 +365,15 @@ export function useCollider<T extends () => RAPIER.ColliderDesc | null>(
     friction,
     restitution,
     density,
-    onCollide,
+    onCollision,
+    onCollisionEnter,
+    onCollisionExit,
   } = props
   const { world, events, colliders } = usePhysicsContext()
   const { rigidBody, shouldCollidersListenForContactEvents } =
     useContext(RigidBodyContext)
   const [collider, setCollider] = useState<RAPIER.Collider>()
-  const shouldListenForContactEvents = !!onCollide
+  const shouldListenForContactEvents = !!onCollision
 
   const colliderDesc = useConstant(() => {
     const desc = cb()
@@ -439,9 +453,12 @@ export function useCollider<T extends () => RAPIER.ColliderDesc | null>(
   }, [world, colliders, object3dRef, collider])
 
   useEffect(() => {
-    if (!collider || !onCollide) return
+    if (!collider || !onCollision) return
     const id = uuid('collider', collider.handle)
-    events.set(id, { onCollideBegin: onCollide })
+    events.set(id, {
+      onCollisionEnter: onCollisionEnter || onCollision,
+      onCollisionExit,
+    })
     return () => void events.delete(id)
   })
 
@@ -469,11 +486,17 @@ export function CuboidCollider({
   const { debug } = usePhysicsContext()
   const object3dRef = useRef<Object3D>()
 
-  useCollider(
+  const collider = useCollider(
     () => RAPIER.ColliderDesc.cuboid(width / 2, height / 2, depth / 2),
     props,
     object3dRef,
   )
+
+  if (!collider) {
+    return null
+  }
+
+  const vec = collider.halfExtents()
 
   return (
     <object3D
@@ -484,7 +507,7 @@ export function CuboidCollider({
     >
       {debug && (
         <mesh>
-          <boxGeometry args={args} />
+          <boxGeometry args={[vec.x * 2, vec.y * 2, vec.z * 2]} />
           <meshBasicMaterial wireframe color={0x0000ff} />
         </mesh>
       )}
@@ -722,8 +745,8 @@ export function ConvexHullCollider({
     return null
   }
 
-  const vertices = collider?.vertices()
-  const indices = collider?.indices()
+  const vertices = collider.vertices()
+  const indices = collider.indices()
 
   return (
     <object3D
