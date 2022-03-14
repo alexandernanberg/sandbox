@@ -5,24 +5,27 @@ import {
   Sky as SkyShader,
   useTexture,
 } from '@react-three/drei'
-import { Canvas } from '@react-three/fiber'
+import { Canvas, useFrame } from '@react-three/fiber'
 import { button, useControls } from 'leva'
 import { Perf } from 'r3f-perf'
-import { Suspense, useState } from 'react'
+import { Suspense, useRef, useState } from 'react'
 import seedrandom from 'seedrandom'
+import { RepeatWrapping } from 'three'
 import {
   DirectionalLight,
   HemisphereLight,
   LightProvider,
 } from './components/Lights'
-import type { CuboidColliderProps, RigidBodyProps } from './components/Physics'
 import {
   BallCollider,
   ConeCollider,
   CuboidCollider,
+  CuboidColliderProps,
   CylinderCollider,
   Physics,
   RigidBody,
+  RigidBodyApi,
+  RigidBodyProps,
 } from './components/Physics'
 import Ramp from './models/Ramp'
 import Stone from './models/Stone'
@@ -76,13 +79,8 @@ export function App() {
       <Physics debug={physicsControls.debug} key={physicsKey}>
         <Floor />
 
-        <RigidBody position={[0.5, 10, 5]}>
-          <CuboidCollider
-            args={[1, 1, 1]}
-            // onCollide={() => {
-            //   console.log('cuboid')
-            // }}
-          >
+        <RigidBody position={[0, 2, 0]}>
+          <CuboidCollider args={[1, 1, 1]}>
             <mesh castShadow receiveShadow>
               <boxGeometry args={[1, 1, 1]} />
               <meshPhongMaterial color="purple" />
@@ -90,8 +88,45 @@ export function App() {
           </CuboidCollider>
         </RigidBody>
 
-        <Tower />
+        <RigidBody position={[0, 1.25, 1]}>
+          <CuboidCollider args={[4, 0.5, 2]}>
+            <mesh castShadow receiveShadow>
+              <boxGeometry args={[4, 0.5, 2]} />
+              <meshPhongMaterial color="blue" />
+            </mesh>
+          </CuboidCollider>
+        </RigidBody>
 
+        <RigidBody position={[0.5, 4, 7]}>
+          <CuboidCollider args={[1, 1, 1]}>
+            <mesh castShadow receiveShadow>
+              <boxGeometry args={[1, 1, 1]} />
+              <meshPhongMaterial color="purple" />
+            </mesh>
+          </CuboidCollider>
+        </RigidBody>
+
+        <group position={[-6, 0, 0]}>
+          <Tower />
+          <Elevator position={[0, 0.5, 6]} />
+          <RigidBody position={[0, 7, 6]}>
+            <CuboidCollider args={[1, 1, 1]}>
+              <mesh castShadow receiveShadow>
+                <boxGeometry args={[1, 1, 1]} />
+                <meshPhongMaterial color="red" />
+              </mesh>
+            </CuboidCollider>
+          </RigidBody>
+        </group>
+
+        <RigidBody position={[-6, 8, 4]}>
+          <CuboidCollider args={[1, 1, 1]}>
+            <mesh castShadow receiveShadow>
+              <boxGeometry args={[1, 1, 1]} />
+              <meshPhongMaterial color="red" />
+            </mesh>
+          </CuboidCollider>
+        </RigidBody>
         <Wall />
 
         <RigidBody position={[0, 4, 0]}>
@@ -155,8 +190,7 @@ function Ball() {
   return (
     <RigidBody
       position={[2, 4, 0]}
-      onCollide={(e) => {
-        console.log('ball', e)
+      onCollision={() => {
         setColor((s) => {
           const currentIndex = colors.indexOf(s)
           const arr = [...colors]
@@ -175,21 +209,9 @@ function Ball() {
   )
 }
 
-interface BoxProps {
-  args?: CuboidColliderProps['args']
-  position?: RigidBodyProps['position']
-  quaternion?: RigidBodyProps['quaternion']
-  rotation?: RigidBodyProps['rotation']
-}
-
-function Box({ args = [1, 1, 1], position, quaternion, rotation }: BoxProps) {
+function Box({ args = [1, 1, 1], ...props }: CuboidColliderProps) {
   return (
-    <CuboidCollider
-      args={args}
-      position={position}
-      quaternion={quaternion}
-      rotation={rotation}
-    >
+    <CuboidCollider args={args} {...props}>
       <mesh castShadow receiveShadow>
         <boxGeometry args={args} />
         <meshPhongMaterial color={0xfffff0} />
@@ -199,18 +221,18 @@ function Box({ args = [1, 1, 1], position, quaternion, rotation }: BoxProps) {
 }
 
 function Floor() {
-  // const tileTexture = useTexture(
-  //   'https://cdn.jsdelivr.net/gh/pmndrs/drei-assets@latest/prototype/light/texture_07.png',
-  // )
-  // tileTexture.wrapS = tileTexture.wrapT = RepeatWrapping
-  // tileTexture.repeat.set(7.5, 7.5)
+  const tileTexture = useTexture(
+    'https://cdn.jsdelivr.net/gh/pmndrs/drei-assets@latest/prototype/light/texture_07.png',
+  )
+  tileTexture.wrapS = tileTexture.wrapT = RepeatWrapping
+  tileTexture.repeat.set(7.5, 7.5)
 
   return (
     <RigidBody type="static">
       <CuboidCollider args={[30, 0, 30]}>
         <mesh castShadow receiveShadow rotation={[-Math.PI / 2, 0, 0]}>
           <planeGeometry args={[30, 30]} />
-          <meshPhongMaterial color={0xffffff} />
+          <meshPhongMaterial map={tileTexture} />
         </mesh>
       </CuboidCollider>
     </RigidBody>
@@ -234,9 +256,35 @@ function Wall() {
   )
 }
 
+function clamp(value: number, min: number, max: number) {
+  return Math.min(Math.max(value, min), max)
+}
+
+function Elevator(props: RigidBodyProps) {
+  const ref = useRef<RigidBodyApi>(null)
+
+  useFrame((state) => {
+    if (!ref.current) return
+    const vec = ref.current.translation()
+    vec.y = clamp(3.875 + Math.sin(state.clock.elapsedTime) * 5, 0.25, 7.75)
+    ref.current.setNextKinematicTranslation(vec)
+  })
+
+  return (
+    <RigidBody ref={ref} type="kinematic-position-based" {...props}>
+      <CuboidCollider args={[2, 0.5, 2]}>
+        <mesh castShadow receiveShadow>
+          <boxGeometry args={[2, 0.5, 2]} />
+          <meshPhongMaterial color="gray" />
+        </mesh>
+      </CuboidCollider>
+    </RigidBody>
+  )
+}
+
 function Tower() {
   return (
-    <RigidBody type="static" position={[-6, 0, 0]}>
+    <RigidBody type="static">
       <group>
         <Box args={[1, 7, 1]} position={[0.5, 3.5, 0.5]} />
         <Box args={[1, 7, 1]} position={[0.5, 3.5, -2.5]} />

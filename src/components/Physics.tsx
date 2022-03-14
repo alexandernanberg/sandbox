@@ -100,6 +100,9 @@ export function Physics({ children, debug = false }: PhysicsProps) {
   const colliders = useConstant(() => new Map<number, Object3D>())
   const events = useConstant<PhysicsContextValue['events']>(() => new Map())
 
+  const vec = new Vector3()
+  const quat = new Quaternion()
+
   // TODO: investigate using a fixed update frequency + fix 60 vs 120 hz.
   useFrame(() => {
     if (!world) return
@@ -107,15 +110,32 @@ export function Physics({ children, debug = false }: PhysicsProps) {
     world.step(eventQueue)
 
     world.forEachRigidBody((rigidBody) => {
+      if (rigidBody.isSleeping() || rigidBody.isStatic()) return
       const object3d = bodies.get(rigidBody.handle)
+      if (!object3d) return
 
-      if (object3d && !rigidBody.isSleeping() && !rigidBody.isStatic()) {
-        const vec = rigidBody.translation()
-        const quat = rigidBody.rotation()
+      const positionOffset = object3d.userData?.positionOffset as
+        | Vector3
+        | undefined
+      const rotationOffset = object3d.userData?.rotationOffset as
+        | Quaternion
+        | undefined
 
-        object3d.position.set(vec.x, vec.y, vec.z)
-        object3d.quaternion.set(quat.x, quat.y, quat.z, quat.w)
+      const t = rigidBody.translation()
+      const r = rigidBody.rotation()
+
+      vec.set(t.x, t.y, t.z)
+
+      if (positionOffset) {
+        vec.sub(positionOffset)
       }
+
+      quat.set(r.x, r.y, r.z, r.w)
+      // TODO: figure out how to solve rotation
+      // if (rotationOffset) quat.sub(rotationOffset)
+
+      object3d.position.copy(vec)
+      object3d.quaternion.copy(quat)
     })
 
     eventQueue.drainContactEvents((handle1, handle2, started) => {
@@ -199,9 +219,9 @@ export interface RigidBodyApi extends RAPIER.RigidBody {}
 export const RigidBody = forwardRef(function RigidBody(
   {
     type = 'dynamic',
-    position,
-    quaternion,
-    rotation,
+    position: rawPosition,
+    quaternion: rawQuaternion,
+    rotation: rawRotation,
     children,
     onCollision,
     onCollisionEnter,
@@ -230,52 +250,56 @@ export const RigidBody = forwardRef(function RigidBody(
     }
   })
 
-  // Set rotation/quaternion
-  const rotationQuat = useConstant(() => {
+  const rotation = useConstant(() => {
     const quat = new Quaternion()
 
-    if (quaternion) {
-      if (Array.isArray(quaternion)) {
-        return quat.fromArray(quaternion)
+    if (rawQuaternion) {
+      if (Array.isArray(rawQuaternion)) {
+        return quat.fromArray(rawQuaternion)
       }
-      return quat.copy(quaternion)
+      return quat.copy(rawQuaternion)
     }
 
-    if (rotation) {
-      const euler = Array.isArray(rotation)
-        ? new Euler().fromArray(rotation)
-        : rotation
+    if (rawRotation) {
+      const euler = Array.isArray(rawRotation)
+        ? new Euler().fromArray(rawRotation)
+        : rawRotation
       return quat.setFromEuler(euler)
     }
 
     return quat
   })
 
-  // Set position/translation
-  const positionVec = useConstant(() => {
+  const position = useConstant(() => {
     const vec = new Vector3()
 
-    if (!position) {
+    if (!rawPosition) {
       return vec
     }
 
-    if (Array.isArray(position)) {
-      return vec.fromArray(position)
+    if (Array.isArray(rawPosition)) {
+      return vec.fromArray(rawPosition)
     }
 
-    return vec.copy(position)
+    return vec.copy(rawPosition)
   })
 
   useLayoutEffect(() => {
     const object3d = object3dRef.current
     if (!object3d || !rigidBody) return
 
-    object3d.getWorldPosition(positionVec)
-    object3d.getWorldQuaternion(rotationQuat)
+    const relativePosition = position.clone()
 
-    rigidBody.setTranslation(positionVec, true)
-    rigidBody.setRotation(rotationQuat, true)
-  }, [rigidBody, positionVec, rotationQuat])
+    object3d.getWorldPosition(position)
+    object3d.getWorldQuaternion(rotation)
+
+    const positionOffset = position.clone().sub(relativePosition)
+
+    object3d.userData.positionOffset = positionOffset
+
+    rigidBody.setTranslation(position, true)
+    rigidBody.setRotation(rotation, true)
+  }, [rigidBody, position, rotation])
 
   useLayoutEffect(() => {
     const body = world.createRigidBody(rigidBodyDesc)
@@ -322,7 +346,7 @@ export const RigidBody = forwardRef(function RigidBody(
 
   return (
     <RigidBodyContext.Provider value={context}>
-      <object3D ref={object3dRef} position={position} quaternion={rotationQuat}>
+      <object3D ref={object3dRef} position={position} quaternion={rotation}>
         {children}
       </object3D>
     </RigidBodyContext.Provider>
