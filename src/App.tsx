@@ -349,10 +349,10 @@ function Sky() {
       <DirectionalLight
         position={position}
         castShadow
-        shadow-camera-left={-20}
-        shadow-camera-bottom={-20}
-        shadow-camera-right={20}
-        shadow-camera-top={20}
+        shadow-camera-left={-18}
+        shadow-camera-bottom={-18}
+        shadow-camera-right={18}
+        shadow-camera-top={18}
       />
     </>
   )

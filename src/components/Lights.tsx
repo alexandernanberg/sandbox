@@ -1,14 +1,13 @@
 import { useHelper } from '@react-three/drei'
 import type { ReactNode } from 'react'
-import { createContext, useContext, useMemo, useRef } from 'react'
-import type {
+import { createContext, useContext, useEffect, useMemo, useRef } from 'react'
+import {
+  Camera,
+  CameraHelper,
   DirectionalLight as ThreeDirectionalLight,
   HemisphereLight as ThreeHemisphereLight,
-  SpotLight as ThreeSpotLight,
-} from 'three'
-import {
-  DirectionalLightHelper,
   HemisphereLightHelper,
+  SpotLight as ThreeSpotLight,
   SpotLightHelper,
 } from 'three'
 
@@ -35,8 +34,13 @@ export function DirectionalLight(
 ) {
   const { debug } = useContext(LightContext)
   const ref = useRef<ThreeDirectionalLight>()
+  const cameraRef = useRef<Camera>()
 
-  useHelper(debug && ref, DirectionalLightHelper, 1, 0xff0000)
+  useEffect(() => {
+    cameraRef.current = ref.current?.shadow.camera
+  }, [])
+
+  useHelper(debug && cameraRef, CameraHelper)
 
   return <directionalLight ref={ref} {...props} />
 }
