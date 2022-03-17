@@ -1,7 +1,13 @@
 import * as RAPIER from '@dimforge/rapier3d-compat'
 import type { Object3DNode } from '@react-three/fiber'
 import { useFrame } from '@react-three/fiber'
-import type { DependencyList, ForwardedRef, ReactNode, RefObject } from 'react'
+import type {
+  DependencyList,
+  ForwardedRef,
+  MutableRefObject,
+  ReactNode,
+  RefObject,
+} from 'react'
 import {
   createContext,
   forwardRef,
@@ -14,8 +20,14 @@ import {
   useState,
 } from 'react'
 import { suspend } from 'suspend-react'
-import type { Object3D } from 'three'
-import { Euler, Quaternion, Vector3 } from 'three'
+import {
+  BufferAttribute,
+  BufferGeometry,
+  Euler,
+  Object3D,
+  Quaternion,
+  Vector3,
+} from 'three'
 import { useConstant } from '../utils'
 
 // Temporary solution until the PR is merged.
@@ -48,7 +60,7 @@ function uuid(type: string, id: number) {
 ///////////////////////////////////////////////////////////////
 
 export interface PhysicsContextValue {
-  world: RAPIER.World
+  worldRef: MutableRefObject<() => RAPIER.World>
   debug: boolean
   bodies: Map<number, Object3D>
   colliders: Map<number, Object3D>
@@ -87,14 +99,24 @@ export interface PhysicsProps {
 export function Physics({ children, debug = false }: PhysicsProps) {
   suspend(() => RAPIER.init(), ['rapier'])
 
-  const world = useConstant(() => {
-    const gravity = { x: 0.0, y: -9.81, z: 0.0 }
-    return new RAPIER.World(gravity)
+  const worldRef = useRef<RAPIER.World | null>(null)
+
+  const worldGetter = useRef(() => {
+    if (worldRef.current === null) {
+      const gravity = { x: 0.0, y: -9.81, z: 0.0 }
+      worldRef.current = new RAPIER.World(gravity)
+    }
+    return worldRef.current
   })
 
   useEffect(() => {
-    return () => world.free()
-  }, [world])
+    return () => {
+      if (worldRef.current !== null) {
+        worldRef.current.free()
+        worldRef.current = null
+      }
+    }
+  }, [])
 
   const eventQueue = useConstant(() => new RAPIER.EventQueue(true))
   const bodies = useConstant(() => new Map<number, Object3D>())
@@ -106,6 +128,7 @@ export function Physics({ children, debug = false }: PhysicsProps) {
 
   // TODO: investigate using a fixed update frequency + fix 60 vs 120 hz.
   useFrame(() => {
+    const world = worldGetter.current()
     if (!world) return
 
     world.step(eventQueue)
@@ -167,9 +190,9 @@ export function Physics({ children, debug = false }: PhysicsProps) {
     })
   })
 
-  const context = useMemo(
-    () => ({ world, debug, bodies, colliders, events }),
-    [bodies, colliders, debug, events, world],
+  const context = useMemo<PhysicsContextValue>(
+    () => ({ worldRef: worldGetter, debug, bodies, colliders, events }),
+    [bodies, colliders, debug, events],
   )
 
   return (
@@ -184,14 +207,11 @@ export function Physics({ children, debug = false }: PhysicsProps) {
 ///////////////////////////////////////////////////////////////
 
 interface RigidBodyContextValue {
-  rigidBody: RAPIER.RigidBody | null
+  rigidBodyRef: MutableRefObject<() => RAPIER.RigidBody>
   shouldCollidersListenForContactEvents: boolean
 }
 
-const RigidBodyContext = createContext<RigidBodyContextValue>({
-  rigidBody: null,
-  shouldCollidersListenForContactEvents: false,
-})
+const RigidBodyContext = createContext<RigidBodyContextValue | null>(null)
 
 type RigidBodyType =
   | 'dynamic'
@@ -225,11 +245,9 @@ export const RigidBody = forwardRef(function RigidBody(
   }: RigidBodyProps,
   ref?: ForwardedRef<RigidBodyApi | null>,
 ) {
-  const { world, bodies, events } = usePhysicsContext()
+  const { worldRef, bodies, events } = usePhysicsContext()
   const object3dRef = useRef<Object3D>()
-  const [rigidBody, setRigidBody] = useState<RAPIER.RigidBody | null>(null)
-
-  useImperativeHandle(ref, () => rigidBody as RAPIER.RigidBody)
+  const rigidBodyRef = useRef<RAPIER.RigidBody | null>(null)
 
   const rigidBodyDesc = useConstant<RAPIER.RigidBodyDesc>(() => {
     switch (type) {
@@ -244,6 +262,14 @@ export const RigidBody = forwardRef(function RigidBody(
       default:
         throw new Error(`Unsupported RigidBody.type: "${type}"`)
     }
+  })
+
+  const rigidBodyGetter = useRef(() => {
+    if (rigidBodyRef.current === null) {
+      const world = worldRef.current()
+      rigidBodyRef.current = world.createRigidBody(rigidBodyDesc)
+    }
+    return rigidBodyRef.current
   })
 
   const rotation = useConstant(() => {
@@ -283,35 +309,35 @@ export const RigidBody = forwardRef(function RigidBody(
   useLayoutEffect(() => {
     const object3d = object3dRef.current
     if (!object3d) return
+    const world = worldRef.current()
+    const rigidBody = rigidBodyGetter.current()
 
-    // Get offset from world center.
     const relativePosition = position.clone()
     object3d.getWorldPosition(position)
     object3d.getWorldQuaternion(rotation)
     const positionOffset = position.clone().sub(relativePosition)
     object3d.userData.positionOffset = positionOffset
 
-    rigidBodyDesc.setTranslation(position.x, position.y, position.z)
-    rigidBodyDesc.setRotation(rotation)
+    rigidBody.setTranslation(position, true)
+    rigidBody.setRotation(rotation, true)
 
-    // Create rigid body.
-    const body = world.createRigidBody(rigidBodyDesc)
-    setRigidBody(body)
-
-    // Add body to set.
-    bodies.set(body.handle, object3d)
+    bodies.set(rigidBody.handle, object3d)
 
     return () => {
-      // Check if the rigid body has already been removed.
-      if (body && world.getRigidBody(body.handle)) {
-        world.removeRigidBody(body)
+      if (rigidBodyRef.current !== null) {
+        // Check if the rigid body has already been removed.
+        if (world.getRigidBody(rigidBody.handle)) {
+          world.removeRigidBody(rigidBody)
+        }
+        bodies.delete(rigidBody.handle)
+        rigidBodyRef.current = null
       }
-      bodies.delete(body.handle)
     }
-  }, [world, rigidBodyDesc, bodies, position, rotation])
+  }, [bodies, position, rotation, worldRef])
 
   useEffect(() => {
-    if (!rigidBody || !onCollision) return
+    if (!onCollision) return
+    const rigidBody = rigidBodyGetter.current()
     const id = uuid('rigidBody', rigidBody.handle)
     events.set(id, {
       onCollisionEnter: onCollisionEnter || onCollision,
@@ -322,18 +348,20 @@ export const RigidBody = forwardRef(function RigidBody(
 
   const hasEventListeners = !!onCollision
 
-  const context = useMemo(
+  const context = useMemo<RigidBodyContextValue>(
     () => ({
-      rigidBody,
+      rigidBodyRef: rigidBodyGetter,
       shouldCollidersListenForContactEvents: hasEventListeners,
     }),
-    [rigidBody, hasEventListeners],
+    [hasEventListeners],
   )
+
+  useImperativeHandle(ref, rigidBodyGetter.current)
 
   return (
     <RigidBodyContext.Provider value={context}>
       <object3D ref={object3dRef} position={position} quaternion={rotation}>
-        {rigidBody ? children : null}
+        {children}
       </object3D>
     </RigidBodyContext.Provider>
   )
@@ -356,18 +384,11 @@ export interface ColliderProps {
   onCollisionExit?: CollideEventCallback
 }
 
-type UseColliderReturn<T extends () => void> =
-  ReturnType<T> extends RAPIER.ColliderDesc
-    ? RAPIER.Collider
-    : ReturnType<T> extends RAPIER.ColliderDesc | null
-    ? RAPIER.Collider | null
-    : never
-
 export function useCollider<T extends () => RAPIER.ColliderDesc | null>(
   cb: T,
   props: Omit<ColliderProps, 'children'>,
   object3dRef: RefObject<Object3D | undefined>,
-): UseColliderReturn<T> | null {
+) {
   const {
     position,
     quaternion,
@@ -379,17 +400,18 @@ export function useCollider<T extends () => RAPIER.ColliderDesc | null>(
     onCollisionEnter,
     onCollisionExit,
   } = props
-  const { world, events, colliders } = usePhysicsContext()
-  const { rigidBody, shouldCollidersListenForContactEvents } =
-    useContext(RigidBodyContext)
-  const [collider, setCollider] = useState<RAPIER.Collider>()
+  const { worldRef, events, colliders } = usePhysicsContext()
+  const bodyContext = useContext(RigidBodyContext)
+  const { rigidBodyRef, shouldCollidersListenForContactEvents } =
+    bodyContext || {}
   const shouldListenForContactEvents = !!onCollision
+  const colliderRef = useRef<RAPIER.Collider | null>(null)
 
   const colliderDesc = useConstant(() => {
     const desc = cb()
 
     if (desc === null) {
-      return null
+      throw new Error('Unable to create collider')
     }
 
     if (position) {
@@ -440,30 +462,41 @@ export function useCollider<T extends () => RAPIER.ColliderDesc | null>(
     return desc
   })
 
-  useLayoutEffect(() => {
-    if (!colliderDesc) return
-
-    const coll = world.createCollider(colliderDesc, rigidBody?.handle)
-    setCollider(coll)
-
-    return () => {
-      // Check if the collider has already been removed.
-      if (coll && world.getCollider(coll.handle)) {
-        world.removeCollider(coll, true)
-      }
+  const colliderGetter = useRef(() => {
+    if (colliderRef.current === null) {
+      const world = worldRef.current()
+      const rigidBody = rigidBodyRef?.current()
+      colliderRef.current = world.createCollider(
+        colliderDesc,
+        rigidBody?.handle,
+      )
     }
-  }, [world, colliderDesc, rigidBody?.handle])
+    return colliderRef.current
+  })
 
   useLayoutEffect(() => {
     const object3d = object3dRef.current
-    if (!object3d || !collider) return
+    const world = worldRef.current()
+    const collider = colliderGetter.current()
+    if (!object3d) return
 
     colliders.set(collider.handle, object3d)
-    return () => void colliders.delete(collider.handle)
-  }, [world, colliders, object3dRef, collider])
+
+    return () => {
+      if (colliderRef.current === null) {
+        // Check if the collider has already been removed.
+        if (world.getCollider(collider.handle)) {
+          world.removeCollider(collider, true)
+        }
+        colliders.delete(collider.handle)
+        colliderRef.current = null
+      }
+    }
+  }, [colliderDesc, colliders, object3dRef, worldRef])
 
   useEffect(() => {
-    if (!collider || !onCollision) return
+    if (!onCollision) return
+    const collider = colliderGetter.current()
     const id = uuid('collider', collider.handle)
     events.set(id, {
       onCollisionEnter: onCollisionEnter || onCollision,
@@ -472,11 +505,7 @@ export function useCollider<T extends () => RAPIER.ColliderDesc | null>(
     return () => void events.delete(id)
   })
 
-  if (!collider) {
-    return null
-  }
-
-  return collider as unknown as UseColliderReturn<T>
+  return colliderGetter
 }
 
 ///////////////////////////////////////////////////////////////
@@ -496,17 +525,11 @@ export function CuboidCollider({
   const { debug } = usePhysicsContext()
   const object3dRef = useRef<Object3D>()
 
-  const collider = useCollider(
+  useCollider(
     () => RAPIER.ColliderDesc.cuboid(width / 2, height / 2, depth / 2),
     props,
     object3dRef,
   )
-
-  if (!collider) {
-    return null
-  }
-
-  const vec = collider.halfExtents()
 
   return (
     <object3D
@@ -517,7 +540,7 @@ export function CuboidCollider({
     >
       {debug && (
         <mesh>
-          <boxGeometry args={[vec.x * 2, vec.y * 2, vec.z * 2]} />
+          <boxGeometry args={args} />
           <meshBasicMaterial wireframe color={0x0000ff} />
         </mesh>
       )}
@@ -745,18 +768,26 @@ export function ConvexHullCollider({
   const { debug } = usePhysicsContext()
   const itemSize = 3
   const object3dRef = useRef<Object3D>()
-  const collider = useCollider(
+  const colliderRef = useCollider(
     () => RAPIER.ColliderDesc.convexHull(points),
     props,
     object3dRef,
   )
 
-  if (!collider) {
-    return null
-  }
+  const bufferGeometry = useConstant(() => new BufferGeometry())
 
-  const vertices = collider.vertices()
-  const indices = collider.indices()
+  useLayoutEffect(() => {
+    if (!debug) return
+    const collider = colliderRef.current()
+    const vertices = collider.vertices()
+    const indices = collider.indices()
+
+    bufferGeometry.setAttribute(
+      'position',
+      new BufferAttribute(vertices, itemSize),
+    )
+    bufferGeometry.setIndex(new BufferAttribute(indices, 1))
+  }, [bufferGeometry, colliderRef, debug])
 
   return (
     <object3D
@@ -765,17 +796,8 @@ export function ConvexHullCollider({
       quaternion={props.quaternion}
       rotation={props.rotation}
     >
-      {debug && vertices && indices && (
-        <mesh>
-          <bufferGeometry>
-            <bufferAttribute attach="index" args={[indices, 1]} />
-            <bufferAttribute
-              attach="attributes-position"
-              count={vertices.length / itemSize}
-              array={vertices}
-              itemSize={itemSize}
-            />
-          </bufferGeometry>
+      {debug && (
+        <mesh geometry={bufferGeometry}>
           <meshBasicMaterial wireframe color={0x00ff00} />
         </mesh>
       )}
