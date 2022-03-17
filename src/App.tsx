@@ -1,5 +1,4 @@
 import {
-  Environment,
   Loader,
   OrbitControls,
   Sky as SkyShader,
@@ -134,6 +133,15 @@ export function App() {
         <RigidBody position={[0, 4, 0]}>
           <Stone />
         </RigidBody>
+        <RigidBody position={[0, 5, 0]}>
+          <Stone />
+        </RigidBody>
+        <RigidBody position={[0, 6, 0]}>
+          <Stone />
+        </RigidBody>
+        <RigidBody position={[0, 7, 0]}>
+          <Stone />
+        </RigidBody>
 
         <Ball />
 
@@ -223,18 +231,20 @@ function Box({ args = [1, 1, 1], ...props }: CuboidColliderProps) {
 }
 
 function Floor() {
+  const size = 30
+  const textureRepeat = 30 / 2 / 2
   const tileTexture = useTexture(
-    'https://cdn.jsdelivr.net/gh/pmndrs/drei-assets@latest/prototype/light/texture_07.png',
+    'https://cdn.jsdelivr.net/gh/pmndrs/drei-assets@latest/prototype/dark/texture_08.png',
   )
   tileTexture.wrapS = tileTexture.wrapT = RepeatWrapping
-  tileTexture.repeat.set(7.5, 7.5)
+  tileTexture.repeat.set(textureRepeat, textureRepeat)
 
   return (
-    <RigidBody type="static">
-      <CuboidCollider args={[30, 0, 30]}>
-        <mesh castShadow receiveShadow rotation={[-Math.PI / 2, 0, 0]}>
-          <planeGeometry args={[30, 30]} />
-          <meshPhongMaterial map={tileTexture} />
+    <RigidBody type="static" position={[0, -0.5, 0]}>
+      <CuboidCollider args={[size, 1, size]}>
+        <mesh castShadow receiveShadow>
+          <boxGeometry args={[size, 1, size]} />
+          <meshStandardMaterial map={tileTexture} />
         </mesh>
       </CuboidCollider>
     </RigidBody>
@@ -263,6 +273,9 @@ function clamp(value: number, min: number, max: number) {
 }
 
 function Elevator(props: RigidBodyProps) {
+  const wallTexture = useTexture(
+    'https://cdn.jsdelivr.net/gh/pmndrs/drei-assets@latest/prototype/red/texture_02.png',
+  )
   const ref = useRef<RigidBodyApi>(null)
 
   useFrame((state) => {
@@ -277,7 +290,7 @@ function Elevator(props: RigidBodyProps) {
       <CuboidCollider args={[2, 0.5, 2]}>
         <mesh castShadow receiveShadow>
           <boxGeometry args={[2, 0.5, 2]} />
-          <meshPhongMaterial color="gray" />
+          <meshStandardMaterial map={wallTexture} />
         </mesh>
       </CuboidCollider>
     </RigidBody>
@@ -314,19 +327,16 @@ function Sky() {
         label: 'Sun position',
         value: [100, 200, 100],
       },
-      d: 10,
-      near: 1,
-      far: 20,
     },
     { collapsed: true },
   )
 
-  const d = controls.d
+  const { sun: position } = controls
 
   return (
     <>
       <SkyShader
-        sunPosition={controls.sun}
+        sunPosition={position}
         distance={10000}
         mieDirectionalG={0.9}
       />
@@ -337,17 +347,13 @@ function Sky() {
         groundColor={0xcbc1b2}
       />
       <DirectionalLight
-        position={controls.sun}
+        position={position}
         castShadow
-        shadow-mapSize={[4096, 4096]}
-        // shadow-camera-left={-d}
-        // shadow-camera-right={d}
-        // shadow-camera-top={d}
-        // shadow-camera-bottom={-d}
-        // shadow-camera-near={controls.near}
-        // shadow-camera-far={controls.far}
+        shadow-camera-left={-20}
+        shadow-camera-bottom={-20}
+        shadow-camera-right={20}
+        shadow-camera-top={20}
       />
-      <Environment preset="park" />
     </>
   )
 }

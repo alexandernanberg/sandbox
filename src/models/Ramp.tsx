@@ -21,12 +21,9 @@ export default function Ramp(props: Omit<ConvexHullColliderProps, 'args'>) {
 
   return (
     <ConvexHullCollider args={[position.array as Float32Array]} {...props}>
-      <mesh
-        castShadow
-        receiveShadow
-        geometry={nodes.Ramp.geometry}
-        material={nodes.Ramp.material}
-      />
+      <mesh castShadow receiveShadow geometry={nodes.Ramp.geometry}>
+        <meshPhongMaterial color={0xfffff0} />
+      </mesh>
     </ConvexHullCollider>
   )
 }
