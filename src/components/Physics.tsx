@@ -1,7 +1,7 @@
 import * as RAPIER from '@dimforge/rapier3d-compat'
 import type { Object3DNode } from '@react-three/fiber'
 import { useFrame } from '@react-three/fiber'
-import type { ForwardedRef, ReactNode, RefObject } from 'react'
+import type { DependencyList, ForwardedRef, ReactNode, RefObject } from 'react'
 import {
   createContext,
   forwardRef,
@@ -86,14 +86,15 @@ export interface PhysicsProps {
 
 export function Physics({ children, debug = false }: PhysicsProps) {
   suspend(() => RAPIER.init(), ['rapier'])
-  const [world, setWorld] = useState<RAPIER.World | null>(null)
 
-  useLayoutEffect(() => {
+  const world = useConstant(() => {
     const gravity = { x: 0.0, y: -9.81, z: 0.0 }
-    const physicsWorld = new RAPIER.World(gravity)
-    setWorld(physicsWorld)
-    return () => physicsWorld.free()
-  }, [])
+    return new RAPIER.World(gravity)
+  })
+
+  useEffect(() => {
+    return () => world.free()
+  }, [world])
 
   const eventQueue = useConstant(() => new RAPIER.EventQueue(true))
   const bodies = useConstant(() => new Map<number, Object3D>())
@@ -167,14 +168,9 @@ export function Physics({ children, debug = false }: PhysicsProps) {
   })
 
   const context = useMemo(
-    // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
-    () => ({ world: world!, debug, bodies, colliders, events }),
+    () => ({ world, debug, bodies, colliders, events }),
     [bodies, colliders, debug, events, world],
   )
-
-  if (!world) {
-    return null
-  }
 
   return (
     <PhysicsContext.Provider value={context}>
@@ -286,39 +282,33 @@ export const RigidBody = forwardRef(function RigidBody(
 
   useLayoutEffect(() => {
     const object3d = object3dRef.current
-    if (!object3d || !rigidBody) return
+    if (!object3d) return
 
+    // Get offset from world center.
     const relativePosition = position.clone()
-
     object3d.getWorldPosition(position)
     object3d.getWorldQuaternion(rotation)
-
     const positionOffset = position.clone().sub(relativePosition)
-
     object3d.userData.positionOffset = positionOffset
 
-    rigidBody.setTranslation(position, true)
-    rigidBody.setRotation(rotation, true)
-  }, [rigidBody, position, rotation])
+    rigidBodyDesc.setTranslation(position.x, position.y, position.z)
+    rigidBodyDesc.setRotation(rotation)
 
-  useLayoutEffect(() => {
+    // Create rigid body.
     const body = world.createRigidBody(rigidBodyDesc)
     setRigidBody(body)
 
+    // Add body to set.
+    bodies.set(body.handle, object3d)
+
     return () => {
-      // Check if bodies already have been removed by world.free().
-      if (world.bodies) {
+      // Check if the rigid body has already been removed.
+      if (body && world.getRigidBody(body.handle)) {
         world.removeRigidBody(body)
       }
+      bodies.delete(body.handle)
     }
-  }, [world, rigidBodyDesc])
-
-  useLayoutEffect(() => {
-    const object3d = object3dRef.current
-    if (!object3d || !rigidBody) return
-    bodies.set(rigidBody.handle, object3d)
-    return () => void bodies.delete(rigidBody.handle)
-  }, [world, bodies, rigidBody])
+  }, [world, rigidBodyDesc, bodies, position, rotation])
 
   useEffect(() => {
     if (!rigidBody || !onCollision) return
@@ -340,14 +330,10 @@ export const RigidBody = forwardRef(function RigidBody(
     [rigidBody, hasEventListeners],
   )
 
-  if (!rigidBody) {
-    return null
-  }
-
   return (
     <RigidBodyContext.Provider value={context}>
       <object3D ref={object3dRef} position={position} quaternion={rotation}>
-        {children}
+        {rigidBody ? children : null}
       </object3D>
     </RigidBodyContext.Provider>
   )
@@ -461,8 +447,8 @@ export function useCollider<T extends () => RAPIER.ColliderDesc | null>(
     setCollider(coll)
 
     return () => {
-      // Check if colliders already have been removed by world.free().
-      if (world.colliders) {
+      // Check if the collider has already been removed.
+      if (coll && world.getCollider(coll.handle)) {
         world.removeCollider(coll, true)
       }
     }
@@ -728,7 +714,7 @@ export function ConvexMeshCollider({
           <bufferGeometry>
             <bufferAttribute attach="index" args={[indices, 1]} />
             <bufferAttribute
-              attachObject={['attributes', 'position']}
+              attach="attributes-position"
               count={vertices.length / itemSize}
               array={vertices}
               itemSize={itemSize}
@@ -784,7 +770,7 @@ export function ConvexHullCollider({
           <bufferGeometry>
             <bufferAttribute attach="index" args={[indices, 1]} />
             <bufferAttribute
-              attachObject={['attributes', 'position']}
+              attach="attributes-position"
               count={vertices.length / itemSize}
               array={vertices}
               itemSize={itemSize}
@@ -833,7 +819,7 @@ export function TrimeshCollider({
           <bufferGeometry>
             <bufferAttribute attach="index" args={[indices, 1]} />
             <bufferAttribute
-              attachObject={['attributes', 'position']}
+              attach="attributes-position"
               count={vertices.length / itemSize}
               array={vertices}
               itemSize={itemSize}
@@ -892,7 +878,7 @@ export function HeightfieldCollider({
           <bufferGeometry>
             <bufferAttribute attach="index" args={[indices, 1]} />
             <bufferAttribute
-              attachObject={['attributes', 'position']}
+              attach="attributes-position"
               count={vertices.length / itemSize}
               array={vertices}
               itemSize={itemSize}
@@ -946,4 +932,14 @@ function geometryFromHeightfield(
     vertices: new Float32Array(vertices),
     indices: new Uint32Array(indices),
   }
+}
+
+function useEffectfulState<T>(fn: () => T, deps: DependencyList = []) {
+  const [state, set] = useState<T>()
+  useLayoutEffect(() => {
+    const result = fn()
+    set(result)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, deps)
+  return state
 }

@@ -3,11 +3,11 @@ import {
   Loader,
   OrbitControls,
   Sky as SkyShader,
+  Stats,
   useTexture,
 } from '@react-three/drei'
 import { Canvas, useFrame } from '@react-three/fiber'
 import { button, useControls } from 'leva'
-import { Perf } from 'r3f-perf'
 import { Suspense, useRef, useState } from 'react'
 import seedrandom from 'seedrandom'
 import { RepeatWrapping } from 'three'
@@ -16,16 +16,18 @@ import {
   HemisphereLight,
   LightProvider,
 } from './components/Lights'
+import type {
+  CuboidColliderProps,
+  RigidBodyApi,
+  RigidBodyProps,
+} from './components/Physics'
 import {
   BallCollider,
   ConeCollider,
   CuboidCollider,
-  CuboidColliderProps,
   CylinderCollider,
   Physics,
   RigidBody,
-  RigidBodyApi,
-  RigidBodyProps,
 } from './components/Physics'
 import Ramp from './models/Ramp'
 import Stone from './models/Stone'
@@ -33,7 +35,7 @@ import Stone from './models/Stone'
 export function Root() {
   return (
     <>
-      <Canvas mode="concurrent" camera={{ position: [5, 4, -4] }} shadows>
+      <Canvas camera={{ position: [5, 4, -4] }} shadows>
         <Suspense fallback={null}>
           <App />
         </Suspense>
@@ -70,7 +72,7 @@ export function App() {
 
   return (
     <LightProvider debug={lightsControl.debug}>
-      <Perf position="bottom-right" />
+      <Stats />
       <fog attach="fog" args={[0xffffff, 10, 90]} />
       <Sky />
 
