@@ -362,7 +362,7 @@ export function useCollider<
 
   const scaleRef = useRef<Vector3 | null>(null)
 
-  const colliderGetter = useRef(() => {
+  const colliderGetter = useRef((position?: Vector3, rotation?: Quaternion) => {
     if (colliderRef.current === null) {
       const world = worldRef.current()
       const rigidBody = rigidBodyRef?.current()
@@ -390,6 +390,14 @@ export function useCollider<
         colliderDesc.setDensity(density)
       }
 
+      if (position) {
+        colliderDesc.setTranslation(position.x, position.y, position.z)
+      }
+
+      if (rotation) {
+        colliderDesc.setRotation(rotation)
+      }
+
       if (
         shouldListenForContactEvents ||
         shouldCollidersListenForContactEvents
@@ -415,10 +423,15 @@ export function useCollider<
     scaleRef.current = _scale.clone()
 
     const world = worldRef.current()
-    const collider = colliderGetter.current()
+    const collider = colliderGetter.current(
+      object3d.position,
+      object3d.quaternion,
+    )
 
-    collider.setTranslation(object3d.position)
-    collider.setRotation(object3d.quaternion)
+    // Seems to be a bug where you cannot set collider translation after it's
+    // created. Create PR/issue.
+    // collider.setTranslation(object3d.position)
+    // collider.setRotation(object3d.quaternion)
 
     colliders.set(collider.handle, object3d)
 
