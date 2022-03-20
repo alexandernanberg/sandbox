@@ -112,9 +112,6 @@ export function Physics({ children, debug = false }: PhysicsProps) {
   const colliders = useConstant(() => new Map<number, Object3D>())
   const events = useConstant<PhysicsContextValue['events']>(() => new Map())
 
-  const vec = new Vector3()
-  const quat = new Quaternion()
-
   // TODO: investigate using a fixed update frequency + fix 60 vs 120 hz.
   useFrame(() => {
     const world = worldGetter.current()
@@ -137,18 +134,15 @@ export function Physics({ children, debug = false }: PhysicsProps) {
       const t = rigidBody.translation()
       const r = rigidBody.rotation()
 
-      vec.set(t.x, t.y, t.z)
-
       if (positionOffset) {
-        vec.sub(positionOffset)
+        object3d.position.set(t.x, t.y, t.z).sub(positionOffset)
+      } else {
+        object3d.position.set(t.x, t.y, t.z)
       }
 
-      quat.set(r.x, r.y, r.z, r.w)
       // TODO: figure out how to solve rotation
       // if (rotationOffset) quat.sub(rotationOffset)
-
-      object3d.position.copy(vec)
-      object3d.quaternion.copy(quat)
+      object3d.quaternion.set(r.x, r.y, r.z, r.w)
     })
 
     eventQueue.drainContactEvents((handle1, handle2, started) => {
@@ -461,14 +455,12 @@ export function CuboidCollider({
   const object3dRef = useRef<Object3D>()
 
   useCollider(
-    (scale) => {
-      console.log(scale)
-      return RAPIER.ColliderDesc.cuboid(
+    (scale) =>
+      RAPIER.ColliderDesc.cuboid(
         (width / 2) * scale.x,
         (height / 2) * scale.y,
         (depth / 2) * scale.z,
-      )
-    },
+      ),
     props,
     object3dRef,
   )
