@@ -5,6 +5,7 @@ import {
   Stats,
   useTexture,
 } from '@react-three/drei'
+import type { GroupProps } from '@react-three/fiber'
 import { Canvas, useFrame } from '@react-three/fiber'
 import { button, useControls } from 'leva'
 import { Suspense, useRef, useState } from 'react'
@@ -24,17 +25,17 @@ import {
   BallCollider,
   ConeCollider,
   CuboidCollider,
-  CylinderCollider,
   Physics,
   RigidBody,
 } from './components/Physics'
 import Ramp from './models/Ramp'
+import Slope from './models/Slope'
 import Stone from './models/Stone'
 
 export function Root() {
   return (
     <>
-      <Canvas camera={{ position: [5, 4, -4] }} shadows>
+      <Canvas camera={{ position: [5, 4, 8] }} shadows>
         <Suspense fallback={null}>
           <App />
         </Suspense>
@@ -75,37 +76,45 @@ export function App() {
       <fog attach="fog" args={[0xffffff, 10, 90]} />
       <Sky />
 
-      <OrbitControls />
+      <OrbitControls target={[0, 0, 12]} />
 
       <Physics debug={physicsControls.debug} key={physicsKey}>
         <Floor />
 
-        <RigidBody position={[0, 2, 0]}>
+        <RigidBody position={[0, 3, 12.5]} scale={0.5}>
           <CuboidCollider args={[1, 1, 1]}>
             <mesh castShadow receiveShadow>
               <boxGeometry args={[1, 1, 1]} />
-              <meshPhongMaterial color="purple" />
+              <meshPhongMaterial color="red" />
+            </mesh>
+          </CuboidCollider>
+        </RigidBody>
+        <RigidBody position={[1, 3, 12.5]} scale={0.5}>
+          <CuboidCollider args={[1, 1, 1]}>
+            <mesh castShadow receiveShadow>
+              <boxGeometry args={[1, 1, 1]} />
+              <meshPhongMaterial color="red" />
+            </mesh>
+          </CuboidCollider>
+        </RigidBody>
+        <RigidBody position={[2, 3, 12.5]} scale={0.5}>
+          <CuboidCollider args={[1, 1, 1]}>
+            <mesh castShadow receiveShadow>
+              <boxGeometry args={[1, 1, 1]} />
+              <meshPhongMaterial color="red" />
+            </mesh>
+          </CuboidCollider>
+        </RigidBody>
+        <RigidBody position={[3, 3, 12.5]} scale={0.5}>
+          <CuboidCollider args={[1, 1, 1]}>
+            <mesh castShadow receiveShadow>
+              <boxGeometry args={[1, 1, 1]} />
+              <meshPhongMaterial color="red" />
             </mesh>
           </CuboidCollider>
         </RigidBody>
 
-        <RigidBody position={[0, 1.25, 1]}>
-          <CuboidCollider args={[4, 0.5, 2]}>
-            <mesh castShadow receiveShadow>
-              <boxGeometry args={[4, 0.5, 2]} />
-              <meshPhongMaterial color="blue" />
-            </mesh>
-          </CuboidCollider>
-        </RigidBody>
-
-        <RigidBody position={[0.5, 4, 7]}>
-          <CuboidCollider args={[1, 1, 1]}>
-            <mesh castShadow receiveShadow>
-              <boxGeometry args={[1, 1, 1]} />
-              <meshPhongMaterial color="purple" />
-            </mesh>
-          </CuboidCollider>
-        </RigidBody>
+        <Slopes position={[0, 0, 12]} />
 
         <group position={[-6, 0, 0]}>
           <Tower />
@@ -120,30 +129,22 @@ export function App() {
           </RigidBody>
         </group>
 
-        <RigidBody position={[-6, 8, 4]}>
-          <CuboidCollider args={[1, 1, 1]}>
-            <mesh castShadow receiveShadow>
-              <boxGeometry args={[1, 1, 1]} />
-              <meshPhongMaterial color="red" />
-            </mesh>
-          </CuboidCollider>
-        </RigidBody>
-        <Wall />
+        {/* <Wall /> */}
 
-        <RigidBody position={[0, 4, 0]}>
+        <RigidBody position={[0, 4, 0]} scale={3}>
           <Stone />
         </RigidBody>
-        <RigidBody position={[0, 5, 0]}>
+        <RigidBody position={[0, 5, 0]} scale={2}>
           <Stone />
         </RigidBody>
-        <RigidBody position={[0, 6, 0]}>
+        <RigidBody position={[0, 6, 0]} scale={0.75}>
           <Stone />
         </RigidBody>
         <RigidBody position={[0, 7, 0]}>
           <Stone />
         </RigidBody>
 
-        <Ball />
+        <Ball position={[2, 4, 0]} />
 
         <RigidBody position={[2, 5, 0.5]}>
           <ConeCollider args={[0.5, 1]}>
@@ -153,53 +154,30 @@ export function App() {
             </mesh>
           </ConeCollider>
         </RigidBody>
-
-        <RigidBody position={[-5, 10, 0]}>
-          <CylinderCollider args={[0.5, 1]}>
-            <mesh castShadow receiveShadow>
-              <cylinderGeometry args={[0.5, 0.5, 1]} />
-              <meshPhongMaterial color="red" />
-            </mesh>
-          </CylinderCollider>
-        </RigidBody>
-
-        <RigidBody position={[-5, 10, -4]}>
-          <CylinderCollider args={[0.5, 1]}>
-            <mesh castShadow receiveShadow>
-              <cylinderGeometry args={[0.5, 0.5, 1]} />
-              <meshPhongMaterial color="red" />
-            </mesh>
-          </CylinderCollider>
-        </RigidBody>
-
-        <RigidBody position={[-10, 10, 0]}>
-          <CylinderCollider args={[0.5, 1]}>
-            <mesh castShadow receiveShadow>
-              <cylinderGeometry args={[0.5, 0.5, 1]} />
-              <meshPhongMaterial color="red" />
-            </mesh>
-          </CylinderCollider>
-        </RigidBody>
-
-        <RigidBody position={[-10, 10, -4]}>
-          <CylinderCollider args={[0.5, 1]}>
-            <mesh castShadow receiveShadow>
-              <cylinderGeometry args={[0.5, 0.5, 1]} />
-              <meshPhongMaterial color="red" />
-            </mesh>
-          </CylinderCollider>
-        </RigidBody>
       </Physics>
     </LightProvider>
   )
 }
 
-function Ball() {
-  const colors = ['red', 'blue', 'green', 'yellow', 'purple', 'black']
+function Ball(props: RigidBodyProps) {
+  const colors = ['red', 'green', 'blue', 'yellow', 'purple']
   const [color, setColor] = useState(colors[0])
+
+  // useLayoutEffect(() => {
+  //   console.log('layout effect')
+  // }, [])
+
+  // useEffect(() => {
+  //   console.log('effect')
+  // }, [])
+
+  // useFrame(() => {
+  //   console.log('frame')
+  // })
+
   return (
     <RigidBody
-      position={[2, 4, 0]}
+      {...props}
       onCollision={() => {
         setColor((s) => {
           const currentIndex = colors.indexOf(s)
@@ -227,6 +205,53 @@ function Box({ args = [1, 1, 1], ...props }: CuboidColliderProps) {
         <meshPhongMaterial color={0xfffff0} />
       </mesh>
     </CuboidCollider>
+  )
+}
+
+function Slopes(props: GroupProps) {
+  return (
+    <group {...props}>
+      <RigidBody
+        type="static"
+        position={[3, 0.125, 0]}
+        rotation={[0, Math.PI / 2, 0]}
+        scale={[1, 0.25, 1]}
+      >
+        <Slope />
+      </RigidBody>
+      <RigidBody
+        type="static"
+        position={[2, 0.25, 0]}
+        rotation={[0, Math.PI / 2, 0]}
+        scale={[1, 0.5, 1]}
+      >
+        <Slope />
+      </RigidBody>
+      <RigidBody
+        type="static"
+        position={[1, 0.375, 0]}
+        rotation={[0, Math.PI / 2, 0]}
+        scale={[1, 0.75, 1]}
+      >
+        <Slope />
+      </RigidBody>
+      <RigidBody
+        type="static"
+        position={[0, 0.5, 0]}
+        rotation={[0, Math.PI / 2, 0]}
+        scale={[1, 1, 1]}
+      >
+        <Slope />
+      </RigidBody>
+      <RigidBody
+        type="static"
+        position={[-1, 0.625, 0]}
+        rotation={[0, Math.PI / 2, 0]}
+        scale={[1, 1.25, 1]}
+      >
+        <Slope />
+      </RigidBody>
+    </group>
   )
 }
 
@@ -273,9 +298,6 @@ function clamp(value: number, min: number, max: number) {
 }
 
 function Elevator(props: RigidBodyProps) {
-  const wallTexture = useTexture(
-    'https://cdn.jsdelivr.net/gh/pmndrs/drei-assets@latest/prototype/red/texture_02.png',
-  )
   const ref = useRef<RigidBodyApi>(null)
 
   useFrame((state) => {
@@ -290,7 +312,7 @@ function Elevator(props: RigidBodyProps) {
       <CuboidCollider args={[2, 0.5, 2]}>
         <mesh castShadow receiveShadow>
           <boxGeometry args={[2, 0.5, 2]} />
-          <meshStandardMaterial map={wallTexture} />
+          <meshStandardMaterial color={0xed7200} />
         </mesh>
       </CuboidCollider>
     </RigidBody>
@@ -349,6 +371,7 @@ function Sky() {
       <DirectionalLight
         position={position}
         castShadow
+        shadow-mapSize={[4096, 4096]}
         shadow-camera-left={-18}
         shadow-camera-bottom={-18}
         shadow-camera-right={18}

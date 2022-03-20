@@ -10,22 +10,22 @@ import { ConvexHullCollider } from '../components/Physics'
 
 type GLTFResult = GLTF & {
   nodes: {
-    Stone: Mesh
+    Slope: Mesh
   }
   materials: {
-    Stone: MeshStandardMaterial
+    Slope: MeshStandardMaterial
   }
 }
 
-export default function Stone(props: Omit<ConvexHullColliderProps, 'args'>) {
-  const { nodes } = useGLTF('/stone.gltf') as GLTFResult
-  const { geometry } = nodes.Stone
+export default function Slope(props: Omit<ConvexHullColliderProps, 'args'>) {
+  const { nodes } = useGLTF('/slope.glb') as GLTFResult
+  const { geometry } = nodes.Slope
   const vertices = geometry.attributes.position.array as Float32Array
 
   return (
-    <ConvexHullCollider args={[vertices]} density={4} {...props}>
-      <mesh castShadow receiveShadow geometry={nodes.Stone.geometry}>
-        <meshStandardMaterial color={0x625b4e} roughness={0.9} metalness={0} />
+    <ConvexHullCollider args={[vertices]} {...props}>
+      <mesh castShadow receiveShadow geometry={geometry}>
+        <meshPhongMaterial color={0xed7200} />
       </mesh>
     </ConvexHullCollider>
   )
