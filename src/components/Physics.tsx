@@ -1,6 +1,6 @@
 import * as RAPIER from '@dimforge/rapier3d-compat'
 import type { Object3DNode } from '@react-three/fiber'
-import { useFrame } from '@react-three/fiber'
+import { useFrame, useThree } from '@react-three/fiber'
 import type {
   ForwardedRef,
   MutableRefObject,
@@ -19,7 +19,18 @@ import {
 } from 'react'
 import { suspend } from 'suspend-react'
 import type { Object3D } from 'three'
-import { BufferAttribute, BufferGeometry, Quaternion, Vector3 } from 'three'
+import {
+  BoxGeometry,
+  BufferAttribute,
+  BufferGeometry,
+  ConeGeometry,
+  CylinderGeometry,
+  Mesh,
+  MeshBasicMaterial,
+  Quaternion,
+  SphereGeometry,
+  Vector3,
+} from 'three'
 import { useConstant } from '../utils'
 
 // Temporary solution until the PR is merged.
@@ -343,7 +354,7 @@ export function useCollider<
     onCollisionEnter,
     onCollisionExit,
   } = props
-  const { worldRef, events, colliders } = usePhysicsContext()
+  const { worldRef, events, colliders, debug } = usePhysicsContext()
   const { rigidBodyRef, shouldCollidersListenForContactEvents } =
     useContext(RigidBodyContext) || {}
   const shouldListenForContactEvents = !!onCollision
@@ -434,6 +445,44 @@ export function useCollider<
     return () => void events.delete(id)
   })
 
+  const scene = useThree((state) => state.scene)
+  const meshRef = useRef<Mesh | null>(null)
+
+  useLayoutEffect(() => {
+    if (!debug) return
+    const collider = colliderGetter.current()
+    const mesh = (meshRef.current = meshFromCollider(collider))
+
+    scene.add(mesh)
+
+    return () => {
+      mesh.geometry.dispose()
+      if (Array.isArray(mesh.material)) {
+        for (const material of mesh.material) {
+          material.dispose()
+        }
+      } else {
+        mesh.material.dispose()
+      }
+      scene.remove(mesh)
+      meshRef.current = null
+    }
+  }, [debug, scene])
+
+  // TODO: investigate if this can be moved to <Physics>
+  useFrame(() => {
+    if (!debug) return
+    const collider = colliderGetter.current()
+    const mesh = meshRef.current
+    if (!mesh) return
+
+    const position = collider.translation()
+    const rotation = collider.rotation()
+
+    mesh.position.set(position.x, position.y, position.z)
+    mesh.quaternion.set(rotation.x, rotation.y, rotation.z, rotation.w)
+  })
+
   return colliderGetter
 }
 
@@ -451,7 +500,6 @@ export function CuboidCollider({
   ...props
 }: CuboidColliderProps) {
   const [width, height, depth] = args
-  const { debug } = usePhysicsContext()
   const object3dRef = useRef<Object3D>()
 
   useCollider(
@@ -467,12 +515,6 @@ export function CuboidCollider({
 
   return (
     <object3D ref={object3dRef} {...props}>
-      {debug && (
-        <mesh>
-          <boxGeometry args={args} />
-          <meshBasicMaterial wireframe color={0x0000ff} />
-        </mesh>
-      )}
       {children}
     </object3D>
   )
@@ -490,7 +532,6 @@ export interface BallColliderProps extends ColliderProps {
 
 export function BallCollider({ children, args, ...props }: BallColliderProps) {
   const [radius] = args
-  const { debug } = usePhysicsContext()
   const object3dRef = useRef<Object3D>()
 
   useCollider(
@@ -501,12 +542,6 @@ export function BallCollider({ children, args, ...props }: BallColliderProps) {
 
   return (
     <object3D ref={object3dRef} {...props}>
-      {debug && (
-        <mesh>
-          <sphereGeometry args={args} />
-          <meshBasicMaterial wireframe color={0x00ff00} />
-        </mesh>
-      )}
       {children}
     </object3D>
   )
@@ -528,7 +563,6 @@ export function CylinderCollider({
   ...props
 }: CylinderColliderProps) {
   const [radius, height] = args
-  const { debug } = usePhysicsContext()
   const object3dRef = useRef<Object3D>()
 
   useCollider(
@@ -540,12 +574,6 @@ export function CylinderCollider({
 
   return (
     <object3D ref={object3dRef} {...props}>
-      {debug && (
-        <mesh>
-          <cylinderGeometry args={[radius, radius, height, 32]} />
-          <meshBasicMaterial wireframe color={0x00ff00} />
-        </mesh>
-      )}
       {children}
     </object3D>
   )
@@ -565,7 +593,6 @@ export function CapsuleCollider({
   ...props
 }: CapsuleColliderProps) {
   const [radius, height] = args
-  const { debug } = usePhysicsContext()
   const object3dRef = useRef<Object3D>()
 
   useCollider(
@@ -577,13 +604,6 @@ export function CapsuleCollider({
 
   return (
     <object3D ref={object3dRef} {...props}>
-      {debug && (
-        // TODO: use <capsuleGeometry> once it's released
-        <mesh>
-          <boxGeometry args={[radius * 2, height]} />
-          <meshBasicMaterial wireframe color={0x00ff00} />
-        </mesh>
-      )}
       {children}
     </object3D>
   )
@@ -599,7 +619,6 @@ export interface ConeColliderProps extends ColliderProps {
 
 export function ConeCollider({ children, args, ...props }: ConeColliderProps) {
   const [radius, height] = args
-  const { debug } = usePhysicsContext()
   const object3dRef = useRef<Object3D>()
 
   useCollider(
@@ -611,12 +630,6 @@ export function ConeCollider({ children, args, ...props }: ConeColliderProps) {
 
   return (
     <object3D ref={object3dRef} {...props}>
-      {debug && (
-        <mesh>
-          <coneGeometry args={[radius, height, 32]} />
-          <meshBasicMaterial wireframe color={0x00ff00} />
-        </mesh>
-      )}
       {children}
     </object3D>
   )
@@ -635,9 +648,7 @@ export function ConvexMeshCollider({
   args,
   ...props
 }: ConvexMeshColliderProps) {
-  const { debug } = usePhysicsContext()
   const [vertices, indices] = args
-  const itemSize = 3
   const object3dRef = useRef<Object3D>()
 
   useCollider(
@@ -648,20 +659,6 @@ export function ConvexMeshCollider({
 
   return (
     <object3D ref={object3dRef} {...props}>
-      {debug && (
-        <mesh>
-          <bufferGeometry>
-            <bufferAttribute attach="index" args={[indices, 1]} />
-            <bufferAttribute
-              attach="attributes-position"
-              count={vertices.length / itemSize}
-              array={vertices}
-              itemSize={itemSize}
-            />
-          </bufferGeometry>
-          <meshBasicMaterial wireframe color={0x00ff00} />
-        </mesh>
-      )}
       {children}
     </object3D>
   )
@@ -681,53 +678,25 @@ export function ConvexHullCollider({
   ...props
 }: ConvexHullColliderProps) {
   const [points] = args
-  const { debug } = usePhysicsContext()
-  const itemSize = 3
   const object3dRef = useRef<Object3D>()
 
-  const colliderRef = useCollider(
+  useCollider(
     (scale) =>
       RAPIER.ColliderDesc.convexHull(
-        applyScale(points.slice(), scale.toArray()),
+        scalePoints(points.slice(), scale.toArray()),
       ),
     props,
     object3dRef,
   )
 
-  const bufferGeometry = useConstant(() => new BufferGeometry())
-
-  useLayoutEffect(() => {
-    if (!debug) return
-    const collider = colliderRef.current()
-    const vertices = collider.vertices()
-    const indices = collider.indices()
-
-    bufferGeometry.setAttribute(
-      'position',
-      new BufferAttribute(vertices, itemSize),
-    )
-    // Restore scale
-    bufferGeometry.scale(
-      points[0] / vertices[0],
-      points[1] / vertices[1],
-      points[2] / vertices[2],
-    )
-    bufferGeometry.setIndex(new BufferAttribute(indices, 1))
-  }, [bufferGeometry, colliderRef, debug])
-
   return (
     <object3D ref={object3dRef} {...props}>
-      {debug && (
-        <mesh geometry={bufferGeometry}>
-          <meshBasicMaterial wireframe color={0x00ff00} />
-        </mesh>
-      )}
       {children}
     </object3D>
   )
 }
 
-function applyScale(points: Float32Array, scale: [number, number, number]) {
+function scalePoints(points: Float32Array, scale: [number, number, number]) {
   for (let i = 0; i < points.length; i++) {
     const scaleIndex = i % 3
     const scaleValue = scale[scaleIndex]
@@ -752,8 +721,6 @@ export function TrimeshCollider({
   ...props
 }: TrimeshColliderProps) {
   const [vertices, indices] = args
-  const { debug } = usePhysicsContext()
-  const itemSize = 3
   const object3dRef = useRef<Object3D>()
 
   useCollider(
@@ -764,20 +731,6 @@ export function TrimeshCollider({
 
   return (
     <object3D ref={object3dRef} {...props}>
-      {debug && (
-        <mesh>
-          <bufferGeometry>
-            <bufferAttribute attach="index" args={[indices, 1]} />
-            <bufferAttribute
-              attach="attributes-position"
-              count={vertices.length / itemSize}
-              array={vertices}
-              itemSize={itemSize}
-            />
-          </bufferGeometry>
-          <meshBasicMaterial wireframe color={0x00ff00} />
-        </mesh>
-      )}
       {children}
     </object3D>
   )
@@ -802,8 +755,6 @@ export function HeightfieldCollider({
   ...props
 }: HeightfieldColliderProps) {
   const [nrows, ncols, heights, scale] = args
-  const { debug } = usePhysicsContext()
-  const itemSize = 3
   const object3dRef = useRef<Object3D>()
 
   useCollider(
@@ -812,30 +763,100 @@ export function HeightfieldCollider({
     object3dRef,
   )
 
-  // TODO: only calculate when debug=true
-  const { vertices, indices } = useConstant(() =>
-    geometryFromHeightfield(nrows, ncols, heights, scale),
-  )
-
   return (
     <object3D ref={object3dRef} {...props}>
-      {debug && (
-        <mesh>
-          <bufferGeometry>
-            <bufferAttribute attach="index" args={[indices, 1]} />
-            <bufferAttribute
-              attach="attributes-position"
-              count={vertices.length / itemSize}
-              array={vertices}
-              itemSize={itemSize}
-            />
-          </bufferGeometry>
-          <meshBasicMaterial wireframe color={0x00ff00} />
-        </mesh>
-      )}
       {children}
     </object3D>
   )
+}
+
+function meshFromCollider(collider: RAPIER.Collider): Mesh {
+  switch (collider.shapeType()) {
+    // TODO: use actual capsule
+    case RAPIER.ShapeType.Cuboid:
+    case RAPIER.ShapeType.Capsule: {
+      const vec = collider.halfExtents()
+      const geometry = new BoxGeometry(vec.x * 2, vec.y * 2, vec.z * 2)
+      const material = new MeshBasicMaterial({
+        wireframe: true,
+        color: 0x0000ff,
+      })
+      return new Mesh(geometry, material)
+    }
+    case RAPIER.ShapeType.Cone: {
+      const radius = collider.radius()
+      const height = collider.halfHeight() * 2
+
+      const geometry = new ConeGeometry(radius, height, 32)
+      const material = new MeshBasicMaterial({
+        wireframe: true,
+        color: 0x00ff00,
+      })
+      return new Mesh(geometry, material)
+    }
+    case RAPIER.ShapeType.Cylinder: {
+      const radius = collider.radius()
+      const height = collider.halfHeight() * 2
+
+      const geometry = new CylinderGeometry(radius, radius, height, 32)
+      const material = new MeshBasicMaterial({
+        wireframe: true,
+        color: 0x00ff00,
+      })
+      return new Mesh(geometry, material)
+    }
+    case RAPIER.ShapeType.Ball: {
+      const radius = collider.radius()
+
+      const geometry = new SphereGeometry(radius, 32)
+      const material = new MeshBasicMaterial({
+        wireframe: true,
+        color: 0x00ff00,
+      })
+      return new Mesh(geometry, material)
+    }
+    case RAPIER.ShapeType.TriMesh:
+    case RAPIER.ShapeType.ConvexPolyhedron: {
+      const vertices = collider.vertices()
+      const indices = collider.indices()
+
+      const geometry = new BufferGeometry()
+      geometry.setAttribute('position', new BufferAttribute(vertices, 3))
+      geometry.setIndex(new BufferAttribute(indices, 1))
+
+      const material = new MeshBasicMaterial({
+        wireframe: true,
+        color: 0xff0000,
+      })
+      return new Mesh(geometry, material)
+    }
+
+    case RAPIER.ShapeType.HeightField: {
+      const heights = collider.heightfieldHeights()
+      const nrows = collider.heightfieldNRows()
+      const ncols = collider.heightfieldNCols()
+      const scale = collider.heightfieldScale()
+
+      const { vertices, indices } = geometryFromHeightfield(
+        nrows,
+        ncols,
+        heights,
+        scale,
+      )
+
+      const geometry = new BufferGeometry()
+      geometry.setAttribute('position', new BufferAttribute(vertices, 3))
+      geometry.setIndex(new BufferAttribute(indices, 1))
+
+      const material = new MeshBasicMaterial({
+        wireframe: true,
+        color: 0xff0000,
+      })
+      return new Mesh(geometry, material)
+    }
+    default:
+      throw new Error(`Unkown shape: ${collider.shapeType()}`)
+  }
 }
 
 function geometryFromHeightfield(
