@@ -45,10 +45,10 @@ declare global {
   }
 }
 
-interface CollideEvent {
+interface CollisionEvent {
   target: Object3D
 }
-type CollideEventCallback = (event: CollideEvent) => void
+type CollisionEventCallback = (event: CollisionEvent) => void
 
 // TODO: number for perf
 function uuid(type: string, id: number) {
@@ -67,8 +67,8 @@ export interface PhysicsContextValue {
   events: Map<
     string,
     {
-      onCollisionEnter?: CollideEventCallback
-      onCollisionExit?: CollideEventCallback
+      onCollisionEnter?: CollisionEventCallback
+      onCollisionExit?: CollisionEventCallback
     }
   >
 }
@@ -131,7 +131,7 @@ export function Physics({ children, debug = false }: PhysicsProps) {
     world.step(eventQueue)
 
     world.forEachRigidBody((rigidBody) => {
-      if (rigidBody.isSleeping() || rigidBody.isStatic()) return
+      if (rigidBody.isSleeping() || rigidBody.isFixed()) return
       const object3d = bodies.get(rigidBody.handle)
       if (!object3d) return
 
@@ -142,21 +142,21 @@ export function Physics({ children, debug = false }: PhysicsProps) {
         | Quaternion
         | undefined
 
-      const t = rigidBody.translation()
       const r = rigidBody.rotation()
+      const t = rigidBody.translation()
 
-      if (positionOffset) {
-        object3d.position.set(t.x, t.y, t.z).sub(positionOffset)
-      } else {
-        object3d.position.set(t.x, t.y, t.z)
+      object3d.quaternion.set(r.x, r.y, r.z, r.w)
+      if (rotationOffset) {
+        object3d.quaternion.multiply(rotationOffset)
       }
 
-      // TODO: figure out how to solve rotation
-      // if (rotationOffset) quat.sub(rotationOffset)
-      object3d.quaternion.set(r.x, r.y, r.z, r.w)
+      object3d.position.set(t.x, t.y, t.z)
+      if (positionOffset) {
+        object3d.position.sub(positionOffset)
+      }
     })
 
-    eventQueue.drainContactEvents((handle1, handle2, started) => {
+    eventQueue.drainCollisionEvents((handle1, handle2, started) => {
       const body1Handle = world.getCollider(handle1).parent()
       const body2Handle = world.getCollider(handle2).parent()
 
@@ -215,9 +215,9 @@ type RigidBodyType =
 
 export interface RigidBodyProps extends Omit<Object3DProps, 'ref'> {
   type?: RigidBodyType
-  onCollision?: CollideEventCallback
-  onCollisionEnter?: CollideEventCallback
-  onCollisionExit?: CollideEventCallback
+  onCollision?: CollisionEventCallback
+  onCollisionEnter?: CollisionEventCallback
+  onCollisionExit?: CollisionEventCallback
 }
 
 export interface RigidBodyApi extends RAPIER.RigidBody {}
@@ -274,11 +274,19 @@ export const RigidBody = forwardRef(function RigidBody(
     object3d.updateWorldMatrix(true, false)
     object3d.matrixWorld.decompose(_position, _quaternion, _scale)
 
+    rigidBody.setRotation(_quaternion, true)
+    rigidBody.setTranslation(_position, true)
+
+    // world - local = delta
+
     const positionOffset = _position.clone().sub(object3d.position)
     object3d.userData.positionOffset = positionOffset
 
-    rigidBody.setTranslation(_position, true)
-    rigidBody.setRotation(_quaternion, true)
+    const rotationOffset = _quaternion
+      .clone()
+      .invert()
+      .premultiply(object3d.quaternion)
+    object3d.userData.rotationOffset = rotationOffset
 
     bodies.set(rigidBody.handle, object3d)
 
@@ -334,9 +342,9 @@ export interface ColliderProps extends Omit<Object3DProps, 'args'> {
   friction?: number
   restitution?: number
   density?: number
-  onCollision?: CollideEventCallback
-  onCollisionEnter?: CollideEventCallback
-  onCollisionExit?: CollideEventCallback
+  onCollision?: CollisionEventCallback
+  onCollisionEnter?: CollisionEventCallback
+  onCollisionExit?: CollisionEventCallback
 }
 
 export function useCollider<
@@ -402,7 +410,7 @@ export function useCollider<
         shouldListenForContactEvents ||
         shouldCollidersListenForContactEvents
       ) {
-        colliderDesc.setActiveEvents(RAPIER.ActiveEvents.CONTACT_EVENTS)
+        colliderDesc.setActiveEvents(RAPIER.ActiveEvents.COLLISION_EVENTS)
       }
 
       colliderRef.current = world.createCollider(
