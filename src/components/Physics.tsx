@@ -62,8 +62,8 @@ function uuid(type: string, id: number) {
 export interface PhysicsContextValue {
   worldRef: MutableRefObject<() => RAPIER.World>
   debug: boolean
-  bodies: Map<number, Object3D>
-  colliders: Map<number, Object3D>
+  rigidBodyMeshes: Map<number, Object3D>
+  colliderMeshes: Map<number, Object3D>
   events: Map<
     string,
     {
@@ -119,8 +119,8 @@ export function Physics({ children, debug = false }: PhysicsProps) {
   }, [])
 
   const eventQueue = useConstant(() => new RAPIER.EventQueue(true))
-  const bodies = useConstant(() => new Map<number, Object3D>())
-  const colliders = useConstant(() => new Map<number, Object3D>())
+  const rigidBodyMeshes = useConstant(() => new Map<number, Object3D>())
+  const colliderMeshes = useConstant(() => new Map<number, Object3D>())
   const events = useConstant<PhysicsContextValue['events']>(() => new Map())
 
   // TODO: investigate using a fixed update frequency + fix 60 vs 120 hz.
@@ -132,7 +132,7 @@ export function Physics({ children, debug = false }: PhysicsProps) {
 
     world.forEachRigidBody((rigidBody) => {
       if (rigidBody.isSleeping() || rigidBody.isFixed()) return
-      const object3d = bodies.get(rigidBody.handle)
+      const object3d = rigidBodyMeshes.get(rigidBody.handle)
       if (!object3d) return
 
       const positionOffset = object3d.userData?.positionOffset as
@@ -147,7 +147,7 @@ export function Physics({ children, debug = false }: PhysicsProps) {
 
       object3d.quaternion.set(r.x, r.y, r.z, r.w)
       if (rotationOffset) {
-        object3d.quaternion.multiply(rotationOffset)
+        object3d.quaternion.premultiply(rotationOffset)
       }
 
       object3d.position.set(t.x, t.y, t.z)
@@ -165,10 +165,10 @@ export function Physics({ children, debug = false }: PhysicsProps) {
       const bodyEvent1 = events.get(uuid('rigidBody', body1Handle))
       const bodyEvent2 = events.get(uuid('rigidBody', body2Handle))
 
-      const collider1 = colliders.get(handle1)
-      const collider2 = colliders.get(handle2)
-      const body1 = bodies.get(body1Handle)
-      const body2 = bodies.get(body2Handle)
+      const collider1 = colliderMeshes.get(handle1)
+      const collider2 = colliderMeshes.get(handle2)
+      const body1 = rigidBodyMeshes.get(body1Handle)
+      const body2 = rigidBodyMeshes.get(body2Handle)
 
       if (started) {
         collider1 && event1?.onCollisionEnter?.({ target: collider1 })
@@ -185,8 +185,14 @@ export function Physics({ children, debug = false }: PhysicsProps) {
   })
 
   const context = useMemo<PhysicsContextValue>(
-    () => ({ worldRef: worldGetter, debug, bodies, colliders, events }),
-    [bodies, colliders, debug, events],
+    () => ({
+      worldRef: worldGetter,
+      debug,
+      rigidBodyMeshes,
+      colliderMeshes,
+      events,
+    }),
+    [rigidBodyMeshes, colliderMeshes, debug, events],
   )
 
   return (
@@ -225,13 +231,13 @@ export interface RigidBodyApi extends RAPIER.RigidBody {}
 function createRigidBodyDesc(type: RigidBodyType): RAPIER.RigidBodyDesc {
   switch (type) {
     case 'dynamic':
-      return RAPIER.RigidBodyDesc.newDynamic()
+      return RAPIER.RigidBodyDesc.dynamic()
     case 'static':
-      return RAPIER.RigidBodyDesc.newStatic()
+      return RAPIER.RigidBodyDesc.fixed()
     case 'kinematic-velocity-based':
-      return RAPIER.RigidBodyDesc.newKinematicVelocityBased()
+      return RAPIER.RigidBodyDesc.kinematicVelocityBased()
     case 'kinematic-position-based':
-      return RAPIER.RigidBodyDesc.newKinematicPositionBased()
+      return RAPIER.RigidBodyDesc.kinematicPositionBased()
     default:
       throw new Error(`Unsupported RigidBody.type: "${type}"`)
   }
@@ -252,7 +258,7 @@ export const RigidBody = forwardRef(function RigidBody(
   }: RigidBodyProps,
   ref?: ForwardedRef<RigidBodyApi | null>,
 ) {
-  const { worldRef, bodies, events } = usePhysicsContext()
+  const { worldRef, rigidBodyMeshes, events } = usePhysicsContext()
   const object3dRef = useRef<Object3D>()
   const rigidBodyRef = useRef<RAPIER.RigidBody | null>(null)
 
@@ -288,7 +294,7 @@ export const RigidBody = forwardRef(function RigidBody(
       .premultiply(object3d.quaternion)
     object3d.userData.rotationOffset = rotationOffset
 
-    bodies.set(rigidBody.handle, object3d)
+    rigidBodyMeshes.set(rigidBody.handle, object3d)
 
     return () => {
       if (rigidBodyRef.current !== null) {
@@ -296,11 +302,11 @@ export const RigidBody = forwardRef(function RigidBody(
         if (world.getRigidBody(rigidBody.handle)) {
           world.removeRigidBody(rigidBody)
         }
-        bodies.delete(rigidBody.handle)
+        rigidBodyMeshes.delete(rigidBody.handle)
         rigidBodyRef.current = null
       }
     }
-  }, [bodies, worldRef])
+  }, [rigidBodyMeshes, worldRef])
 
   useEffect(() => {
     if (!onCollision) return
@@ -362,7 +368,7 @@ export function useCollider<
     onCollisionEnter,
     onCollisionExit,
   } = props
-  const { worldRef, events, colliders, debug } = usePhysicsContext()
+  const { worldRef, events, colliderMeshes, debug } = usePhysicsContext()
   const { rigidBodyRef, shouldCollidersListenForContactEvents } =
     useContext(RigidBodyContext) || {}
   const shouldListenForContactEvents = !!onCollision
@@ -441,7 +447,7 @@ export function useCollider<
     // collider.setTranslation(object3d.position)
     // collider.setRotation(object3d.quaternion)
 
-    colliders.set(collider.handle, object3d)
+    colliderMeshes.set(collider.handle, object3d)
 
     return () => {
       if (colliderRef.current === null) {
@@ -449,11 +455,11 @@ export function useCollider<
         if (world.getCollider(collider.handle)) {
           world.removeCollider(collider, true)
         }
-        colliders.delete(collider.handle)
+        colliderMeshes.delete(collider.handle)
         colliderRef.current = null
       }
     }
-  }, [colliders, object3dRef, worldRef])
+  }, [colliderMeshes, object3dRef, worldRef])
 
   useEffect(() => {
     if (!onCollision) return

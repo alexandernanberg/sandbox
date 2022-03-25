@@ -10,7 +10,7 @@ import { Canvas, useFrame } from '@react-three/fiber'
 import { button, useControls } from 'leva'
 import { Suspense, useRef, useState } from 'react'
 import seedrandom from 'seedrandom'
-import { RepeatWrapping } from 'three'
+import { Euler, Quaternion, RepeatWrapping } from 'three'
 import {
   DirectionalLight,
   HemisphereLight,
@@ -35,7 +35,7 @@ import Stone from './models/Stone'
 export function Root() {
   return (
     <>
-      <Canvas camera={{ position: [5, 4, 8] }} shadows>
+      <Canvas camera={{ position: [6, 6, -4] }} shadows>
         <Suspense fallback={null}>
           <App />
         </Suspense>
@@ -70,13 +70,16 @@ export function App() {
     },
   })
 
+  const q1 = new Quaternion().setFromEuler(new Euler(0, 0.5, 0))
+  const q2 = new Quaternion().setFromEuler(new Euler(0, -0.5, 0))
+
   return (
     <LightProvider debug={lightsControl.debug}>
       <Stats />
       <fog attach="fog" args={[0xffffff, 10, 90]} />
       <Sky />
 
-      <OrbitControls target={[0, 0, 12]} />
+      <OrbitControls target={[0, 0, 0]} />
 
       <Physics debug={physicsControls.debug} key={physicsKey}>
         <Floor />
@@ -105,7 +108,21 @@ export function App() {
             </mesh>
           </CuboidCollider>
         </RigidBody>
-        <RigidBody position={[3, 3, 12.5]} scale={0.5}>
+
+        <group position={[3, 3, 0]}>
+          <RigidBody rotation={[0, Math.PI / 3, 0]}>
+            <CuboidCollider args={[1, 1, 1]}>
+              <mesh castShadow receiveShadow>
+                <boxGeometry args={[1, 1, 1]} />
+                <meshPhongMaterial color="red" />
+              </mesh>
+            </CuboidCollider>
+          </RigidBody>
+        </group>
+
+        <Slopes position={[0, 0, 12]} />
+
+        <RigidBody position={[-7, 12, 0]}>
           <CuboidCollider args={[1, 1, 1]}>
             <mesh castShadow receiveShadow>
               <boxGeometry args={[1, 1, 1]} />
@@ -113,8 +130,6 @@ export function App() {
             </mesh>
           </CuboidCollider>
         </RigidBody>
-
-        <Slopes position={[0, 0, 12]} />
 
         <group position={[-6, 0, 0]}>
           <Tower />
@@ -259,16 +274,16 @@ function Floor() {
   const size = 30
   const textureRepeat = 30 / 2 / 2
   const tileTexture = useTexture(
-    'https://cdn.jsdelivr.net/gh/pmndrs/drei-assets@latest/prototype/dark/texture_08.png',
+    'https://cdn.jsdelivr.net/gh/pmndrs/drei-assets@latest/prototype/light/texture_08.png',
   )
   tileTexture.wrapS = tileTexture.wrapT = RepeatWrapping
   tileTexture.repeat.set(textureRepeat, textureRepeat)
 
   return (
-    <RigidBody type="static" position={[0, -0.5, 0]}>
-      <CuboidCollider args={[size, 1, size]}>
-        <mesh castShadow receiveShadow>
-          <boxGeometry args={[size, 1, size]} />
+    <RigidBody type="static" position={[0, 0, 0]}>
+      <CuboidCollider args={[size, 0, size]}>
+        <mesh castShadow receiveShadow rotation-x={Math.PI / -2}>
+          <planeGeometry args={[size, size]} />
           <meshStandardMaterial map={tileTexture} />
         </mesh>
       </CuboidCollider>
