@@ -15,22 +15,22 @@ import {
   DirectionalLight,
   HemisphereLight,
   LightProvider,
-} from './components/Lights'
+} from './components/lights'
 import type {
   CuboidColliderProps,
   RigidBodyApi,
   RigidBodyProps,
-} from './components/Physics'
+} from './components/physics'
 import {
   BallCollider,
   ConeCollider,
   CuboidCollider,
   Physics,
   RigidBody,
-} from './components/Physics'
-import Ramp from './models/Ramp'
-import Slope from './models/Slope'
-import Stone from './models/Stone'
+} from './components/physics'
+import Ramp from './models/ramp'
+import Slope from './models/slope'
+import Stone from './models/stone'
 
 export function Root() {
   return (

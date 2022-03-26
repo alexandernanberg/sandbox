@@ -1,15 +1,13 @@
 import { useHelper } from '@react-three/drei'
 import type { ReactNode } from 'react'
 import { createContext, useContext, useEffect, useMemo, useRef } from 'react'
-import {
+import type {
   Camera,
-  CameraHelper,
   DirectionalLight as ThreeDirectionalLight,
   HemisphereLight as ThreeHemisphereLight,
-  HemisphereLightHelper,
   SpotLight as ThreeSpotLight,
-  SpotLightHelper,
 } from 'three'
+import { CameraHelper, HemisphereLightHelper, SpotLightHelper } from 'three'
 
 interface LightsContextValue {
   debug: boolean

@@ -2,8 +2,9 @@
 
 TODOs
 
-- Parent scale
-- Parent rotation
+- Physics
+  - Parent scale
+  - Parent rotation
 - Create playground
 - 3rd person controller
   - Move body
