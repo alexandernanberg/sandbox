@@ -1,5 +1,5 @@
 import { createRoot } from 'react-dom/client'
-import { Root } from './App'
+import { Root } from './app'
 import './index.css'
 
 // eslint-disable-next-line @typescript-eslint/no-non-null-assertion

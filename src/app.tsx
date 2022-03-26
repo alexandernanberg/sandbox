@@ -110,7 +110,7 @@ export function App() {
         </RigidBody>
 
         <group position={[3, 3, 0]}>
-          <RigidBody rotation={[0, Math.PI / 3, 0]}>
+          <RigidBody rotation={[0, 0.5, 0]}>
             <CuboidCollider args={[1, 1, 1]}>
               <mesh castShadow receiveShadow>
                 <boxGeometry args={[1, 1, 1]} />
@@ -177,18 +177,6 @@ export function App() {
 function Ball(props: RigidBodyProps) {
   const colors = ['red', 'green', 'blue', 'yellow', 'purple']
   const [color, setColor] = useState(colors[0])
-
-  // useLayoutEffect(() => {
-  //   console.log('layout effect')
-  // }, [])
-
-  // useEffect(() => {
-  //   console.log('effect')
-  // }, [])
-
-  // useFrame(() => {
-  //   console.log('frame')
-  // })
 
   return (
     <RigidBody
