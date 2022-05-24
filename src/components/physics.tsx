@@ -1,5 +1,5 @@
 import * as RAPIER from '@dimforge/rapier3d-compat'
-import type { Object3DNode } from '@react-three/fiber'
+import type { Object3DProps } from '@react-three/fiber'
 import { useFrame, useThree } from '@react-three/fiber'
 import type {
   ForwardedRef,
@@ -33,24 +33,12 @@ import {
 } from 'three'
 import { useConstant } from '../utils'
 
-// Temporary solution until the PR is merged.
-// https://github.com/pmndrs/react-three-fiber/pull/2099#issuecomment-1050891821
-export type Object3DProps = Object3DNode<Object3D, typeof Object3D>
-declare global {
-  // eslint-disable-next-line @typescript-eslint/no-namespace
-  namespace JSX {
-    interface IntrinsicElements {
-      object3D: Object3DProps
-    }
-  }
-}
-
 interface CollisionEvent {
   target: Object3D
 }
 type CollisionEventCallback = (event: CollisionEvent) => void
 
-// TODO: number for perf
+// TODO: number or bitmask for perf
 function uuid(type: string, id: number) {
   return `${type}:${id}`
 }
@@ -160,6 +148,8 @@ export function Physics({ children, debug = false }: PhysicsProps) {
       const body1Handle = world.getCollider(handle1).parent()
       const body2Handle = world.getCollider(handle2).parent()
 
+      if (!body1Handle || !body2Handle) return
+
       const event1 = events.get(uuid('collider', handle1))
       const event2 = events.get(uuid('collider', handle2))
       const bodyEvent1 = events.get(uuid('rigidBody', body1Handle))
@@ -259,7 +249,7 @@ export const RigidBody = forwardRef(function RigidBody(
   ref?: ForwardedRef<RigidBodyApi | null>,
 ) {
   const { worldRef, rigidBodyMeshes, events } = usePhysicsContext()
-  const object3dRef = useRef<Object3D>()
+  const object3dRef = useRef<Object3D>(null)
   const rigidBodyRef = useRef<RAPIER.RigidBody | null>(null)
 
   const rigidBodyGetter = useRef(() => {
@@ -527,7 +517,7 @@ export function CuboidCollider({
   ...props
 }: CuboidColliderProps) {
   const [width, height, depth] = args
-  const object3dRef = useRef<Object3D>()
+  const object3dRef = useRef<Object3D>(null)
 
   useCollider(
     (scale) =>
@@ -559,7 +549,7 @@ export interface BallColliderProps extends ColliderProps {
 
 export function BallCollider({ children, args, ...props }: BallColliderProps) {
   const [radius] = args
-  const object3dRef = useRef<Object3D>()
+  const object3dRef = useRef<Object3D>(null)
 
   useCollider(
     (scale) => RAPIER.ColliderDesc.ball(radius * scale.x),
@@ -590,7 +580,7 @@ export function CylinderCollider({
   ...props
 }: CylinderColliderProps) {
   const [radius, height] = args
-  const object3dRef = useRef<Object3D>()
+  const object3dRef = useRef<Object3D>(null)
 
   useCollider(
     (scale) =>
@@ -620,7 +610,7 @@ export function CapsuleCollider({
   ...props
 }: CapsuleColliderProps) {
   const [radius, height] = args
-  const object3dRef = useRef<Object3D>()
+  const object3dRef = useRef<Object3D>(null)
 
   useCollider(
     (scale) =>
@@ -646,7 +636,7 @@ export interface ConeColliderProps extends ColliderProps {
 
 export function ConeCollider({ children, args, ...props }: ConeColliderProps) {
   const [radius, height] = args
-  const object3dRef = useRef<Object3D>()
+  const object3dRef = useRef<Object3D>(null)
 
   useCollider(
     (scale) =>
@@ -676,7 +666,7 @@ export function ConvexMeshCollider({
   ...props
 }: ConvexMeshColliderProps) {
   const [vertices, indices] = args
-  const object3dRef = useRef<Object3D>()
+  const object3dRef = useRef<Object3D>(null)
 
   useCollider(
     () => RAPIER.ColliderDesc.convexMesh(vertices, indices),
@@ -705,7 +695,7 @@ export function ConvexHullCollider({
   ...props
 }: ConvexHullColliderProps) {
   const [points] = args
-  const object3dRef = useRef<Object3D>()
+  const object3dRef = useRef<Object3D>(null)
 
   useCollider(
     (scale) =>
@@ -748,7 +738,7 @@ export function TrimeshCollider({
   ...props
 }: TrimeshColliderProps) {
   const [vertices, indices] = args
-  const object3dRef = useRef<Object3D>()
+  const object3dRef = useRef<Object3D>(null)
 
   useCollider(
     () => RAPIER.ColliderDesc.trimesh(vertices, indices),
@@ -782,7 +772,7 @@ export function HeightfieldCollider({
   ...props
 }: HeightfieldColliderProps) {
   const [nrows, ncols, heights, scale] = args
-  const object3dRef = useRef<Object3D>()
+  const object3dRef = useRef<Object3D>(null)
 
   useCollider(
     () => RAPIER.ColliderDesc.heightfield(nrows, ncols, heights, scale),

@@ -31,11 +31,11 @@ export function DirectionalLight(
   props: JSX.IntrinsicElements['directionalLight'],
 ) {
   const { debug } = useContext(LightContext)
-  const ref = useRef<ThreeDirectionalLight>()
-  const cameraRef = useRef<Camera>()
+  const ref = useRef<ThreeDirectionalLight>(null)
+  const cameraRef = useRef<Camera | null>(null)
 
   useEffect(() => {
-    cameraRef.current = ref.current?.shadow.camera
+    cameraRef.current = ref.current?.shadow.camera ?? null
   }, [])
 
   useHelper(debug && cameraRef, CameraHelper)
@@ -45,7 +45,7 @@ export function DirectionalLight(
 
 export function SpotLight(props: JSX.IntrinsicElements['spotLight']) {
   const { debug } = useContext(LightContext)
-  const ref = useRef<ThreeSpotLight>()
+  const ref = useRef<ThreeSpotLight>(null)
 
   useHelper(debug && ref, SpotLightHelper, 0xff0000)
 
@@ -56,7 +56,7 @@ export function HemisphereLight(
   props: JSX.IntrinsicElements['hemisphereLight'],
 ) {
   const { debug } = useContext(LightContext)
-  const ref = useRef<ThreeHemisphereLight>()
+  const ref = useRef<ThreeHemisphereLight>(null)
 
   useHelper(debug && ref, HemisphereLightHelper, 1, 0xff0000)
 
