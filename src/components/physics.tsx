@@ -10,6 +10,7 @@ import type {
 import {
   createContext,
   forwardRef,
+  useCallback,
   useContext,
   useEffect,
   useImperativeHandle,
@@ -64,7 +65,7 @@ const PhysicsContext = createContext<PhysicsContextValue | null>(null)
 function usePhysicsContext() {
   const context = useContext(PhysicsContext)
 
-  if (!context) {
+  if (context == null) {
     throw new Error(
       'usePhysicsContext() may be used only in the context of a <Physics> component.',
     )
@@ -111,9 +112,11 @@ export function Physics({ children, debug = false }: PhysicsProps) {
   const colliderEvents = useConstant<EventMap>(() => new Map())
 
   // TODO: investigate using a fixed update frequency + fix 60 vs 120 hz.
-  useFrame(() => {
+  useFrame((state, delta) => {
     const world = worldGetter.current()
-    if (!world) return
+    if (world == null) return
+
+    world.timestep = delta
 
     world.step(eventQueue)
 
@@ -144,35 +147,24 @@ export function Physics({ children, debug = false }: PhysicsProps) {
     })
 
     eventQueue.drainCollisionEvents((handle1, handle2, started) => {
-      const body1Handle = world.getCollider(handle1).parent()
-      const body2Handle = world.getCollider(handle2).parent()
-
-      if (!body1Handle || !body2Handle) return
-
-      // TODO: investigate why event's aren't triggered when colliding with a
-      // fixed body.
-
-      const event1 = colliderEvents.get(handle1)
-      const event2 = colliderEvents.get(handle2)
-      const bodyEvent1 = rigidBodyEvents.get(body1Handle)
-      const bodyEvent2 = rigidBodyEvents.get(body2Handle)
-
-      const collider1 = colliderMeshes.get(handle1)
-      const collider2 = colliderMeshes.get(handle2)
-      const body1 = rigidBodyMeshes.get(body1Handle)
-      const body2 = rigidBodyMeshes.get(body2Handle)
-
-      if (started) {
-        collider1 && event1?.onCollisionEnter?.({ target: collider1 })
-        collider2 && event2?.onCollisionEnter?.({ target: collider2 })
-        body1 && bodyEvent1?.onCollisionEnter?.({ target: body1 })
-        body2 && bodyEvent2?.onCollisionEnter?.({ target: body2 })
-      } else {
-        collider1 && event1?.onCollisionExit?.({ target: collider1 })
-        collider2 && event2?.onCollisionExit?.({ target: collider2 })
-        body1 && bodyEvent1?.onCollisionExit?.({ target: body1 })
-        body2 && bodyEvent2?.onCollisionExit?.({ target: body2 })
-      }
+      handleCollisionEvent(
+        world,
+        handle1,
+        colliderEvents,
+        colliderMeshes,
+        rigidBodyEvents,
+        rigidBodyMeshes,
+        started,
+      )
+      handleCollisionEvent(
+        world,
+        handle2,
+        colliderEvents,
+        colliderMeshes,
+        rigidBodyEvents,
+        rigidBodyMeshes,
+        started,
+      )
     })
   })
 
@@ -193,6 +185,33 @@ export function Physics({ children, debug = false }: PhysicsProps) {
       {children}
     </PhysicsContext.Provider>
   )
+}
+
+function handleCollisionEvent(
+  world: RAPIER.World,
+  colliderHandle: number,
+  colliderEvents: EventMap,
+  colliderMeshes: Map<number, Object3D>,
+  rigidBodyEvents: EventMap,
+  rigidBodyMeshes: Map<number, Object3D>,
+  started: boolean,
+) {
+  const collider = colliderMeshes.get(colliderHandle)
+  const colliderEvent = colliderEvents.get(colliderHandle)
+
+  const rigidBodyHandle = world.getCollider(colliderHandle).parent()
+  const rigidBody =
+    rigidBodyHandle != null ? rigidBodyMeshes.get(rigidBodyHandle) : null
+  const rigidBodyEvent =
+    rigidBodyHandle != null ? rigidBodyEvents.get(rigidBodyHandle) : null
+
+  if (started) {
+    collider && colliderEvent?.onCollisionEnter?.({ target: collider })
+    rigidBody && rigidBodyEvent?.onCollisionEnter?.({ target: rigidBody })
+  } else {
+    collider && colliderEvent?.onCollisionExit?.({ target: collider })
+    rigidBody && rigidBodyEvent?.onCollisionExit?.({ target: rigidBody })
+  }
 }
 
 ///////////////////////////////////////////////////////////////
@@ -245,8 +264,8 @@ export const RigidBody = forwardRef(function RigidBody(
     type = 'dynamic',
     children,
     onCollision,
-    onCollisionEnter,
-    onCollisionExit,
+    onCollisionEnter = noop,
+    onCollisionExit = noop,
     ...props
   }: RigidBodyProps,
   ref?: ForwardedRef<RigidBodyApi | null>,
@@ -266,7 +285,7 @@ export const RigidBody = forwardRef(function RigidBody(
 
   useLayoutEffect(() => {
     const object3d = object3dRef.current
-    if (!object3d) return
+    if (object3d === null) return
     const world = worldRef.current()
     const rigidBody = rigidBodyGetter.current()
 
@@ -301,16 +320,20 @@ export const RigidBody = forwardRef(function RigidBody(
     }
   }, [rigidBodyMeshes, worldRef])
 
+  const onCollisionEnterHandler = useEvent(onCollision || onCollisionEnter)
+  const onCollisionExitHandler = useEvent(onCollisionExit)
+
   useEffect(() => {
     const rigidBody = rigidBodyGetter.current()
     rigidBodyEvents.set(rigidBody.handle, {
-      onCollisionEnter: onCollisionEnter || onCollision,
-      onCollisionExit,
+      onCollisionEnter: onCollisionEnterHandler,
+      onCollisionExit: onCollisionExitHandler,
     })
     return () => void rigidBodyEvents.delete(rigidBody.handle)
-  })
+  }, [onCollisionEnterHandler, onCollisionExitHandler, rigidBodyEvents])
 
-  const hasEventListeners = !!onCollision
+  const hasEventListeners =
+    !!onCollision || !!onCollisionEnter || !!onCollisionExit
 
   const context = useMemo<RigidBodyContextValue>(
     () => ({
@@ -356,8 +379,8 @@ export function useCollider<
     restitution,
     density,
     onCollision,
-    onCollisionEnter,
-    onCollisionExit,
+    onCollisionEnter = noop,
+    onCollisionExit = noop,
   } = props
   const { worldRef, colliderEvents, colliderMeshes, debug } =
     usePhysicsContext()
@@ -374,7 +397,7 @@ export function useCollider<
       const rigidBody = rigidBodyRef?.current()
       const scale = scaleRef.current
 
-      if (!scale) {
+      if (scale == null) {
         throw new Error('Unable to create collider. Missing "scale"')
       }
 
@@ -421,7 +444,7 @@ export function useCollider<
 
   useLayoutEffect(() => {
     const object3d = object3dRef.current
-    if (!object3d) return
+    if (object3d == null) return
 
     object3d.updateWorldMatrix(true, false)
     object3d.matrixWorld.decompose(_position, _quaternion, _scale)
@@ -453,22 +476,23 @@ export function useCollider<
     }
   }, [colliderMeshes, object3dRef, worldRef])
 
-  // TODO: investigate if `useEvent` allows us to only set the callbacks once
-  // and not every render.
+  const onCollisionEnterHandler = useEvent(onCollision || onCollisionEnter)
+  const onCollisionExitHandler = useEvent(onCollisionExit)
+
   useEffect(() => {
     const collider = colliderGetter.current()
     colliderEvents.set(collider.handle, {
-      onCollisionEnter: onCollisionEnter || onCollision,
-      onCollisionExit,
+      onCollisionEnter: onCollisionEnterHandler,
+      onCollisionExit: onCollisionExitHandler,
     })
     return () => void colliderEvents.delete(collider.handle)
-  })
+  }, [colliderEvents, onCollisionEnterHandler, onCollisionExitHandler])
 
   const scene = useThree((state) => state.scene)
   const meshRef = useRef<Mesh | null>(null)
 
   useLayoutEffect(() => {
-    if (!debug) return
+    if (debug === false) return
     const collider = colliderGetter.current()
     const mesh = (meshRef.current = meshFromCollider(collider))
 
@@ -490,10 +514,10 @@ export function useCollider<
 
   // TODO: investigate if this can be moved to <Physics>
   useFrame(() => {
-    if (!debug) return
+    if (debug === false) return
     const collider = colliderGetter.current()
     const mesh = meshRef.current
-    if (!mesh) return
+    if (mesh == null) return
 
     const position = collider.translation()
     const rotation = collider.rotation()
@@ -787,6 +811,28 @@ export function HeightfieldCollider({
       {children}
     </object3D>
   )
+}
+
+///////////////////////////////////////////////////////////////
+// Utils
+///////////////////////////////////////////////////////////////
+
+function noop() {
+  // noop
+}
+
+// Based on https://github.com/reactjs/rfcs/pull/220
+function useEvent<T extends (...args: any[]) => any>(handler: T) {
+  const handlerRef = useRef<T | null>(null)
+
+  useLayoutEffect(() => {
+    handlerRef.current = handler
+  })
+
+  return useCallback((...args: any[]) => {
+    const fn = handlerRef.current
+    return fn?.(...args)
+  }, [])
 }
 
 ///////////////////////////////////////////////////////////////
