@@ -38,27 +38,25 @@ interface CollisionEvent {
 }
 type CollisionEventCallback = (event: CollisionEvent) => void
 
-// TODO: number or bitmask for perf
-function uuid(type: string, id: number) {
-  return `${type}:${id}`
-}
-
 ///////////////////////////////////////////////////////////////
 // PhysicsContext
 ///////////////////////////////////////////////////////////////
+
+type EventMap = Map<
+  number,
+  {
+    onCollisionEnter?: CollisionEventCallback
+    onCollisionExit?: CollisionEventCallback
+  }
+>
 
 export interface PhysicsContextValue {
   worldRef: MutableRefObject<() => RAPIER.World>
   debug: boolean
   rigidBodyMeshes: Map<number, Object3D>
   colliderMeshes: Map<number, Object3D>
-  events: Map<
-    string,
-    {
-      onCollisionEnter?: CollisionEventCallback
-      onCollisionExit?: CollisionEventCallback
-    }
-  >
+  rigidBodyEvents: EventMap
+  colliderEvents: EventMap
 }
 
 const PhysicsContext = createContext<PhysicsContextValue | null>(null)
@@ -109,7 +107,8 @@ export function Physics({ children, debug = false }: PhysicsProps) {
   const eventQueue = useConstant(() => new RAPIER.EventQueue(true))
   const rigidBodyMeshes = useConstant(() => new Map<number, Object3D>())
   const colliderMeshes = useConstant(() => new Map<number, Object3D>())
-  const events = useConstant<PhysicsContextValue['events']>(() => new Map())
+  const rigidBodyEvents = useConstant<EventMap>(() => new Map())
+  const colliderEvents = useConstant<EventMap>(() => new Map())
 
   // TODO: investigate using a fixed update frequency + fix 60 vs 120 hz.
   useFrame(() => {
@@ -150,10 +149,13 @@ export function Physics({ children, debug = false }: PhysicsProps) {
 
       if (!body1Handle || !body2Handle) return
 
-      const event1 = events.get(uuid('collider', handle1))
-      const event2 = events.get(uuid('collider', handle2))
-      const bodyEvent1 = events.get(uuid('rigidBody', body1Handle))
-      const bodyEvent2 = events.get(uuid('rigidBody', body2Handle))
+      // TODO: investigate why event's aren't triggered when colliding with a
+      // fixed body.
+
+      const event1 = colliderEvents.get(handle1)
+      const event2 = colliderEvents.get(handle2)
+      const bodyEvent1 = rigidBodyEvents.get(body1Handle)
+      const bodyEvent2 = rigidBodyEvents.get(body2Handle)
 
       const collider1 = colliderMeshes.get(handle1)
       const collider2 = colliderMeshes.get(handle2)
@@ -180,9 +182,10 @@ export function Physics({ children, debug = false }: PhysicsProps) {
       debug,
       rigidBodyMeshes,
       colliderMeshes,
-      events,
+      colliderEvents,
+      rigidBodyEvents,
     }),
-    [rigidBodyMeshes, colliderMeshes, debug, events],
+    [debug, rigidBodyMeshes, colliderMeshes, colliderEvents, rigidBodyEvents],
   )
 
   return (
@@ -248,7 +251,7 @@ export const RigidBody = forwardRef(function RigidBody(
   }: RigidBodyProps,
   ref?: ForwardedRef<RigidBodyApi | null>,
 ) {
-  const { worldRef, rigidBodyMeshes, events } = usePhysicsContext()
+  const { worldRef, rigidBodyMeshes, rigidBodyEvents } = usePhysicsContext()
   const object3dRef = useRef<Object3D>(null)
   const rigidBodyRef = useRef<RAPIER.RigidBody | null>(null)
 
@@ -299,14 +302,12 @@ export const RigidBody = forwardRef(function RigidBody(
   }, [rigidBodyMeshes, worldRef])
 
   useEffect(() => {
-    if (!onCollision) return
     const rigidBody = rigidBodyGetter.current()
-    const id = uuid('rigidBody', rigidBody.handle)
-    events.set(id, {
+    rigidBodyEvents.set(rigidBody.handle, {
       onCollisionEnter: onCollisionEnter || onCollision,
       onCollisionExit,
     })
-    return () => void events.delete(id)
+    return () => void rigidBodyEvents.delete(rigidBody.handle)
   })
 
   const hasEventListeners = !!onCollision
@@ -331,7 +332,7 @@ export const RigidBody = forwardRef(function RigidBody(
 })
 
 ///////////////////////////////////////////////////////////////
-// Colliders
+// Collider
 ///////////////////////////////////////////////////////////////
 
 export interface ColliderProps extends Omit<Object3DProps, 'args'> {
@@ -358,7 +359,8 @@ export function useCollider<
     onCollisionEnter,
     onCollisionExit,
   } = props
-  const { worldRef, events, colliderMeshes, debug } = usePhysicsContext()
+  const { worldRef, colliderEvents, colliderMeshes, debug } =
+    usePhysicsContext()
   const { rigidBodyRef, shouldCollidersListenForContactEvents } =
     useContext(RigidBodyContext) || {}
   const shouldListenForContactEvents = !!onCollision
@@ -451,15 +453,15 @@ export function useCollider<
     }
   }, [colliderMeshes, object3dRef, worldRef])
 
+  // TODO: investigate if `useEvent` allows us to only set the callbacks once
+  // and not every render.
   useEffect(() => {
-    if (!onCollision) return
     const collider = colliderGetter.current()
-    const id = uuid('collider', collider.handle)
-    events.set(id, {
+    colliderEvents.set(collider.handle, {
       onCollisionEnter: onCollisionEnter || onCollision,
       onCollisionExit,
     })
-    return () => void events.delete(id)
+    return () => void colliderEvents.delete(collider.handle)
   })
 
   const scene = useThree((state) => state.scene)
@@ -786,6 +788,10 @@ export function HeightfieldCollider({
     </object3D>
   )
 }
+
+///////////////////////////////////////////////////////////////
+// Mesh utils
+///////////////////////////////////////////////////////////////
 
 function meshFromCollider(collider: RAPIER.Collider): Mesh {
   switch (collider.shapeType()) {
