@@ -1,13 +1,20 @@
 # Playground
 
-TODOs
+> A playground to try out 3d tech
 
-- Physics
-  - Parent scale
-  - Parent rotation
-- Create playground
-- 3rd person controller
-  - Move body
-  - Camera
-    - Dont clip meshes
-- Shoot bodies
+## Roadmap
+
+### Physics
+
+- [ ] Fix bugs with initial body rotation
+- [ ] Add joints
+- [ ] Ray casting
+
+### Character controller
+
+- [ ] Movement
+
+### Camera
+
+- [ ] 3rd person camera (similar to GTA)
+- [ ] Don't clip into objects
