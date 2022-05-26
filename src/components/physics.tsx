@@ -54,10 +54,11 @@ type EventMap = Map<
 export interface PhysicsContextValue {
   worldRef: MutableRefObject<() => RAPIER.World>
   debug: boolean
-  rigidBodyMeshes: Map<number, Object3D>
   colliderMeshes: Map<number, Object3D>
-  rigidBodyEvents: EventMap
   colliderEvents: EventMap
+  colliderDebugMeshes: Map<number, Object3D>
+  rigidBodyMeshes: Map<number, Object3D>
+  rigidBodyEvents: EventMap
 }
 
 const PhysicsContext = createContext<PhysicsContextValue | null>(null)
@@ -106,10 +107,11 @@ export function Physics({ children, debug = false }: PhysicsProps) {
   }, [])
 
   const eventQueue = useConstant(() => new RAPIER.EventQueue(true))
-  const rigidBodyMeshes = useConstant(() => new Map<number, Object3D>())
   const colliderMeshes = useConstant(() => new Map<number, Object3D>())
-  const rigidBodyEvents = useConstant<EventMap>(() => new Map())
   const colliderEvents = useConstant<EventMap>(() => new Map())
+  const colliderDebugMeshes = useConstant(() => new Map<number, Object3D>())
+  const rigidBodyMeshes = useConstant(() => new Map<number, Object3D>())
+  const rigidBodyEvents = useConstant<EventMap>(() => new Map())
 
   // TODO: investigate using a fixed update frequency + fix 60 vs 120 hz.
   useFrame((state, delta) => {
@@ -146,6 +148,19 @@ export function Physics({ children, debug = false }: PhysicsProps) {
       }
     })
 
+    if (debug) {
+      world.forEachCollider((collider) => {
+        const mesh = colliderDebugMeshes.get(collider.handle)
+        if (mesh == null) return
+
+        const position = collider.translation()
+        const rotation = collider.rotation()
+
+        mesh.position.set(position.x, position.y, position.z)
+        mesh.quaternion.set(rotation.x, rotation.y, rotation.z, rotation.w)
+      })
+    }
+
     eventQueue.drainCollisionEvents((handle1, handle2, started) => {
       handleCollisionEvent(
         world,
@@ -172,12 +187,20 @@ export function Physics({ children, debug = false }: PhysicsProps) {
     () => ({
       worldRef: worldGetter,
       debug,
-      rigidBodyMeshes,
       colliderMeshes,
       colliderEvents,
+      colliderDebugMeshes,
+      rigidBodyMeshes,
       rigidBodyEvents,
     }),
-    [debug, rigidBodyMeshes, colliderMeshes, colliderEvents, rigidBodyEvents],
+    [
+      debug,
+      rigidBodyMeshes,
+      rigidBodyEvents,
+      colliderMeshes,
+      colliderEvents,
+      colliderDebugMeshes,
+    ],
   )
 
   return (
@@ -220,7 +243,7 @@ function handleCollisionEvent(
 
 interface RigidBodyContextValue {
   rigidBodyRef: MutableRefObject<() => RAPIER.RigidBody>
-  shouldCollidersListenForContactEvents: boolean
+  listenForContactEvents: boolean
 }
 
 const RigidBodyContext = createContext<RigidBodyContextValue | null>(null)
@@ -338,7 +361,7 @@ export const RigidBody = forwardRef(function RigidBody(
   const context = useMemo<RigidBodyContextValue>(
     () => ({
       rigidBodyRef: rigidBodyGetter,
-      shouldCollidersListenForContactEvents: hasEventListeners,
+      listenForContactEvents: hasEventListeners,
     }),
     [hasEventListeners],
   )
@@ -382,13 +405,17 @@ export function useCollider<
     onCollisionEnter = noop,
     onCollisionExit = noop,
   } = props
-  const { worldRef, colliderEvents, colliderMeshes, debug } =
-    usePhysicsContext()
-  const { rigidBodyRef, shouldCollidersListenForContactEvents } =
+  const {
+    worldRef,
+    colliderEvents,
+    colliderMeshes,
+    colliderDebugMeshes,
+    debug,
+  } = usePhysicsContext()
+  const { rigidBodyRef, listenForContactEvents } =
     useContext(RigidBodyContext) || {}
-  const shouldListenForContactEvents = !!onCollision
-  const colliderRef = useRef<RAPIER.Collider | null>(null)
 
+  const colliderRef = useRef<RAPIER.Collider | null>(null)
   const scaleRef = useRef<Vector3 | null>(null)
 
   const colliderGetter = useRef((position?: Vector3, rotation?: Quaternion) => {
@@ -427,10 +454,10 @@ export function useCollider<
         colliderDesc.setRotation(rotation)
       }
 
-      if (
-        shouldListenForContactEvents ||
-        shouldCollidersListenForContactEvents
-      ) {
+      const listenForColliderContactEvents =
+        !!onCollision || !!onCollisionEnter || !!onCollisionExit
+
+      if (listenForContactEvents || listenForColliderContactEvents) {
         colliderDesc.setActiveEvents(RAPIER.ActiveEvents.COLLISION_EVENTS)
       }
 
@@ -489,16 +516,20 @@ export function useCollider<
   }, [colliderEvents, onCollisionEnterHandler, onCollisionExitHandler])
 
   const scene = useThree((state) => state.scene)
-  const meshRef = useRef<Mesh | null>(null)
 
   useLayoutEffect(() => {
     if (debug === false) return
     const collider = colliderGetter.current()
-    const mesh = (meshRef.current = meshFromCollider(collider))
+    const mesh = meshFromCollider(collider)
 
+    // Add debug mesh to the root of the scene to ensure it's rendered exactly
+    // in the same place as the physics object.
     scene.add(mesh)
+    colliderDebugMeshes.set(collider.handle, mesh)
 
     return () => {
+      colliderDebugMeshes.delete(collider.handle)
+      // TODO: do we really have to dispose geometry/materials manually?
       mesh.geometry.dispose()
       if (Array.isArray(mesh.material)) {
         for (const material of mesh.material) {
@@ -508,23 +539,8 @@ export function useCollider<
         mesh.material.dispose()
       }
       scene.remove(mesh)
-      meshRef.current = null
     }
-  }, [debug, scene])
-
-  // TODO: investigate if this can be moved to <Physics>
-  useFrame(() => {
-    if (debug === false) return
-    const collider = colliderGetter.current()
-    const mesh = meshRef.current
-    if (mesh == null) return
-
-    const position = collider.translation()
-    const rotation = collider.rotation()
-
-    mesh.position.set(position.x, position.y, position.z)
-    mesh.quaternion.set(rotation.x, rotation.y, rotation.z, rotation.w)
-  })
+  }, [colliderDebugMeshes, debug, scene])
 
   return colliderGetter
 }
