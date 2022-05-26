@@ -394,6 +394,8 @@ export const RigidBody = forwardRef(function RigidBody(
     if (object3d === null) return
     const rigidBody = rigidBodyGetter.current()
 
+    if (!rigidBody.isSleeping()) return
+
     const r = rigidBody.rotation()
     const t = rigidBody.translation()
 
