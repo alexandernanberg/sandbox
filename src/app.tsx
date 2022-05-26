@@ -8,7 +8,7 @@ import {
 import type { GroupProps } from '@react-three/fiber'
 import { Canvas, useFrame } from '@react-three/fiber'
 import { button, useControls } from 'leva'
-import { Suspense, useRef, useState } from 'react'
+import { Suspense, useEffect, useReducer, useRef, useState } from 'react'
 import seedrandom from 'seedrandom'
 import { Euler, Quaternion, RepeatWrapping } from 'three'
 import {
@@ -46,7 +46,7 @@ export function Root() {
 }
 
 export function App() {
-  const [physicsKey, setPhysicsKey] = useState(1)
+  const [physicsKey, updatePhysicsKey] = useReducer((num) => num + 1, 0)
 
   const cameraControls = useControls(
     'Camera',
@@ -66,12 +66,24 @@ export function App() {
     debug: { label: 'Debug', value: false },
     _reset: {
       label: 'Reset',
-      ...button(() => setPhysicsKey((s) => s + 1)),
+      ...button(updatePhysicsKey),
     },
   })
 
   const q1 = new Quaternion().setFromEuler(new Euler(0, 0.5, 0))
   const q2 = new Quaternion().setFromEuler(new Euler(0, -0.5, 0))
+
+  const [items, setItems] = useState<Array<number>>([])
+
+  useEffect(() => {
+    const handler = () => {
+      setItems((prev) => [...prev, performance.now()])
+    }
+    document.addEventListener('pointerdown', handler)
+    return () => {
+      document.removeEventListener('pointerdown', handler)
+    }
+  }, [])
 
   return (
     <LightProvider debug={lightsControl.debug}>
@@ -83,6 +95,11 @@ export function App() {
 
       <Physics debug={physicsControls.debug} key={physicsKey}>
         <Floor />
+        <Walls />
+
+        {items.map((item) => (
+          <Ball key={item} position={[Math.random(), 3, Math.random()]} />
+        ))}
 
         <RigidBody position={[0, 3, 12.5]} scale={0.5}>
           <CuboidCollider args={[1, 1, 1]}>
@@ -174,6 +191,25 @@ export function App() {
   )
 }
 
+function Walls() {
+  return (
+    <>
+      <RigidBody type="static" position={[15.5, 3 / 2, 0]}>
+        <CuboidCollider args={[1, 3, 30]} />
+      </RigidBody>
+      <RigidBody type="static" position={[-15.5, 3 / 2, 0]}>
+        <CuboidCollider args={[1, 3, 30]} />
+      </RigidBody>
+      <RigidBody type="static" position={[0, 3 / 2, 15.5]}>
+        <CuboidCollider args={[30, 3, 1]} />
+      </RigidBody>
+      <RigidBody type="static" position={[0, 3 / 2, -15.5]}>
+        <CuboidCollider args={[30, 3, 1]} />
+      </RigidBody>
+    </>
+  )
+}
+
 function Ball(props: RigidBodyProps) {
   const colors = ['red', 'green', 'blue', 'yellow', 'purple']
   const [color, setColor] = useState(colors[0])
@@ -184,7 +220,7 @@ function Ball(props: RigidBodyProps) {
       {...props}
       ref={ref}
       onCollision={() => {
-        ref.current?.setLinvel({ x: 1, y: 5, z: 0 }, true)
+        // ref.current?.setLinvel({ x: 0, y: 5, z: 0 }, true)
         setColor((s) => {
           const currentIndex = colors.indexOf(s)
           const arr = [...colors]

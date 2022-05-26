@@ -130,7 +130,7 @@ export function Physics({ children, debug = false }: PhysicsProps) {
     world.forEachRigidBody((rigidBody) => {
       if (rigidBody.isSleeping() || rigidBody.isFixed()) return
       const object3d = rigidBodyMeshes.get(rigidBody.handle)
-      if (!object3d) return
+      if (object3d == null) return
 
       const positionOffset = rigidBodyPositionOffsets.get(rigidBody.handle)
       const rotationOffset = rigidBodyRotationOffsets.get(rigidBody.handle)
@@ -139,12 +139,12 @@ export function Physics({ children, debug = false }: PhysicsProps) {
       const t = rigidBody.translation()
 
       object3d.quaternion.set(r.x, r.y, r.z, r.w)
-      if (rotationOffset) {
+      if (rotationOffset != null) {
         object3d.quaternion.premultiply(rotationOffset)
       }
 
       object3d.position.set(t.x, t.y, t.z)
-      if (positionOffset) {
+      if (positionOffset != null) {
         object3d.position.sub(positionOffset)
       }
     })
@@ -259,11 +259,15 @@ type RigidBodyType =
   | 'kinematic-velocity-based'
   | 'kinematic-position-based'
 
+export interface RigidBodyApi extends RAPIER.RigidBody {}
+
 type Triplet = [number, number, number]
 
 export interface RigidBodyProps extends Omit<Object3DProps, 'ref'> {
   type?: RigidBodyType
+  linearDamping?: number
   linearVelocity?: Triplet | Vector3
+  angularDamping?: number
   angularVelocity?: Triplet | Vector3
   gravityScale?: number
   ccd?: boolean
@@ -273,32 +277,13 @@ export interface RigidBodyProps extends Omit<Object3DProps, 'ref'> {
   onCollisionExit?: CollisionEventCallback
 }
 
-export interface RigidBodyApi extends RAPIER.RigidBody {}
-
-function createRigidBodyDesc(type: RigidBodyType): RAPIER.RigidBodyDesc {
-  switch (type) {
-    case 'dynamic':
-      return RAPIER.RigidBodyDesc.dynamic()
-    case 'static':
-      return RAPIER.RigidBodyDesc.fixed()
-    case 'kinematic-velocity-based':
-      return RAPIER.RigidBodyDesc.kinematicVelocityBased()
-    case 'kinematic-position-based':
-      return RAPIER.RigidBodyDesc.kinematicPositionBased()
-    default:
-      throw new Error(`Unsupported RigidBody.type: "${type}"`)
-  }
-}
-
-const _position = new Vector3()
-const _scale = new Vector3()
-const _quaternion = new Quaternion()
-
 export const RigidBody = forwardRef(function RigidBody(
   {
     type = 'dynamic',
     children,
+    linearDamping,
     linearVelocity,
+    angularDamping,
     angularVelocity,
     gravityScale = 1,
     ccd = false,
@@ -328,12 +313,20 @@ export const RigidBody = forwardRef(function RigidBody(
         .setCanSleep(canSleep)
         .setCcdEnabled(ccd)
 
+      if (linearDamping) {
+        rigidBodyDesc.setLinearDamping(linearDamping)
+      }
+
       if (linearVelocity) {
         rigidBodyDesc.setLinvel(
           ...(Array.isArray(linearVelocity)
             ? linearVelocity
             : linearVelocity.toArray()),
         )
+      }
+
+      if (angularDamping) {
+        rigidBodyDesc.setLinearDamping(angularDamping)
       }
 
       if (angularVelocity) {
@@ -358,8 +351,8 @@ export const RigidBody = forwardRef(function RigidBody(
     object3d.updateWorldMatrix(true, false)
     object3d.matrixWorld.decompose(_position, _quaternion, _scale)
 
-    rigidBody.setRotation(_quaternion, true)
-    rigidBody.setTranslation(_position, true)
+    rigidBody.setRotation(_quaternion, false)
+    rigidBody.setTranslation(_position, false)
 
     // world - local = delta
 
@@ -425,6 +418,25 @@ export const RigidBody = forwardRef(function RigidBody(
     </RigidBodyContext.Provider>
   )
 })
+
+function createRigidBodyDesc(type: RigidBodyType): RAPIER.RigidBodyDesc {
+  switch (type) {
+    case 'dynamic':
+      return RAPIER.RigidBodyDesc.dynamic()
+    case 'static':
+      return RAPIER.RigidBodyDesc.fixed()
+    case 'kinematic-velocity-based':
+      return RAPIER.RigidBodyDesc.kinematicVelocityBased()
+    case 'kinematic-position-based':
+      return RAPIER.RigidBodyDesc.kinematicPositionBased()
+    default:
+      throw new Error(`Unsupported RigidBody.type: "${type}"`)
+  }
+}
+
+const _position = new Vector3()
+const _scale = new Vector3()
+const _quaternion = new Quaternion()
 
 ///////////////////////////////////////////////////////////////
 // Collider
