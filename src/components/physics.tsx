@@ -385,6 +385,32 @@ export const RigidBody = forwardRef(function RigidBody(
     rigidBodyRotationOffsets,
   ])
 
+  // Because position/rotation props are forwarded directly to the Object3d, the
+  // 3d and physics world can become out of sync for sleeping bodies (which are
+  // skipped in the useFrame cb). This ensures that every time the component
+  // updates it syncs the position/rotation from the physics world.
+  useLayoutEffect(() => {
+    const object3d = object3dRef.current
+    if (object3d === null) return
+    const rigidBody = rigidBodyGetter.current()
+
+    const r = rigidBody.rotation()
+    const t = rigidBody.translation()
+
+    const positionOffset = rigidBodyPositionOffsets.get(rigidBody.handle)
+    const rotationOffset = rigidBodyRotationOffsets.get(rigidBody.handle)
+
+    object3d.quaternion.set(r.x, r.y, r.z, r.w)
+    if (rotationOffset != null) {
+      object3d.quaternion.premultiply(rotationOffset)
+    }
+
+    object3d.position.set(t.x, t.y, t.z)
+    if (positionOffset != null) {
+      object3d.position.sub(positionOffset)
+    }
+  })
+
   const onCollisionEnterHandler = useEvent(onCollision || onCollisionEnter)
   const onCollisionExitHandler = useEvent(onCollisionExit)
 
