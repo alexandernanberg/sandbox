@@ -146,7 +146,7 @@ export function App() {
 
         {/* <Wall /> */}
 
-        <RigidBody position={[0, 4, 0]} scale={3}>
+        <RigidBody position={[0, 4, 0]} scale={3} angularVelocity={[10, 0, 0]}>
           <Stone />
         </RigidBody>
         <RigidBody position={[0, 5, 0]} scale={2}>
@@ -159,7 +159,7 @@ export function App() {
           <Stone />
         </RigidBody>
 
-        <Ball position={[2, 4, 0]} />
+        <Ball position={[2, 4, 0]} linearVelocity={[1, 10, 0]} />
 
         <RigidBody position={[2, 5, 0.5]}>
           <ConeCollider args={[0.5, 1]}>
@@ -177,11 +177,14 @@ export function App() {
 function Ball(props: RigidBodyProps) {
   const colors = ['red', 'green', 'blue', 'yellow', 'purple']
   const [color, setColor] = useState(colors[0])
+  const ref = useRef<RigidBodyApi>(null)
 
   return (
     <RigidBody
       {...props}
+      ref={ref}
       onCollision={() => {
+        ref.current?.setLinvel({ x: 1, y: 5, z: 0 }, true)
         setColor((s) => {
           const currentIndex = colors.indexOf(s)
           const arr = [...colors]
