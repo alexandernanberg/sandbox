@@ -8,7 +8,8 @@ import {
 import type { Color, GroupProps } from '@react-three/fiber'
 import { Canvas, useFrame } from '@react-three/fiber'
 import { button, useControls } from 'leva'
-import { Suspense, useEffect, useReducer, useRef, useState } from 'react'
+import type { Reducer } from 'react'
+import { Suspense, useReducer, useRef, useState } from 'react'
 import seedrandom from 'seedrandom'
 import { Euler, Quaternion, RepeatWrapping } from 'three'
 import {
@@ -23,6 +24,7 @@ import type {
 } from './components/physics'
 import {
   BallCollider,
+  CapsuleCollider,
   ConeCollider,
   CuboidCollider,
   CylinderCollider,
@@ -49,6 +51,20 @@ export function Root() {
 export function App() {
   const [physicsKey, updatePhysicsKey] = useReducer((num) => num + 1, 0)
 
+  const [items, spawnItems] = useReducer<Reducer<Array<number>, number>>(
+    (state, num = 1) => [
+      ...state,
+      ...new Array(num).fill(0).map((_, i) => i * 100_000 + performance.now()),
+    ],
+    [],
+  )
+
+  const objectControls = useControls('Objects', {
+    _reset: {
+      label: 'Spawn 10 balls',
+      ...button(() => spawnItems(10)),
+    },
+  })
   const cameraControls = useControls(
     'Camera',
     {
@@ -75,18 +91,6 @@ export function App() {
   const q1 = new Quaternion().setFromEuler(new Euler(0, 0.5, 0))
   const q2 = new Quaternion().setFromEuler(new Euler(0, -0.5, 0))
 
-  const [items, setItems] = useState<Array<number>>([])
-
-  useEffect(() => {
-    const handler = () => {
-      setItems((prev) => [...prev, performance.now()])
-    }
-    document.addEventListener('pointerdown', handler)
-    return () => {
-      document.removeEventListener('pointerdown', handler)
-    }
-  }, [])
-
   return (
     <LightProvider debug={lightsControl.debug}>
       <Stats />
@@ -104,8 +108,10 @@ export function App() {
         <Walls />
 
         {items.map((item) => (
-          <Ball key={item} position={[Math.random(), 3, Math.random()]} />
+          <Ball key={item} position={[Math.random(), 6, Math.random()]} />
         ))}
+
+        <Character />
 
         <Slopes position={[0, 0, 12]} />
 
@@ -199,9 +205,28 @@ export function App() {
   )
 }
 
+function Character(props: RigidBodyProps) {
+  return (
+    <RigidBody
+      restrictRotation={[true, false, true]}
+      position={[0, 1.75 / 2, 0]}
+      {...props}
+    >
+      <CapsuleCollider args={[0.5, 1.75]}>
+        <mesh castShadow receiveShadow>
+          <capsuleGeometry args={[0.5, 1.75, 10, 20]} />
+          <meshPhongMaterial color={0xf0f0f0} />
+        </mesh>
+      </CapsuleCollider>
+    </RigidBody>
+  )
+}
+
 function Ball(props: RigidBodyProps) {
   const colors = ['red', 'green', 'blue', 'yellow', 'purple']
-  const [color, setColor] = useState(colors[0])
+  const [color, setColor] = useState(
+    () => colors[Math.floor(Math.random() * colors.length)],
+  )
   const ref = useRef<RigidBodyApi>(null)
 
   return (
@@ -217,12 +242,12 @@ function Ball(props: RigidBodyProps) {
       // return arr[Math.floor(Math.random() * arr.length)]
       // })
       // }}
-      onCollisionEnter={() => {
-        setColor('green')
-      }}
-      onCollisionExit={() => {
-        setColor('red')
-      }}
+      // onCollisionEnter={() => {
+      //   setColor('green')
+      // }}
+      // onCollisionExit={() => {
+      //   setColor('red')
+      // }}
     >
       <BallCollider args={[0.5]} restitution={1} friction={0.9} density={12}>
         <mesh castShadow receiveShadow>
@@ -419,10 +444,10 @@ function Tower() {
   return (
     <RigidBody type="static">
       <group>
-        <Box args={[1, 7, 1]} position={[0.5, 3.5, 0.5]} />
-        <Box args={[1, 7, 1]} position={[0.5, 3.5, -2.5]} />
-        <Box args={[1, 7, 1]} position={[-2.5, 3.5, 0.5]} />
-        <Box args={[1, 7, 1]} position={[-2.5, 3.5, -2.5]} />
+        <Box args={[1, 7, 1]} position={[0.5, 3.5, 0.5]} color={0x9f9f9f} />
+        <Box args={[1, 7, 1]} position={[0.5, 3.5, -2.5]} color={0x9f9f9f} />
+        <Box args={[1, 7, 1]} position={[-2.5, 3.5, 0.5]} color={0x9f9f9f} />
+        <Box args={[1, 7, 1]} position={[-2.5, 3.5, -2.5]} color={0x9f9f9f} />
       </group>
       <Ramp position={[-1, 1, 2]} />
       <Box args={[2, 0.5, 2]} position={[-4, 1.75, 2]} />

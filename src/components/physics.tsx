@@ -24,6 +24,7 @@ import {
   BoxGeometry,
   BufferAttribute,
   BufferGeometry,
+  CapsuleGeometry,
   ConeGeometry,
   CylinderGeometry,
   Mesh,
@@ -791,7 +792,7 @@ export function CapsuleCollider({
 
   useCollider(
     (scale) =>
-      RAPIER.ColliderDesc.capsule(radius * scale.x, (height / 2) * scale.y),
+      RAPIER.ColliderDesc.capsule((height / 2) * scale.y, radius * scale.x),
     props,
     object3dRef,
   )
@@ -992,9 +993,18 @@ function useEvent<T extends (...args: any[]) => any>(handler: T) {
 
 function meshFromCollider(collider: RAPIER.Collider): Mesh {
   switch (collider.shapeType()) {
-    // TODO: use actual capsule
-    case RAPIER.ShapeType.Cuboid:
     case RAPIER.ShapeType.Capsule: {
+      const radius = collider.radius()
+      const height = collider.halfHeight() * 2
+
+      const geometry = new CapsuleGeometry(radius, height, 10, 20)
+      const material = new MeshBasicMaterial({
+        wireframe: true,
+        color: 0x0000ff,
+      })
+      return new Mesh(geometry, material)
+    }
+    case RAPIER.ShapeType.Cuboid: {
       const vec = collider.halfExtents()
       const geometry = new BoxGeometry(vec.x * 2, vec.y * 2, vec.z * 2)
       const material = new MeshBasicMaterial({
