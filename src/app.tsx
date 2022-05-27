@@ -8,7 +8,6 @@ import {
 import type { Color, GroupProps } from '@react-three/fiber'
 import { Canvas, useFrame } from '@react-three/fiber'
 import { button, useControls } from 'leva'
-import type { Reducer } from 'react'
 import { Suspense, useReducer, useRef, useState } from 'react'
 import seedrandom from 'seedrandom'
 import { Euler, Quaternion, RepeatWrapping } from 'three'
@@ -50,19 +49,23 @@ export function Root() {
 
 export function App() {
   const [physicsKey, updatePhysicsKey] = useReducer((num) => num + 1, 0)
+  const [items, setItems] = useState<Array<number>>([])
 
-  const [items, spawnItems] = useReducer<Reducer<Array<number>, number>>(
-    (state, num = 1) => [
+  const spawnItems = (num = 1) => {
+    setItems((state) => [
       ...state,
       ...new Array(num).fill(0).map((_, i) => i * 100_000 + performance.now()),
-    ],
-    [],
-  )
+    ])
+  }
 
   const objectControls = useControls('Objects', {
-    _reset: {
+    _spawn: {
       label: 'Spawn 10 balls',
       ...button(() => spawnItems(10)),
+    },
+    _reset: {
+      label: 'Reset',
+      ...button(() => setItems([])),
     },
   })
   const cameraControls = useControls(
