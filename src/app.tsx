@@ -233,6 +233,11 @@ function Ball(props: RigidBodyProps) {
     <RigidBody
       {...props}
       ref={ref}
+      onPointerDown={() => {
+        // TODO: why doesn't addForce work?
+        // ref.current?.addForce({ x: 0, y: -10, z: 0 }, true)
+        ref.current?.setLinvel({ x: 0, y: 10, z: 0 }, true)
+      }}
       // onCollision={() => {
       // ref.current?.setLinvel({ x: 0, y: 5, z: 0 }, true)
       // setColor((s) => {
