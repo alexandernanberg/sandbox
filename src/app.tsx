@@ -5,7 +5,7 @@ import {
   Stats,
   useTexture,
 } from '@react-three/drei'
-import type { GroupProps } from '@react-three/fiber'
+import type { Color, GroupProps } from '@react-three/fiber'
 import { Canvas, useFrame } from '@react-three/fiber'
 import { button, useControls } from 'leva'
 import { Suspense, useEffect, useReducer, useRef, useState } from 'react'
@@ -25,6 +25,7 @@ import {
   BallCollider,
   ConeCollider,
   CuboidCollider,
+  CylinderCollider,
   Physics,
   RigidBody,
 } from './components/physics'
@@ -143,6 +144,11 @@ export function App() {
           </RigidBody>
         </group>
 
+        <RockingBoard
+          // rotation-y={-Math.PI / 2}
+          position={[-8, 0.5, 12]}
+        />
+
         <RigidBody position={[-7, 12, 0]}>
           <CuboidCollider args={[1, 1, 1]}>
             <mesh castShadow receiveShadow>
@@ -193,25 +199,6 @@ export function App() {
   )
 }
 
-function Walls() {
-  return (
-    <>
-      <RigidBody type="static" position={[15.5, 10 / 2, 0]}>
-        <CuboidCollider args={[1, 10, 30]} />
-      </RigidBody>
-      <RigidBody type="static" position={[-15.5, 10 / 2, 0]}>
-        <CuboidCollider args={[1, 10, 30]} />
-      </RigidBody>
-      <RigidBody type="static" position={[0, 10 / 2, 15.5]}>
-        <CuboidCollider args={[30, 10, 1]} />
-      </RigidBody>
-      <RigidBody type="static" position={[0, 10 / 2, -15.5]}>
-        <CuboidCollider args={[30, 10, 1]} />
-      </RigidBody>
-    </>
-  )
-}
-
 function Ball(props: RigidBodyProps) {
   const colors = ['red', 'green', 'blue', 'yellow', 'purple']
   const [color, setColor] = useState(colors[0])
@@ -247,14 +234,50 @@ function Ball(props: RigidBodyProps) {
   )
 }
 
-function RockingBoard() {}
+function RockingBoard(props: GroupProps) {
+  return (
+    <group {...props}>
+      <RigidBody type="static" rotation-x={Math.PI / 2}>
+        <CylinderCollider args={[0.5, 1]}>
+          <mesh castShadow receiveShadow>
+            <cylinderGeometry args={[0.5, 0.5, 1, 20]} />
+            <meshPhongMaterial color={0xadadad} />
+          </mesh>
+        </CylinderCollider>
+      </RigidBody>
+      <RigidBody
+        position={[0, 0.75, 0]}
+        rotation-z={-0.3}
+        lockPosition
+        restrictRotation={[true, true, false]}
+      >
+        <CuboidCollider args={[7, 0.25, 1]} restitution={0} density={1}>
+          <mesh castShadow receiveShadow>
+            <boxGeometry args={[7, 0.25, 1]} />
+            <meshPhongMaterial color={0x964b00} />
+          </mesh>
+        </CuboidCollider>
+      </RigidBody>
+      <RigidBody position={[-2.5, 5, 0]}>
+        <Box args={[1, 1, 1]} friction={1} density={100} color="blue" />
+      </RigidBody>
+      <RigidBody position={[2.5, 0.5, 0]}>
+        <Box args={[0.5, 0.5, 0.5]} friction={1} restitution={0} color="blue" />
+      </RigidBody>
+    </group>
+  )
+}
 
-function Box({ args = [1, 1, 1], ...props }: CuboidColliderProps) {
+function Box({
+  args = [1, 1, 1],
+  color = 0xfffff0,
+  ...props
+}: CuboidColliderProps & { color?: Color }) {
   return (
     <CuboidCollider args={args} {...props}>
       <mesh castShadow receiveShadow>
         <boxGeometry args={args} />
-        <meshPhongMaterial color={0xfffff0} />
+        <meshPhongMaterial color={color} />
       </mesh>
     </CuboidCollider>
   )
@@ -304,6 +327,27 @@ function Slopes(props: GroupProps) {
         <Slope />
       </RigidBody>
     </group>
+  )
+}
+
+function Walls() {
+  const width = 1
+  const height = 10
+  return (
+    <>
+      <RigidBody type="static" position={[15.5, height / 2, 0]}>
+        <CuboidCollider args={[width, height, 30]} />
+      </RigidBody>
+      <RigidBody type="static" position={[-15.5, height / 2, 0]}>
+        <CuboidCollider args={[width, height, 30]} />
+      </RigidBody>
+      <RigidBody type="static" position={[0, height / 2, 15.5]}>
+        <CuboidCollider args={[30, height, width]} />
+      </RigidBody>
+      <RigidBody type="static" position={[0, height / 2, -15.5]}>
+        <CuboidCollider args={[30, height, width]} />
+      </RigidBody>
+    </>
   )
 }
 

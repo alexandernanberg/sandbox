@@ -287,6 +287,11 @@ export interface RigidBodyProps extends Omit<Object3DProps, 'ref'> {
   angularDamping?: number
   angularVelocity?: Triplet | Vector3
   gravityScale?: number
+  dominanceGroup?: number
+  restrictPosition?: [x: boolean, y: boolean, z: boolean]
+  restrictRotation?: [x: boolean, y: boolean, z: boolean]
+  lockPosition?: boolean
+  lockRotation?: boolean
   ccd?: boolean
   canSleep?: boolean
   onCollision?: CollisionEventCallback
@@ -303,8 +308,13 @@ export const RigidBody = forwardRef(function RigidBody(
     angularDamping,
     angularVelocity,
     gravityScale = 1,
+    dominanceGroup = 0,
     ccd = false,
     canSleep = true,
+    restrictPosition,
+    restrictRotation,
+    lockPosition = false,
+    lockRotation = false,
     onCollision,
     onCollisionEnter = noop,
     onCollisionExit = noop,
@@ -327,8 +337,27 @@ export const RigidBody = forwardRef(function RigidBody(
       const world = worldRef.current()
       const rigidBodyDesc = createRigidBodyDesc(type)
         .setGravityScale(gravityScale)
-        .setCanSleep(canSleep)
+        .setDominanceGroup(dominanceGroup)
         .setCcdEnabled(ccd)
+        .setCanSleep(canSleep)
+
+      if (restrictPosition) {
+        const [x, y, z] = restrictPosition
+        rigidBodyDesc.restrictTranslations(!x, !y, !z)
+      }
+
+      if (restrictRotation) {
+        const [x, y, z] = restrictRotation
+        rigidBodyDesc.restrictRotations(!x, !y, !z)
+      }
+
+      if (lockPosition) {
+        rigidBodyDesc.lockTranslations()
+      }
+
+      if (lockRotation) {
+        rigidBodyDesc.lockRotations()
+      }
 
       if (linearDamping) {
         rigidBodyDesc.setLinearDamping(linearDamping)
