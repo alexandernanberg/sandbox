@@ -84,17 +84,24 @@ function usePhysicsContext() {
 export interface PhysicsProps {
   children?: ReactNode
   debug?: boolean
+  gravity?: Triplet | Vector3
 }
 
-export function Physics({ children, debug = false }: PhysicsProps) {
-  suspend(() => RAPIER.init(), ['rapier'])
+const DEFAULT_GRAVITY = new Vector3(0, -9.81, 0)
 
+export function Physics({
+  children,
+  debug = false,
+  gravity = DEFAULT_GRAVITY,
+}: PhysicsProps) {
+  suspend(() => RAPIER.init(), ['rapier'])
   const worldRef = useRef<RAPIER.World | null>(null)
 
   const worldGetter = useRef(() => {
     if (worldRef.current === null) {
-      const gravity = { x: 0.0, y: -9.81, z: 0.0 }
-      worldRef.current = new RAPIER.World(gravity)
+      worldRef.current = new RAPIER.World(
+        Array.isArray(gravity) ? new Vector3().fromArray(gravity) : gravity,
+      )
     }
     return worldRef.current
   })
@@ -107,6 +114,16 @@ export function Physics({ children, debug = false }: PhysicsProps) {
       }
     }
   }, [])
+
+  useEffect(() => {
+    const world = worldGetter.current()
+    if (world == null) return
+    if (gravity != null) {
+      world.gravity = Array.isArray(gravity)
+        ? new Vector3().fromArray(gravity)
+        : gravity
+    }
+  }, [gravity])
 
   const eventQueue = useConstant(() => new RAPIER.EventQueue(true))
   const colliderMeshes = useConstant(() => new Map<number, Object3D>())

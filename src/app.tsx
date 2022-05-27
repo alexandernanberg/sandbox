@@ -64,6 +64,7 @@ export function App() {
   )
   const physicsControls = useControls('Physics', {
     debug: { label: 'Debug', value: false },
+    gravity: { label: 'Gravity', value: [0, -9.81, 0] },
     _reset: {
       label: 'Reset',
       ...button(updatePhysicsKey),
@@ -93,13 +94,19 @@ export function App() {
 
       <OrbitControls target={[0, 0, 0]} />
 
-      <Physics debug={physicsControls.debug} key={physicsKey}>
+      <Physics
+        key={physicsKey}
+        debug={physicsControls.debug}
+        gravity={physicsControls.gravity}
+      >
         <Floor />
         <Walls />
 
         {items.map((item) => (
           <Ball key={item} position={[Math.random(), 3, Math.random()]} />
         ))}
+
+        <Slopes position={[0, 0, 12]} />
 
         <RigidBody position={[0, 3, 12.5]} scale={0.5}>
           <CuboidCollider args={[1, 1, 1]}>
@@ -125,7 +132,6 @@ export function App() {
             </mesh>
           </CuboidCollider>
         </RigidBody>
-
         <group position={[3, 3, 0]}>
           <RigidBody rotation={[0, 0.5, 0]}>
             <CuboidCollider args={[1, 1, 1]}>
@@ -136,8 +142,6 @@ export function App() {
             </CuboidCollider>
           </RigidBody>
         </group>
-
-        <Slopes position={[0, 0, 12]} />
 
         <RigidBody position={[-7, 12, 0]}>
           <CuboidCollider args={[1, 1, 1]}>
@@ -160,8 +164,6 @@ export function App() {
             </CuboidCollider>
           </RigidBody>
         </group>
-
-        {/* <Wall /> */}
 
         <RigidBody position={[0, 4, 0]} scale={3} angularVelocity={[10, 0, 0]}>
           <Stone />
@@ -194,17 +196,17 @@ export function App() {
 function Walls() {
   return (
     <>
-      <RigidBody type="static" position={[15.5, 3 / 2, 0]}>
-        <CuboidCollider args={[1, 3, 30]} />
+      <RigidBody type="static" position={[15.5, 10 / 2, 0]}>
+        <CuboidCollider args={[1, 10, 30]} />
       </RigidBody>
-      <RigidBody type="static" position={[-15.5, 3 / 2, 0]}>
-        <CuboidCollider args={[1, 3, 30]} />
+      <RigidBody type="static" position={[-15.5, 10 / 2, 0]}>
+        <CuboidCollider args={[1, 10, 30]} />
       </RigidBody>
-      <RigidBody type="static" position={[0, 3 / 2, 15.5]}>
-        <CuboidCollider args={[30, 3, 1]} />
+      <RigidBody type="static" position={[0, 10 / 2, 15.5]}>
+        <CuboidCollider args={[30, 10, 1]} />
       </RigidBody>
-      <RigidBody type="static" position={[0, 3 / 2, -15.5]}>
-        <CuboidCollider args={[30, 3, 1]} />
+      <RigidBody type="static" position={[0, 10 / 2, -15.5]}>
+        <CuboidCollider args={[30, 10, 1]} />
       </RigidBody>
     </>
   )
@@ -219,14 +221,20 @@ function Ball(props: RigidBodyProps) {
     <RigidBody
       {...props}
       ref={ref}
-      onCollision={() => {
-        // ref.current?.setLinvel({ x: 0, y: 5, z: 0 }, true)
-        setColor((s) => {
-          const currentIndex = colors.indexOf(s)
-          const arr = [...colors]
-          arr.splice(currentIndex, 1)
-          return arr[Math.floor(Math.random() * arr.length)]
-        })
+      // onCollision={() => {
+      // ref.current?.setLinvel({ x: 0, y: 5, z: 0 }, true)
+      // setColor((s) => {
+      // const currentIndex = colors.indexOf(s)
+      // const arr = [...colors]
+      // arr.splice(currentIndex, 1)
+      // return arr[Math.floor(Math.random() * arr.length)]
+      // })
+      // }}
+      onCollisionEnter={() => {
+        setColor('green')
+      }}
+      onCollisionExit={() => {
+        setColor('red')
       }}
     >
       <BallCollider args={[0.5]} restitution={1} friction={0.9} density={12}>
@@ -238,6 +246,8 @@ function Ball(props: RigidBodyProps) {
     </RigidBody>
   )
 }
+
+function RockingBoard() {}
 
 function Box({ args = [1, 1, 1], ...props }: CuboidColliderProps) {
   return (
@@ -414,10 +424,10 @@ function Sky() {
         position={position}
         castShadow
         shadow-mapSize={[4096, 4096]}
-        shadow-camera-left={-18}
-        shadow-camera-bottom={-18}
-        shadow-camera-right={18}
-        shadow-camera-top={18}
+        shadow-camera-left={-22}
+        shadow-camera-bottom={-22}
+        shadow-camera-right={22}
+        shadow-camera-top={22}
       />
     </>
   )
