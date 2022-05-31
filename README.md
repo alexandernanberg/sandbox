@@ -6,7 +6,7 @@
 
 ### Physics
 
-- [ ] Fix bugs with initial body rotation
+- [ ] Fix bugs with parent rotation
 - [ ] Add joints
 - [ ] Ray casting
 

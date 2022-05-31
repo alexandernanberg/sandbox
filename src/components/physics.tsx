@@ -1,6 +1,6 @@
 import * as RAPIER from '@dimforge/rapier3d-compat'
 import type { Object3DProps } from '@react-three/fiber'
-import { useFrame, useThree } from '@react-three/fiber'
+import { useFrame } from '@react-three/fiber'
 import type {
   ForwardedRef,
   MutableRefObject,
@@ -19,20 +19,8 @@ import {
   useRef,
 } from 'react'
 import { suspend } from 'suspend-react'
-import type { Object3D } from 'three'
-import {
-  BoxGeometry,
-  BufferAttribute,
-  BufferGeometry,
-  CapsuleGeometry,
-  ConeGeometry,
-  CylinderGeometry,
-  Mesh,
-  MeshBasicMaterial,
-  Quaternion,
-  SphereGeometry,
-  Vector3,
-} from 'three'
+import type { LineSegments, Object3D } from 'three'
+import { BufferAttribute, Quaternion, Vector3 } from 'three'
 import { useConstant } from '../utils'
 
 interface CollisionEvent {
@@ -96,35 +84,8 @@ export function Physics({
   gravity = DEFAULT_GRAVITY,
 }: PhysicsProps) {
   suspend(() => RAPIER.init(), ['rapier'])
+
   const worldRef = useRef<RAPIER.World | null>(null)
-
-  const worldGetter = useRef(() => {
-    if (worldRef.current === null) {
-      worldRef.current = new RAPIER.World(
-        Array.isArray(gravity) ? new Vector3().fromArray(gravity) : gravity,
-      )
-    }
-    return worldRef.current
-  })
-
-  useEffect(() => {
-    return () => {
-      if (worldRef.current !== null) {
-        worldRef.current.free()
-        worldRef.current = null
-      }
-    }
-  }, [])
-
-  useEffect(() => {
-    const world = worldGetter.current()
-    if (world == null) return
-    if (gravity != null) {
-      world.gravity = Array.isArray(gravity)
-        ? new Vector3().fromArray(gravity)
-        : gravity
-    }
-  }, [gravity])
 
   const eventQueue = useConstant(() => new RAPIER.EventQueue(true))
   const colliderMeshes = useConstant(() => new Map<number, Object3D>())
@@ -136,6 +97,39 @@ export function Physics({
   const rigidBodyRotationOffsets = useConstant(
     () => new Map<number, Quaternion>(),
   )
+
+  const worldGetter = useRef(() => {
+    if (worldRef.current === null) {
+      worldRef.current = new RAPIER.World(
+        Array.isArray(gravity) ? new Vector3().fromArray(gravity) : gravity,
+      )
+    }
+    return worldRef.current
+  })
+
+  // Clean up
+  useEffect(() => {
+    return () => {
+      if (worldRef.current !== null) {
+        worldRef.current.free()
+        worldRef.current = null
+      }
+      eventQueue.free()
+    }
+  }, [eventQueue])
+
+  // Update gravity
+  useEffect(() => {
+    const world = worldGetter.current()
+    if (world == null) return
+    if (gravity != null) {
+      world.gravity = Array.isArray(gravity)
+        ? new Vector3().fromArray(gravity)
+        : gravity
+    }
+  }, [gravity])
+
+  const debugMeshRef = useRef<LineSegments>(null)
 
   // TODO: investigate using a fixed update frequency + fix 60 vs 120 hz.
   useFrame((state, delta) => {
@@ -168,16 +162,20 @@ export function Physics({
     })
 
     if (debug) {
-      world.forEachCollider((collider) => {
-        const mesh = colliderDebugMeshes.get(collider.handle)
-        if (mesh == null) return
+      const mesh = debugMeshRef.current
+      if (!mesh) return
 
-        const position = collider.translation()
-        const rotation = collider.rotation()
+      const buffers = world.debugRender()
 
-        mesh.position.set(position.x, position.y, position.z)
-        mesh.quaternion.set(rotation.x, rotation.y, rotation.z, rotation.w)
-      })
+      mesh.visible = true
+      mesh.geometry.setAttribute(
+        'position',
+        new BufferAttribute(buffers.vertices, 3),
+      )
+      mesh.geometry.setAttribute(
+        'color',
+        new BufferAttribute(buffers.colors, 4),
+      )
     }
 
     eventQueue.drainCollisionEvents((handle1, handle2, started) => {
@@ -229,6 +227,12 @@ export function Physics({
   return (
     <PhysicsContext.Provider value={context}>
       {children}
+      {debug && (
+        <lineSegments ref={debugMeshRef}>
+          <lineBasicMaterial color={0xffffff} vertexColors />
+          <bufferGeometry />
+        </lineSegments>
+      )}
     </PhysicsContext.Provider>
   )
 }
@@ -245,18 +249,20 @@ function handleCollisionEvent(
   const collider = colliderMeshes.get(colliderHandle)
   const colliderEvent = colliderEvents.get(colliderHandle)
 
-  const rigidBodyHandle = world.getCollider(colliderHandle).parent()
-  const rigidBody =
-    rigidBodyHandle != null ? rigidBodyMeshes.get(rigidBodyHandle) : null
+  const rigidBody = world.getCollider(colliderHandle).parent()
+  const rigidBodyMesh =
+    rigidBody != null ? rigidBodyMeshes.get(rigidBody.handle) : null
   const rigidBodyEvent =
-    rigidBodyHandle != null ? rigidBodyEvents.get(rigidBodyHandle) : null
+    rigidBody != null ? rigidBodyEvents.get(rigidBody.handle) : null
 
   if (started) {
     collider && colliderEvent?.onCollisionEnter?.({ target: collider })
-    rigidBody && rigidBodyEvent?.onCollisionEnter?.({ target: rigidBody })
+    rigidBodyMesh &&
+      rigidBodyEvent?.onCollisionEnter?.({ target: rigidBodyMesh })
   } else {
     collider && colliderEvent?.onCollisionExit?.({ target: collider })
-    rigidBody && rigidBodyEvent?.onCollisionExit?.({ target: rigidBody })
+    rigidBodyMesh &&
+      rigidBodyEvent?.onCollisionExit?.({ target: rigidBodyMesh })
   }
 }
 
@@ -597,10 +603,7 @@ export function useCollider<
         colliderDesc.setActiveEvents(RAPIER.ActiveEvents.COLLISION_EVENTS)
       }
 
-      colliderRef.current = world.createCollider(
-        colliderDesc,
-        rigidBody?.handle,
-      )
+      colliderRef.current = world.createCollider(colliderDesc, rigidBody)
     }
     return colliderRef.current
   })
@@ -650,33 +653,6 @@ export function useCollider<
     })
     return () => void colliderEvents.delete(collider.handle)
   }, [colliderEvents, onCollisionEnterHandler, onCollisionExitHandler])
-
-  const scene = useThree((state) => state.scene)
-
-  useLayoutEffect(() => {
-    if (debug === false) return
-    const collider = colliderGetter.current()
-    const mesh = meshFromCollider(collider)
-
-    // Add debug mesh to the root of the scene to ensure it's rendered exactly
-    // in the same place as the physics object.
-    scene.add(mesh)
-    colliderDebugMeshes.set(collider.handle, mesh)
-
-    return () => {
-      colliderDebugMeshes.delete(collider.handle)
-      // TODO: do we really have to dispose geometry/materials manually?
-      mesh.geometry.dispose()
-      if (Array.isArray(mesh.material)) {
-        for (const material of mesh.material) {
-          material.dispose()
-        }
-      } else {
-        mesh.material.dispose()
-      }
-      scene.remove(mesh)
-    }
-  }, [colliderDebugMeshes, debug, scene])
 
   return colliderGetter
 }
@@ -985,148 +961,4 @@ function useEvent<T extends (...args: any[]) => any>(handler: T) {
     const fn = handlerRef.current
     return fn?.(...args)
   }, [])
-}
-
-///////////////////////////////////////////////////////////////
-// Mesh utils
-///////////////////////////////////////////////////////////////
-
-function meshFromCollider(collider: RAPIER.Collider): Mesh {
-  switch (collider.shapeType()) {
-    case RAPIER.ShapeType.Capsule: {
-      const radius = collider.radius()
-      const height = collider.halfHeight() * 2
-
-      const geometry = new CapsuleGeometry(radius, height, 10, 20)
-      const material = new MeshBasicMaterial({
-        wireframe: true,
-        color: 0x0000ff,
-      })
-      return new Mesh(geometry, material)
-    }
-    case RAPIER.ShapeType.Cuboid: {
-      const vec = collider.halfExtents()
-      const geometry = new BoxGeometry(vec.x * 2, vec.y * 2, vec.z * 2)
-      const material = new MeshBasicMaterial({
-        wireframe: true,
-        color: 0x0000ff,
-      })
-      return new Mesh(geometry, material)
-    }
-    case RAPIER.ShapeType.Cone: {
-      const radius = collider.radius()
-      const height = collider.halfHeight() * 2
-
-      const geometry = new ConeGeometry(radius, height, 32)
-      const material = new MeshBasicMaterial({
-        wireframe: true,
-        color: 0x00ff00,
-      })
-      return new Mesh(geometry, material)
-    }
-    case RAPIER.ShapeType.Cylinder: {
-      const radius = collider.radius()
-      const height = collider.halfHeight() * 2
-
-      const geometry = new CylinderGeometry(radius, radius, height, 32)
-      const material = new MeshBasicMaterial({
-        wireframe: true,
-        color: 0x00ff00,
-      })
-      return new Mesh(geometry, material)
-    }
-    case RAPIER.ShapeType.Ball: {
-      const radius = collider.radius()
-
-      const geometry = new SphereGeometry(radius, 32)
-      const material = new MeshBasicMaterial({
-        wireframe: true,
-        color: 0x00ff00,
-      })
-      return new Mesh(geometry, material)
-    }
-    case RAPIER.ShapeType.TriMesh:
-    case RAPIER.ShapeType.ConvexPolyhedron: {
-      const vertices = collider.vertices()
-      const indices = collider.indices()
-
-      const geometry = new BufferGeometry()
-      geometry.setAttribute('position', new BufferAttribute(vertices, 3))
-      geometry.setIndex(new BufferAttribute(indices, 1))
-
-      const material = new MeshBasicMaterial({
-        wireframe: true,
-        color: 0xff0000,
-      })
-      return new Mesh(geometry, material)
-    }
-
-    case RAPIER.ShapeType.HeightField: {
-      const heights = collider.heightfieldHeights()
-      const nrows = collider.heightfieldNRows()
-      const ncols = collider.heightfieldNCols()
-      const scale = collider.heightfieldScale()
-
-      const { vertices, indices } = geometryFromHeightfield(
-        nrows,
-        ncols,
-        heights,
-        scale,
-      )
-
-      const geometry = new BufferGeometry()
-      geometry.setAttribute('position', new BufferAttribute(vertices, 3))
-      geometry.setIndex(new BufferAttribute(indices, 1))
-
-      const material = new MeshBasicMaterial({
-        wireframe: true,
-        color: 0xff0000,
-      })
-      return new Mesh(geometry, material)
-    }
-    default:
-      throw new Error(`Unkown shape: ${collider.shapeType()}`)
-  }
-}
-
-function geometryFromHeightfield(
-  nrows: number,
-  ncols: number,
-  heights: Float32Array,
-  scale: RAPIER.Vector,
-) {
-  const vertices = []
-  const indices = []
-  const eltWX = 1.0 / nrows
-  const eltWY = 1.0 / ncols
-
-  let i: number
-  let j: number
-
-  for (j = 0; j <= ncols; ++j) {
-    for (i = 0; i <= nrows; ++i) {
-      const x = (j * eltWX - 0.5) * scale.x
-      const y = heights[j * (nrows + 1) + i] * scale.y
-      const z = (i * eltWY - 0.5) * scale.z
-
-      vertices.push(x, y, z)
-    }
-  }
-
-  for (j = 0; j < ncols; ++j) {
-    for (i = 0; i < nrows; ++i) {
-      const i1 = (i + 0) * (ncols + 1) + (j + 0)
-      const i2 = (i + 0) * (ncols + 1) + (j + 1)
-      const i3 = (i + 1) * (ncols + 1) + (j + 0)
-      const i4 = (i + 1) * (ncols + 1) + (j + 1)
-
-      indices.push(i1, i3, i2)
-      indices.push(i3, i4, i2)
-    }
-  }
-
-  return {
-    vertices: new Float32Array(vertices),
-    indices: new Uint32Array(indices),
-  }
 }

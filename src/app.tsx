@@ -430,10 +430,11 @@ function Elevator(props: RigidBodyProps) {
   const ref = useRef<RigidBodyApi>(null)
 
   useFrame((state) => {
-    if (!ref.current) return
-    const vec = ref.current.translation()
+    const rigidBody = ref.current
+    if (!rigidBody) return
+    const vec = rigidBody.translation()
     vec.y = clamp(3.875 + Math.sin(state.clock.elapsedTime) * 5, 0.25, 7.75)
-    ref.current.setNextKinematicTranslation(vec)
+    rigidBody.setNextKinematicTranslation(vec)
   })
 
   return (
