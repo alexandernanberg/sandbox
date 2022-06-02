@@ -45,7 +45,6 @@ export interface PhysicsContextValue {
   debug: boolean
   colliderMeshes: Map<number, Object3D>
   colliderEvents: EventMap
-  colliderDebugMeshes: Map<number, Object3D>
   rigidBodyMeshes: Map<number, Object3D>
   rigidBodyEvents: EventMap
   rigidBodyPositionOffsets: Map<number, Vector3>
@@ -90,7 +89,6 @@ export function Physics({
   const eventQueue = useConstant(() => new RAPIER.EventQueue(true))
   const colliderMeshes = useConstant(() => new Map<number, Object3D>())
   const colliderEvents = useConstant<EventMap>(() => new Map())
-  const colliderDebugMeshes = useConstant(() => new Map<number, Object3D>())
   const rigidBodyMeshes = useConstant(() => new Map<number, Object3D>())
   const rigidBodyEvents = useConstant<EventMap>(() => new Map())
   const rigidBodyPositionOffsets = useConstant(() => new Map<number, Vector3>())
@@ -206,7 +204,6 @@ export function Physics({
       debug,
       colliderMeshes,
       colliderEvents,
-      colliderDebugMeshes,
       rigidBodyMeshes,
       rigidBodyEvents,
       rigidBodyPositionOffsets,
@@ -216,7 +213,6 @@ export function Physics({
       debug,
       colliderMeshes,
       colliderEvents,
-      colliderDebugMeshes,
       rigidBodyMeshes,
       rigidBodyEvents,
       rigidBodyPositionOffsets,
@@ -547,13 +543,7 @@ export function useCollider<
     onCollisionEnter = noop,
     onCollisionExit = noop,
   } = props
-  const {
-    worldRef,
-    colliderEvents,
-    colliderMeshes,
-    colliderDebugMeshes,
-    debug,
-  } = usePhysicsContext()
+  const { worldRef, colliderEvents, colliderMeshes } = usePhysicsContext()
   const { rigidBodyRef, listenForContactEvents } =
     useContext(RigidBodyContext) || {}
 

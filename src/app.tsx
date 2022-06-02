@@ -237,9 +237,7 @@ function Ball(props: RigidBodyProps) {
       {...props}
       ref={ref}
       onPointerDown={() => {
-        // TODO: why doesn't addForce work?
-        // ref.current?.addForce({ x: 0, y: -10, z: 0 }, true)
-        ref.current?.setLinvel({ x: 0, y: 10, z: 0 }, true)
+        ref.current?.applyImpulse({ x: 0, y: 50, z: 0 }, true)
       }}
       // onCollision={() => {
       // ref.current?.setLinvel({ x: 0, y: 5, z: 0 }, true)
@@ -281,7 +279,6 @@ function RockingBoard(props: GroupProps) {
       <RigidBody
         position={[0, 0.75, 0]}
         rotation-z={-0.3}
-        lockPosition
         restrictRotation={[true, true, false]}
       >
         <CuboidCollider args={[7, 0.25, 1]} restitution={0} density={1}>
