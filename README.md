@@ -1,6 +1,6 @@
-# Playground
+# Sandbox
 
-> A playground to try out 3d tech
+> A sandbox to try out 3d tech
 
 ## Roadmap
 
