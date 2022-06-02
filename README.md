@@ -1,6 +1,6 @@
 # Sandbox
 
-> A sandbox to try out 3d tech
+> Game development sandbox
 
 ## Roadmap
 
