@@ -1,6 +1,7 @@
 import {
   Loader,
   OrbitControls,
+  PerspectiveCamera,
   Sky as SkyShader,
   Stats,
 } from '@react-three/drei'
@@ -13,7 +14,7 @@ import {
   LightProvider,
 } from './components/lights'
 import { Physics } from './components/physics'
-import Playground from './scenes/playground'
+import { Playground } from './scenes/playground'
 
 export function Root() {
   return (
@@ -57,7 +58,8 @@ export function App() {
   return (
     <LightProvider debug={lightsControl.debug}>
       <Stats />
-      <OrbitControls target={[0, 0, 0]} />
+      <PerspectiveCamera makeDefault position={[8, 8, -10]} />
+      <OrbitControls target={[-2, 0, 6]} />
 
       <fog attach="fog" args={[0xffffff, 10, 90]} />
       <Sky />

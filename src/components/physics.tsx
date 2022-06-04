@@ -19,9 +19,15 @@ import {
   useRef,
 } from 'react'
 import { suspend } from 'suspend-react'
-import type { LineSegments, Object3D } from 'three'
-import { BufferAttribute, Quaternion, Vector3 } from 'three'
+import type { LineSegments } from 'three'
+import { BufferAttribute, Matrix4, Object3D, Quaternion, Vector3 } from 'three'
 import { useConstant } from '../utils'
+
+const _object3d = new Object3D()
+const _position = new Vector3()
+const _matrix = new Matrix4()
+const _scale = new Vector3()
+const _quaternion = new Quaternion()
 
 interface CollisionEvent {
   target: Object3D
@@ -47,8 +53,7 @@ export interface PhysicsContextValue {
   colliderEvents: EventMap
   rigidBodyMeshes: Map<number, Object3D>
   rigidBodyEvents: EventMap
-  rigidBodyPositionOffsets: Map<number, Vector3>
-  rigidBodyRotationOffsets: Map<number, Quaternion>
+  rigidBodyParentOffsets: Map<number, Matrix4>
 }
 
 const PhysicsContext = createContext<PhysicsContextValue | null>(null)
@@ -91,10 +96,7 @@ export function Physics({
   const colliderEvents = useConstant<EventMap>(() => new Map())
   const rigidBodyMeshes = useConstant(() => new Map<number, Object3D>())
   const rigidBodyEvents = useConstant<EventMap>(() => new Map())
-  const rigidBodyPositionOffsets = useConstant(() => new Map<number, Vector3>())
-  const rigidBodyRotationOffsets = useConstant(
-    () => new Map<number, Quaternion>(),
-  )
+  const rigidBodyParentOffsets = useConstant(() => new Map<number, Matrix4>())
 
   const worldGetter = useRef(() => {
     if (worldRef.current === null) {
@@ -142,20 +144,20 @@ export function Physics({
       const object3d = rigidBodyMeshes.get(rigidBody.handle)
       if (object3d == null) return
 
-      const positionOffset = rigidBodyPositionOffsets.get(rigidBody.handle)
-      const rotationOffset = rigidBodyRotationOffsets.get(rigidBody.handle)
-
-      const r = rigidBody.rotation()
       const t = rigidBody.translation()
+      const r = rigidBody.rotation()
+      const matrixOffset = rigidBodyParentOffsets.get(rigidBody.handle)
 
-      object3d.quaternion.set(r.x, r.y, r.z, r.w)
-      if (rotationOffset != null) {
-        object3d.quaternion.premultiply(rotationOffset)
-      }
+      if (matrixOffset) {
+        _object3d.position.set(t.x, t.y, t.z)
+        _object3d.quaternion.set(r.x, r.y, r.z, r.w)
+        _object3d.applyMatrix4(matrixOffset)
 
-      object3d.position.set(t.x, t.y, t.z)
-      if (positionOffset != null) {
-        object3d.position.sub(positionOffset)
+        object3d.position.setFromMatrixPosition(_object3d.matrix)
+        object3d.quaternion.setFromRotationMatrix(_object3d.matrix)
+      } else {
+        object3d.quaternion.set(r.x, r.y, r.z, r.w)
+        object3d.position.set(t.x, t.y, t.z)
       }
     })
 
@@ -206,8 +208,7 @@ export function Physics({
       colliderEvents,
       rigidBodyMeshes,
       rigidBodyEvents,
-      rigidBodyPositionOffsets,
-      rigidBodyRotationOffsets,
+      rigidBodyParentOffsets,
     }),
     [
       debug,
@@ -215,8 +216,7 @@ export function Physics({
       colliderEvents,
       rigidBodyMeshes,
       rigidBodyEvents,
-      rigidBodyPositionOffsets,
-      rigidBodyRotationOffsets,
+      rigidBodyParentOffsets,
     ],
   )
 
@@ -325,13 +325,8 @@ export const RigidBody = forwardRef(function RigidBody(
   }: RigidBodyProps,
   ref?: ForwardedRef<RigidBodyApi | null>,
 ) {
-  const {
-    worldRef,
-    rigidBodyMeshes,
-    rigidBodyEvents,
-    rigidBodyPositionOffsets,
-    rigidBodyRotationOffsets,
-  } = usePhysicsContext()
+  const { worldRef, rigidBodyMeshes, rigidBodyEvents, rigidBodyParentOffsets } =
+    usePhysicsContext()
   const object3dRef = useRef<Object3D>(null)
   const rigidBodyRef = useRef<RAPIER.RigidBody | null>(null)
 
@@ -400,20 +395,15 @@ export const RigidBody = forwardRef(function RigidBody(
     object3d.updateWorldMatrix(true, false)
     object3d.matrixWorld.decompose(_position, _quaternion, _scale)
 
-    rigidBody.setRotation(_quaternion, false)
-    rigidBody.setTranslation(_position, false)
-
-    // world - local = delta
-
-    const positionOffset = _position.clone().sub(object3d.position)
-    const rotationOffset = _quaternion
-      .clone()
-      .invert()
-      .premultiply(object3d.quaternion)
+    if (object3d.parent) {
+      const parentMatrixOffset = object3d.parent.matrixWorld.clone().invert()
+      rigidBodyParentOffsets.set(rigidBody.handle, parentMatrixOffset)
+    }
 
     rigidBodyMeshes.set(rigidBody.handle, object3d)
-    rigidBodyPositionOffsets.set(rigidBody.handle, positionOffset)
-    rigidBodyRotationOffsets.set(rigidBody.handle, rotationOffset)
+
+    rigidBody.setRotation(_quaternion, false)
+    rigidBody.setTranslation(_position, false)
 
     return () => {
       if (rigidBodyRef.current !== null) {
@@ -424,15 +414,9 @@ export const RigidBody = forwardRef(function RigidBody(
         rigidBodyRef.current = null
       }
       rigidBodyMeshes.delete(rigidBody.handle)
-      rigidBodyPositionOffsets.delete(rigidBody.handle)
-      rigidBodyRotationOffsets.delete(rigidBody.handle)
+      rigidBodyParentOffsets.delete(rigidBody.handle)
     }
-  }, [
-    worldRef,
-    rigidBodyMeshes,
-    rigidBodyPositionOffsets,
-    rigidBodyRotationOffsets,
-  ])
+  }, [worldRef, rigidBodyMeshes, rigidBodyParentOffsets])
 
   // Because position/rotation props are forwarded directly to the Object3d, the
   // 3d and physics world can become out of sync for sleeping bodies (which are
@@ -445,20 +429,20 @@ export const RigidBody = forwardRef(function RigidBody(
 
     if (!rigidBody.isSleeping()) return
 
-    const r = rigidBody.rotation()
     const t = rigidBody.translation()
+    const r = rigidBody.rotation()
+    const matrixOffset = rigidBodyParentOffsets.get(rigidBody.handle)
 
-    const positionOffset = rigidBodyPositionOffsets.get(rigidBody.handle)
-    const rotationOffset = rigidBodyRotationOffsets.get(rigidBody.handle)
+    if (matrixOffset) {
+      _object3d.position.set(t.x, t.y, t.z)
+      _object3d.quaternion.set(r.x, r.y, r.z, r.w)
+      _object3d.applyMatrix4(matrixOffset)
 
-    object3d.quaternion.set(r.x, r.y, r.z, r.w)
-    if (rotationOffset != null) {
-      object3d.quaternion.premultiply(rotationOffset)
-    }
-
-    object3d.position.set(t.x, t.y, t.z)
-    if (positionOffset != null) {
-      object3d.position.sub(positionOffset)
+      object3d.position.setFromMatrixPosition(_object3d.matrix)
+      object3d.quaternion.setFromRotationMatrix(_object3d.matrix)
+    } else {
+      object3d.quaternion.set(r.x, r.y, r.z, r.w)
+      object3d.position.set(t.x, t.y, t.z)
     }
   })
 
@@ -510,10 +494,6 @@ function createRigidBodyDesc(type: RigidBodyType): RAPIER.RigidBodyDesc {
       throw new Error(`Unsupported RigidBody.type: "${type}"`)
   }
 }
-
-const _position = new Vector3()
-const _scale = new Vector3()
-const _quaternion = new Quaternion()
 
 ///////////////////////////////////////////////////////////////
 // Collider

@@ -4,7 +4,7 @@ import { useFrame } from '@react-three/fiber'
 import { button, useControls } from 'leva'
 import { useRef, useState } from 'react'
 import seedrandom from 'seedrandom'
-import { Euler, Quaternion, RepeatWrapping } from 'three'
+import { RepeatWrapping } from 'three'
 import type {
   CuboidColliderProps,
   RigidBodyApi,
@@ -23,7 +23,7 @@ import Ramp from '../models/ramp'
 import Slope from '../models/slope'
 import Stone from '../models/stone'
 
-export default function Scene() {
+export function Playground() {
   const [items, setItems] = useState<Array<number>>([])
 
   const spawnItems = (num = 1) => {
@@ -49,9 +49,6 @@ export default function Scene() {
       collapsed: true,
     },
   )
-
-  const q1 = new Quaternion().setFromEuler(new Euler(0, 0.5, 0))
-  const q2 = new Quaternion().setFromEuler(new Euler(0, -0.5, 0))
 
   return (
     <>
@@ -101,12 +98,9 @@ export default function Scene() {
         </RigidBody>
       </group>
 
-      <RockingBoard
-        // rotation-y={-Math.PI / 2}
-        position={[-8, 0.5, 12]}
-      />
+      <RockingBoard position={[-8, 0.5, 12]} />
 
-      <Swing position={[8, 0, 8]} />
+      <Swing position={[8, 0, 12]} rotation-y={-Math.PI / 2} />
 
       <RigidBody position={[-7, 12, 0]}>
         <CuboidCollider args={[1, 1, 1]}>
@@ -130,16 +124,16 @@ export default function Scene() {
         </RigidBody>
       </group>
 
-      <RigidBody position={[0, 4, 0]} scale={3} angularVelocity={[10, 0, 0]}>
+      <RigidBody position={[0, 4, -2]} scale={3} angularVelocity={[10, 0, 0]}>
         <Stone />
       </RigidBody>
-      <RigidBody position={[0, 5, 0]} scale={2}>
+      <RigidBody position={[0, 5, -2]} scale={2}>
         <Stone />
       </RigidBody>
-      <RigidBody position={[0, 6, 0]} scale={0.75}>
+      <RigidBody position={[0, 6, -2]} scale={0.75}>
         <Stone />
       </RigidBody>
-      <RigidBody position={[0, 7, 0]}>
+      <RigidBody position={[0, 7, -2]}>
         <Stone />
       </RigidBody>
 
