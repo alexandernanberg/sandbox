@@ -3,7 +3,7 @@ import { useGraph } from '@react-three/fiber'
 import { createMachine } from '@xstate/fsm'
 import { forwardRef, useEffect, useMemo, useRef } from 'react'
 import type { Object3D } from 'three'
-import type { GLTF } from 'three/examples/jsm/loaders/GLTFLoader'
+import type { GLTF } from 'three-stdlib'
 import { SkeletonUtils } from 'three/examples/jsm/utils/SkeletonUtils'
 
 type GLTFResult = GLTF & {
@@ -34,7 +34,7 @@ const characterMachine = createMachine({
 console.log(characterMachine.transition(characterMachine.initialState, 'WALK'))
 
 const Character = forwardRef(function Character(props, forwardedRef) {
-  const ref = useRef<Object3D>()
+  const ref = useRef<Object3D>(null)
   const characterRef = forwardedRef || ref
   const { scene, materials, animations } = useGLTF('/ybot.gltf') as GLTFResult
   const clone = useMemo(() => SkeletonUtils.clone(scene), [scene])

@@ -8,7 +8,7 @@
 
 - [ ] Fix bugs with parent rotation
 - [ ] Add joints
-- [ ] Ray casting
+- [ ] Ray casting kinematic body
 
 ### Character controller
 
@@ -17,4 +17,5 @@
 ### Camera
 
 - [ ] 3rd person camera (similar to GTA)
-- [ ] Don't clip into objects
+- [ ] Handle collisions with Threejs objects
+  - Use ray casts between camera and player (whiskers, 7 casts)

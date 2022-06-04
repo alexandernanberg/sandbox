@@ -932,6 +932,56 @@ export function HeightfieldCollider({
 }
 
 ///////////////////////////////////////////////////////////////
+// Joints
+///////////////////////////////////////////////////////////////
+
+export function useImpulseJoint(
+  body1: MutableRefObject<RigidBodyApi | undefined | null>,
+  body2: MutableRefObject<RigidBodyApi | undefined | null>,
+  params: RAPIER.JointData,
+) {
+  const { worldRef } = usePhysicsContext()
+  const jointRef = useRef<RAPIER.ImpulseJoint | null>(null)
+
+  const jointGetter = useRef(() => {
+    if (jointRef.current === null) {
+      if (!body1.current || !body2.current) return
+      const world = worldRef.current()
+      const rb1 = world.getRigidBody(body1.current.handle)
+      const rb2 = world.getRigidBody(body2.current.handle)
+
+      const joint = world.createImpulseJoint(params, rb1, rb2, true)
+
+      jointRef.current = joint
+    }
+
+    return jointRef.current
+  })
+
+  useLayoutEffect(() => {
+    const world = worldRef.current()
+    const joint = jointGetter.current()
+
+    return () => {
+      if (joint) {
+        world.removeImpulseJoint(joint, true)
+        jointRef.current = null
+      }
+    }
+  }, [worldRef])
+
+  return jointGetter
+}
+
+export function useSphericalJoint(
+  body1: MutableRefObject<RigidBodyApi | undefined | null>,
+  body2: MutableRefObject<RigidBodyApi | undefined | null>,
+  params: Parameters<typeof RAPIER.JointData.spherical>,
+) {
+  return useImpulseJoint(body1, body2, RAPIER.JointData.spherical(...params))
+}
+
+///////////////////////////////////////////////////////////////
 // Utils
 ///////////////////////////////////////////////////////////////
 
