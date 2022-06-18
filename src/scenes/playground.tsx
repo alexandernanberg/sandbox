@@ -2,7 +2,8 @@ import { useTexture } from '@react-three/drei'
 import type { Color, GroupProps } from '@react-three/fiber'
 import { useFrame } from '@react-three/fiber'
 import { button, useControls } from 'leva'
-import { useRef, useState } from 'react'
+import type { MutableRefObject } from 'react'
+import { forwardRef, useRef, useState } from 'react'
 import seedrandom from 'seedrandom'
 import { RepeatWrapping } from 'three'
 import type {
@@ -22,6 +23,7 @@ import {
 import Ramp from '../models/ramp'
 import Slope from '../models/slope'
 import Stone from '../models/stone'
+import { useForkRef } from '../utils'
 
 export function Playground() {
   const [items, setItems] = useState<Array<number>>([])
@@ -168,6 +170,58 @@ function Character(props: RigidBodyProps) {
   )
 }
 
+interface ChainSegmentProps extends RigidBodyProps {
+  target: MutableRefObject<RigidBodyApi | null>
+}
+
+const ChainSegment = forwardRef<RigidBodyApi, ChainSegmentProps>(
+  function ChainSegment({ target }, forwardedRef) {
+    const ownRef = useRef<RigidBodyApi | null>(null)
+    const ref = useForkRef(ownRef, forwardedRef)
+
+    useSphericalJoint(ownRef, target, [
+      { x: 0, y: 0.26, z: 0 },
+      { x: 0, y: -0.26, z: 0 },
+    ])
+
+    return (
+      <RigidBody ref={ref} position={[0, 0, 0]}>
+        <CylinderCollider args={[0.05, 0.5]}>
+          <mesh castShadow receiveShadow>
+            <cylinderGeometry args={[0.05, 0.05, 0.5, 6]} />
+            <meshPhongMaterial color={0xadadad} />
+          </mesh>
+        </CylinderCollider>
+      </RigidBody>
+    )
+  },
+)
+
+// interface ChainProps {
+//   target: MutableRefObject<RigidBodyApi | null>
+//   segments: number
+// }
+
+// const Chain = forwardRef<RigidBodyApi, ChainProps>(function Chain(
+//   { target, segments },
+//   forwardedRef,
+// ) {
+//   const segmentsArray = useMemo(() =>new Array(segments - 1), [segments])
+//   const segmentsRef = useRef(segmentsArray.map(() => createRef<RigidBodyApi>()))
+
+//   console.log(segmentsArray)
+
+//   return (<>
+
+// <ChainSegment key={index} ref={segmentsRef.current[index]} target={target} />
+//   {segmentsArray.map((_, index) => {
+//     return (
+//       <ChainSegment key={index} ref={segmentsRef.current[index]} target={} />
+//     )
+//   })}
+//   </>
+// })
+
 function Swing(props: GroupProps) {
   const rackRef = useRef<RigidBodyApi>(null)
   const chain1Ref = useRef<RigidBodyApi>(null)
@@ -196,7 +250,7 @@ function Swing(props: GroupProps) {
 
   return (
     <group {...props}>
-      <RigidBody position={[0, 1.7, 0]} type="static" ref={rackRef}>
+      <RigidBody position={[0, 1.7, 0]} type="fixed" ref={rackRef}>
         <CylinderCollider
           args={[0.1, 4]}
           position={[1, 0, -1.9]}
@@ -275,14 +329,11 @@ function Swing(props: GroupProps) {
             </mesh>
           </CylinderCollider>
         </RigidBody>
-        <RigidBody ref={chain4Ref} position={[0, -1, 0]}>
-          <CylinderCollider args={[0.05, 0.5]}>
-            <mesh castShadow receiveShadow>
-              <cylinderGeometry args={[0.05, 0.05, 0.5, 6]} />
-              <meshPhongMaterial color={0xadadad} />
-            </mesh>
-          </CylinderCollider>
-        </RigidBody>
+
+        <ChainSegment ref={chain1Ref} target={chain1Ref} />
+        <ChainSegment ref={chain1Ref} target={chain2Ref} />
+        <ChainSegment ref={chain1Ref} target={chain3Ref} />
+        <ChainSegment ref={chain1Ref} target={chain4Ref} />
       </group>
     </group>
   )
@@ -331,7 +382,7 @@ function Ball(props: RigidBodyProps) {
 function RockingBoard(props: GroupProps) {
   return (
     <group {...props}>
-      <RigidBody type="static" rotation-x={Math.PI / 2}>
+      <RigidBody type="fixed" rotation-x={Math.PI / 2}>
         <CylinderCollider args={[0.5, 1]}>
           <mesh castShadow receiveShadow>
             <cylinderGeometry args={[0.5, 0.5, 1, 20]} />
@@ -380,7 +431,7 @@ function Slopes(props: GroupProps) {
   return (
     <group {...props}>
       <RigidBody
-        type="static"
+        type="fixed"
         position={[3, 0.125, 0]}
         rotation={[0, Math.PI / 2, 0]}
         scale={[1, 0.25, 1]}
@@ -388,7 +439,7 @@ function Slopes(props: GroupProps) {
         <Slope />
       </RigidBody>
       <RigidBody
-        type="static"
+        type="fixed"
         position={[2, 0.25, 0]}
         rotation={[0, Math.PI / 2, 0]}
         scale={[1, 0.5, 1]}
@@ -396,7 +447,7 @@ function Slopes(props: GroupProps) {
         <Slope />
       </RigidBody>
       <RigidBody
-        type="static"
+        type="fixed"
         position={[1, 0.375, 0]}
         rotation={[0, Math.PI / 2, 0]}
         scale={[1, 0.75, 1]}
@@ -404,7 +455,7 @@ function Slopes(props: GroupProps) {
         <Slope />
       </RigidBody>
       <RigidBody
-        type="static"
+        type="fixed"
         position={[0, 0.5, 0]}
         rotation={[0, Math.PI / 2, 0]}
         scale={[1, 1, 1]}
@@ -412,7 +463,7 @@ function Slopes(props: GroupProps) {
         <Slope />
       </RigidBody>
       <RigidBody
-        type="static"
+        type="fixed"
         position={[-1, 0.625, 0]}
         rotation={[0, Math.PI / 2, 0]}
         scale={[1, 1.25, 1]}
@@ -428,16 +479,16 @@ function Walls() {
   const height = 10
   return (
     <>
-      <RigidBody type="static" position={[15.5, height / 2, 0]}>
+      <RigidBody type="fixed" position={[15.5, height / 2, 0]}>
         <CuboidCollider args={[width, height, 30]} />
       </RigidBody>
-      <RigidBody type="static" position={[-15.5, height / 2, 0]}>
+      <RigidBody type="fixed" position={[-15.5, height / 2, 0]}>
         <CuboidCollider args={[width, height, 30]} />
       </RigidBody>
-      <RigidBody type="static" position={[0, height / 2, 15.5]}>
+      <RigidBody type="fixed" position={[0, height / 2, 15.5]}>
         <CuboidCollider args={[30, height, width]} />
       </RigidBody>
-      <RigidBody type="static" position={[0, height / 2, -15.5]}>
+      <RigidBody type="fixed" position={[0, height / 2, -15.5]}>
         <CuboidCollider args={[30, height, width]} />
       </RigidBody>
     </>
@@ -454,7 +505,7 @@ function Floor() {
   tileTexture.repeat.set(textureRepeat, textureRepeat)
 
   return (
-    <RigidBody type="static" position={[0, 0, 0]}>
+    <RigidBody type="fixed" position={[0, 0, 0]}>
       <CuboidCollider args={[size, 0, size]}>
         <mesh castShadow receiveShadow rotation-x={Math.PI / -2}>
           <planeGeometry args={[size, size]} />
@@ -471,7 +522,7 @@ function Wall() {
   )
 
   return (
-    <RigidBody type="static" position={[5, 3 / 2, 2]}>
+    <RigidBody type="fixed" position={[5, 3 / 2, 2]}>
       <CuboidCollider args={[1, 3, 6]}>
         <mesh castShadow receiveShadow>
           <boxGeometry args={[1, 3, 6]} />
@@ -511,7 +562,7 @@ function Elevator(props: RigidBodyProps) {
 
 function Tower() {
   return (
-    <RigidBody type="static">
+    <RigidBody type="fixed">
       <group>
         <Box args={[1, 7, 1]} position={[0.5, 3.5, 0.5]} color={0x9f9f9f} />
         <Box args={[1, 7, 1]} position={[0.5, 3.5, -2.5]} color={0x9f9f9f} />

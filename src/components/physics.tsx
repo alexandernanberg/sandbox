@@ -82,6 +82,9 @@ export interface PhysicsProps {
 
 const DEFAULT_GRAVITY = new Vector3(0, -9.81, 0)
 
+const fixedStep = 1 / 60
+let accumulator = 0
+
 export function Physics({
   children,
   debug = false,
@@ -97,12 +100,14 @@ export function Physics({
   const rigidBodyMeshes = useConstant(() => new Map<number, Object3D>())
   const rigidBodyEvents = useConstant<EventMap>(() => new Map())
   const rigidBodyParentOffsets = useConstant(() => new Map<number, Matrix4>())
+  const debugMeshRef = useRef<LineSegments>(null)
 
   const worldGetter = useRef(() => {
     if (worldRef.current === null) {
       worldRef.current = new RAPIER.World(
         Array.isArray(gravity) ? new Vector3().fromArray(gravity) : gravity,
       )
+      worldRef.current.timestep = fixedStep
     }
     return worldRef.current
   })
@@ -129,20 +134,63 @@ export function Physics({
     }
   }, [gravity])
 
-  const debugMeshRef = useRef<LineSegments>(null)
-
-  // TODO: investigate using a fixed update frequency + fix 60 vs 120 hz.
   useFrame((state, delta) => {
     const world = worldGetter.current()
     if (world == null) return
 
-    world.timestep = delta
-    world.step(eventQueue)
+    const frameTime = Math.min(0.25, delta)
+    accumulator += frameTime
+
+    // Fixed update
+    while (accumulator >= fixedStep) {
+      world.step(eventQueue)
+
+      eventQueue.drainCollisionEvents((handle1, handle2, started) => {
+        handleCollisionEvent(
+          world,
+          handle1,
+          colliderEvents,
+          colliderMeshes,
+          rigidBodyEvents,
+          rigidBodyMeshes,
+          started,
+        )
+        handleCollisionEvent(
+          world,
+          handle2,
+          colliderEvents,
+          colliderMeshes,
+          rigidBodyEvents,
+          rigidBodyMeshes,
+          started,
+        )
+      })
+
+      if (debug) {
+        const mesh = debugMeshRef.current
+        if (!mesh) return
+
+        const buffers = world.debugRender()
+
+        mesh.geometry.setAttribute(
+          'position',
+          new BufferAttribute(buffers.vertices, 3),
+        )
+        mesh.geometry.setAttribute(
+          'color',
+          new BufferAttribute(buffers.colors, 4),
+        )
+      }
+
+      accumulator -= fixedStep
+    }
+
+    const alpha = accumulator / fixedStep
 
     world.forEachRigidBody((rigidBody) => {
       if (rigidBody.isSleeping() || rigidBody.isFixed()) return
-      const object3d = rigidBodyMeshes.get(rigidBody.handle)
-      if (object3d == null) return
+      const mesh = rigidBodyMeshes.get(rigidBody.handle)
+      if (mesh == null) return
 
       const t = rigidBody.translation()
       const r = rigidBody.rotation()
@@ -153,50 +201,15 @@ export function Physics({
         _object3d.quaternion.set(r.x, r.y, r.z, r.w)
         _object3d.applyMatrix4(matrixOffset)
 
-        object3d.position.setFromMatrixPosition(_object3d.matrix)
-        object3d.quaternion.setFromRotationMatrix(_object3d.matrix)
+        mesh.position.lerp(_object3d.position, alpha)
+        mesh.quaternion.slerp(_object3d.quaternion, alpha)
       } else {
-        object3d.quaternion.set(r.x, r.y, r.z, r.w)
-        object3d.position.set(t.x, t.y, t.z)
+        _position.set(t.x, t.y, t.z)
+        _quaternion.set(r.x, r.y, r.z, r.w)
+
+        mesh.position.lerp(_position, alpha)
+        mesh.quaternion.slerp(_quaternion, alpha)
       }
-    })
-
-    if (debug) {
-      const mesh = debugMeshRef.current
-      if (!mesh) return
-
-      const buffers = world.debugRender()
-
-      mesh.visible = true
-      mesh.geometry.setAttribute(
-        'position',
-        new BufferAttribute(buffers.vertices, 3),
-      )
-      mesh.geometry.setAttribute(
-        'color',
-        new BufferAttribute(buffers.colors, 4),
-      )
-    }
-
-    eventQueue.drainCollisionEvents((handle1, handle2, started) => {
-      handleCollisionEvent(
-        world,
-        handle1,
-        colliderEvents,
-        colliderMeshes,
-        rigidBodyEvents,
-        rigidBodyMeshes,
-        started,
-      )
-      handleCollisionEvent(
-        world,
-        handle2,
-        colliderEvents,
-        colliderMeshes,
-        rigidBodyEvents,
-        rigidBodyMeshes,
-        started,
-      )
     })
   })
 
@@ -275,7 +288,7 @@ const RigidBodyContext = createContext<RigidBodyContextValue | null>(null)
 
 type RigidBodyType =
   | 'dynamic'
-  | 'static'
+  | 'fixed'
   | 'kinematic-velocity-based'
   | 'kinematic-position-based'
 
@@ -395,7 +408,7 @@ export const RigidBody = forwardRef(function RigidBody(
     object3d.updateWorldMatrix(true, false)
     object3d.matrixWorld.decompose(_position, _quaternion, _scale)
 
-    if (object3d.parent) {
+    if (object3d.parent && object3d.parent.type !== 'Scene') {
       const parentMatrixOffset = object3d.parent.matrixWorld.clone().invert()
       rigidBodyParentOffsets.set(rigidBody.handle, parentMatrixOffset)
     }
@@ -427,8 +440,6 @@ export const RigidBody = forwardRef(function RigidBody(
     if (object3d === null) return
     const rigidBody = rigidBodyGetter.current()
 
-    if (!rigidBody.isSleeping()) return
-
     const t = rigidBody.translation()
     const r = rigidBody.rotation()
     const matrixOffset = rigidBodyParentOffsets.get(rigidBody.handle)
@@ -441,8 +452,8 @@ export const RigidBody = forwardRef(function RigidBody(
       object3d.position.setFromMatrixPosition(_object3d.matrix)
       object3d.quaternion.setFromRotationMatrix(_object3d.matrix)
     } else {
-      object3d.quaternion.set(r.x, r.y, r.z, r.w)
       object3d.position.set(t.x, t.y, t.z)
+      object3d.quaternion.set(r.x, r.y, r.z, r.w)
     }
   })
 
@@ -484,7 +495,7 @@ function createRigidBodyDesc(type: RigidBodyType): RAPIER.RigidBodyDesc {
   switch (type) {
     case 'dynamic':
       return RAPIER.RigidBodyDesc.dynamic()
-    case 'static':
+    case 'fixed':
       return RAPIER.RigidBodyDesc.fixed()
     case 'kinematic-velocity-based':
       return RAPIER.RigidBodyDesc.kinematicVelocityBased()
@@ -916,8 +927,8 @@ export function HeightfieldCollider({
 ///////////////////////////////////////////////////////////////
 
 export function useImpulseJoint(
-  body1: MutableRefObject<RigidBodyApi | undefined | null>,
-  body2: MutableRefObject<RigidBodyApi | undefined | null>,
+  body1: MutableRefObject<RigidBodyApi | null>,
+  body2: MutableRefObject<RigidBodyApi | null>,
   params: RAPIER.JointData,
 ) {
   const { worldRef } = usePhysicsContext()
@@ -954,8 +965,8 @@ export function useImpulseJoint(
 }
 
 export function useSphericalJoint(
-  body1: MutableRefObject<RigidBodyApi | undefined | null>,
-  body2: MutableRefObject<RigidBodyApi | undefined | null>,
+  body1: MutableRefObject<RigidBodyApi | null>,
+  body2: MutableRefObject<RigidBodyApi | null>,
   params: Parameters<typeof RAPIER.JointData.spherical>,
 ) {
   return useImpulseJoint(body1, body2, RAPIER.JointData.spherical(...params))
