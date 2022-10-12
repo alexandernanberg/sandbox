@@ -1,11 +1,10 @@
 /* eslint-disable import/no-extraneous-dependencies */
-import reactRefresh from '@vitejs/plugin-react-refresh'
+import react from '@vitejs/plugin-react'
 import { resolve } from 'path'
 import { defineConfig } from 'vite'
-import reactJsx from 'vite-react-jsx'
 
 export default defineConfig({
-  plugins: [reactJsx(), reactRefresh()],
+  plugins: [react()],
   build: {
     chunkSizeWarningLimit: 1024,
   },
