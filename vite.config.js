@@ -7,6 +7,7 @@ export default defineConfig({
   plugins: [react()],
   build: {
     chunkSizeWarningLimit: 1024,
+    target: 'esnext',
   },
   resolve: {
     alias: {
