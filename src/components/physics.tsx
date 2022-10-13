@@ -189,6 +189,7 @@ export function Physics({
 
     world.forEachRigidBody((rigidBody) => {
       if (rigidBody.isSleeping() || rigidBody.isFixed()) return
+
       const mesh = rigidBodyMeshes.get(rigidBody.handle)
       if (mesh == null) return
 
@@ -196,20 +197,15 @@ export function Physics({
       const r = rigidBody.rotation()
       const matrixOffset = rigidBodyParentOffsets.get(rigidBody.handle)
 
+      _object3d.position.set(t.x, t.y, t.z)
+      _object3d.quaternion.set(r.x, r.y, r.z, r.w)
+
       if (matrixOffset) {
-        _object3d.position.set(t.x, t.y, t.z)
-        _object3d.quaternion.set(r.x, r.y, r.z, r.w)
         _object3d.applyMatrix4(matrixOffset)
-
-        mesh.position.lerp(_object3d.position, alpha)
-        mesh.quaternion.slerp(_object3d.quaternion, alpha)
-      } else {
-        _position.set(t.x, t.y, t.z)
-        _quaternion.set(r.x, r.y, r.z, r.w)
-
-        mesh.position.lerp(_position, alpha)
-        mesh.quaternion.slerp(_quaternion, alpha)
       }
+
+      mesh.position.lerp(_object3d.position, alpha)
+      mesh.quaternion.slerp(_object3d.quaternion, alpha)
     })
   })
 
@@ -434,7 +430,7 @@ export const RigidBody = forwardRef(function RigidBody(
   // Because position/rotation props are forwarded directly to the Object3d, the
   // 3d and physics world can become out of sync for sleeping bodies (which are
   // skipped in the useFrame cb). This ensures that every time the component
-  // updates it syncs the position/rotation from the physics world.
+  // updates, it syncs the position/rotation from the physics world.
   useLayoutEffect(() => {
     const object3d = object3dRef.current
     if (object3d === null) return
@@ -444,17 +440,15 @@ export const RigidBody = forwardRef(function RigidBody(
     const r = rigidBody.rotation()
     const matrixOffset = rigidBodyParentOffsets.get(rigidBody.handle)
 
-    if (matrixOffset) {
-      _object3d.position.set(t.x, t.y, t.z)
-      _object3d.quaternion.set(r.x, r.y, r.z, r.w)
-      _object3d.applyMatrix4(matrixOffset)
+    _object3d.position.set(t.x, t.y, t.z)
+    _object3d.quaternion.set(r.x, r.y, r.z, r.w)
 
-      object3d.position.setFromMatrixPosition(_object3d.matrix)
-      object3d.quaternion.setFromRotationMatrix(_object3d.matrix)
-    } else {
-      object3d.position.set(t.x, t.y, t.z)
-      object3d.quaternion.set(r.x, r.y, r.z, r.w)
+    if (matrixOffset) {
+      _object3d.applyMatrix4(matrixOffset)
     }
+
+    object3d.position.copy(object3d.position)
+    object3d.quaternion.copy(_object3d.quaternion)
   })
 
   const onCollisionEnterHandler = useEvent(onCollision || onCollisionEnter)
