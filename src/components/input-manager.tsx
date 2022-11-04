@@ -8,7 +8,7 @@ import {
 } from 'react'
 import type { Camera } from 'three'
 import { Vector2 } from 'three'
-import { useConstant } from '../utils'
+import { useConstant } from '~/utils'
 
 interface InputManagerProps {
   cameraRef: RefObject<Camera>
@@ -25,6 +25,8 @@ interface InputManagerState {
 export interface InputManagerRef {
   getInput: () => InputManagerState
 }
+
+// TODO: support QWERTY and AZERTY
 
 const context = createContext(null)
 
@@ -47,8 +49,8 @@ export const InputManager = forwardRef<InputManagerRef, InputManagerProps>(
 
       if (state.gamepadIndex !== null) {
         const gamepad = navigator.getGamepads()[state.gamepadIndex]
-        input.movement.x = applyDeadzone(gamepad.axes[0], 0.25) * -1
-        input.movement.y = applyDeadzone(gamepad.axes[1], 0.25) * -1
+        input.movement.x = applyDeadzone(gamepad.axes[0]) * -1
+        input.movement.y = applyDeadzone(gamepad.axes[1]) * -1
       }
 
       return state
@@ -126,7 +128,7 @@ export const InputManager = forwardRef<InputManagerRef, InputManagerProps>(
       return () => {
         document.removeEventListener('pointermove', onPointerMove, false)
       }
-    }, [cameraRef, gl.domElement, state, state.lookAt])
+    }, [gl.domElement, state, state.lookAt])
 
     useEffect(() => {
       const onConnect = (event: GamepadEvent) => {
@@ -166,7 +168,7 @@ export const InputManager = forwardRef<InputManagerRef, InputManagerProps>(
   },
 )
 
-function applyDeadzone(number: number, threshold: number) {
+function applyDeadzone(number: number, threshold = 0.1) {
   let percentage = (Math.abs(number) - threshold) / (1 - threshold)
 
   if (percentage < 0) {

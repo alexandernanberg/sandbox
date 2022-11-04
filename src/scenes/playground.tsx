@@ -10,7 +10,7 @@ import type {
   CuboidColliderProps,
   RigidBodyApi,
   RigidBodyProps,
-} from '../components/physics'
+} from '~/components/physics'
 import {
   BallCollider,
   CapsuleCollider,
@@ -19,11 +19,11 @@ import {
   CylinderCollider,
   RigidBody,
   useSphericalJoint,
-} from '../components/physics'
-import Ramp from '../models/ramp'
-import Slope from '../models/slope'
-import Stone from '../models/stone'
-import { useForkRef } from '../utils'
+} from '~/components/physics'
+import Ramp from '~/models/ramp'
+import Slope from '~/models/slope'
+import Stone from '~/models/stone'
+import { useForkRef } from '~/utils'
 
 export function Playground() {
   const [items, setItems] = useState<Array<number>>([])
@@ -403,7 +403,7 @@ function RockingBoard(props: GroupProps) {
         </CuboidCollider>
       </RigidBody>
       <RigidBody position={[-2.5, 5, 0]}>
-        <Box args={[1, 1, 1]} friction={1} density={100} color="blue" />
+        <Box args={[1, 1, 1]} friction={1} density={50} color="blue" />
       </RigidBody>
       <RigidBody position={[2.5, 0.5, 0]}>
         <Box args={[0.5, 0.5, 0.5]} friction={1} restitution={0} color="blue" />

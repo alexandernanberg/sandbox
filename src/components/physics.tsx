@@ -21,7 +21,7 @@ import {
 import { suspend } from 'suspend-react'
 import type { LineSegments } from 'three'
 import { BufferAttribute, Matrix4, Object3D, Quaternion, Vector3 } from 'three'
-import { useConstant } from '../utils'
+import { useConstant } from '~/utils'
 
 const _object3d = new Object3D()
 const _position = new Vector3()

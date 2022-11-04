@@ -12,9 +12,9 @@ import {
   DirectionalLight,
   HemisphereLight,
   LightProvider,
-} from './components/lights'
-import { Physics } from './components/physics'
-import { Playground } from './scenes/playground'
+} from '~/components/lights'
+import { Physics } from '~/components/physics'
+import { Playground } from '~/scenes/playground'
 
 export function Root() {
   return (
