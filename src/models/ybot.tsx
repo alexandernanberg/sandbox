@@ -4,7 +4,7 @@ import { createMachine } from '@xstate/fsm'
 import { forwardRef, useEffect, useMemo, useRef } from 'react'
 import type { Object3D } from 'three'
 import type { GLTF } from 'three-stdlib'
-import { SkeletonUtils } from 'three/examples/jsm/utils/SkeletonUtils'
+import { SkeletonUtils } from 'three/addons/SkeletonUtils'
 
 type GLTFResult = GLTF & {
   nodes: {
@@ -36,7 +36,7 @@ console.log(characterMachine.transition(characterMachine.initialState, 'WALK'))
 const Character = forwardRef(function Character(props, forwardedRef) {
   const ref = useRef<Object3D>(null)
   const characterRef = forwardedRef || ref
-  const { scene, materials, animations } = useGLTF('/ybot.gltf') as GLTFResult
+  const { scene, materials, animations } = useGLTF('/ybot.glb') as GLTFResult
   const clone = useMemo(() => SkeletonUtils.clone(scene), [scene])
   const { nodes } = useGraph(clone) as unknown as Pick<
     GLTFResult,
@@ -81,4 +81,4 @@ const Character = forwardRef(function Character(props, forwardedRef) {
 
 export default Character
 
-useGLTF.preload('/ybot.gltf')
+useGLTF.preload('/ybot.glb')

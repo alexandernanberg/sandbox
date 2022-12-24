@@ -16,7 +16,7 @@ type GLTFResult = GLTF & {
 }
 
 export default function Ramp(props: Omit<ConvexHullColliderProps, 'args'>) {
-  const { nodes } = useGLTF('/ramp.gltf') as GLTFResult
+  const { nodes } = useGLTF('/ramp.glb') as GLTFResult
   const { position } = nodes.Ramp.geometry.attributes
 
   return (
@@ -28,4 +28,4 @@ export default function Ramp(props: Omit<ConvexHullColliderProps, 'args'>) {
   )
 }
 
-useGLTF.preload('/ramp.gltf')
+useGLTF.preload('/ramp.glb')

@@ -18,7 +18,7 @@ type GLTFResult = GLTF & {
 }
 
 export default function Stone(props: Omit<ConvexHullColliderProps, 'args'>) {
-  const { nodes } = useGLTF('/stone.gltf') as GLTFResult
+  const { nodes } = useGLTF('/stone.glb') as GLTFResult
   const { geometry } = nodes.Stone
   const vertices = geometry.attributes.position.array as Float32Array
 
@@ -31,4 +31,4 @@ export default function Stone(props: Omit<ConvexHullColliderProps, 'args'>) {
   )
 }
 
-useGLTF.preload('/stone.gltf')
+useGLTF.preload('/stone.glb')

@@ -31,4 +31,4 @@ export default function Slope(props: Omit<ConvexHullColliderProps, 'args'>) {
   )
 }
 
-useGLTF.preload('/stone.gltf')
+useGLTF.preload('/stone.glb')
