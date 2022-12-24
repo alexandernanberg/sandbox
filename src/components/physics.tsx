@@ -1,4 +1,5 @@
-import * as RAPIER from '@dimforge/rapier3d-compat'
+// import * as RAPIER from '@dimforge/rapier3d-compat'
+import * as RAPIER from '@dimforge/rapier3d'
 import type { Object3DProps } from '@react-three/fiber'
 import { useFrame } from '@react-three/fiber'
 import type {
@@ -18,7 +19,7 @@ import {
   useMemo,
   useRef,
 } from 'react'
-import { suspend } from 'suspend-react'
+// import { suspend } from 'suspend-react'
 import type { LineSegments } from 'three'
 import { BufferAttribute, Matrix4, Object3D, Quaternion, Vector3 } from 'three'
 import { useConstant } from '~/utils'
@@ -90,7 +91,7 @@ export function Physics({
   debug = false,
   gravity = DEFAULT_GRAVITY,
 }: PhysicsProps) {
-  suspend(() => RAPIER.init(), ['rapier'])
+  // suspend(() => RAPIER.init(), ['rapier'])
 
   const worldRef = useRef<RAPIER.World | null>(null)
 
@@ -112,14 +113,16 @@ export function Physics({
     return worldRef.current
   })
 
+  console.log(eventQueue)
+
   // Clean up
   useEffect(() => {
     return () => {
+      eventQueue.free()
       if (worldRef.current !== null) {
         worldRef.current.free()
         worldRef.current = null
       }
-      eventQueue.free()
     }
   }, [eventQueue])
 
@@ -401,7 +404,7 @@ export const RigidBody = forwardRef(function RigidBody(
     const world = worldRef.current()
     const rigidBody = rigidBodyGetter.current()
 
-    object3d.updateWorldMatrix(true, false)
+    // object3d.updateWorldMatrix(true, false)
     object3d.matrixWorld.decompose(_position, _quaternion, _scale)
 
     if (object3d.parent && object3d.parent.type !== 'Scene') {
@@ -451,8 +454,10 @@ export const RigidBody = forwardRef(function RigidBody(
     object3d.quaternion.copy(_object3d.quaternion)
   })
 
-  const onCollisionEnterHandler = useEvent(onCollision || onCollisionEnter)
-  const onCollisionExitHandler = useEvent(onCollisionExit)
+  const onCollisionEnterHandler = useEffectEvent(
+    onCollision || onCollisionEnter,
+  )
+  const onCollisionExitHandler = useEffectEvent(onCollisionExit)
 
   useEffect(() => {
     const rigidBody = rigidBodyGetter.current()
@@ -617,8 +622,10 @@ export function useCollider<
     }
   }, [colliderMeshes, object3dRef, worldRef])
 
-  const onCollisionEnterHandler = useEvent(onCollision || onCollisionEnter)
-  const onCollisionExitHandler = useEvent(onCollisionExit)
+  const onCollisionEnterHandler = useEffectEvent(
+    onCollision || onCollisionEnter,
+  )
+  const onCollisionExitHandler = useEffectEvent(onCollisionExit)
 
   useEffect(() => {
     const collider = colliderGetter.current()
@@ -975,7 +982,7 @@ function noop() {
 }
 
 // Based on https://github.com/reactjs/rfcs/pull/220
-function useEvent<T extends (...args: any[]) => any>(handler: T) {
+function useEffectEvent<T extends (...args: any[]) => any>(handler: T) {
   const handlerRef = useRef<T | null>(null)
 
   useLayoutEffect(() => {

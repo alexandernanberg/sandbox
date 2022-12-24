@@ -2,9 +2,10 @@
 import react from '@vitejs/plugin-react'
 import { resolve } from 'path'
 import { defineConfig } from 'vite'
+import wasm from 'vite-plugin-wasm'
 
 export default defineConfig({
-  plugins: [react()],
+  plugins: [wasm(), react()],
   build: {
     chunkSizeWarningLimit: 1024,
     target: 'esnext',
@@ -13,8 +14,8 @@ export default defineConfig({
     alias: {
       '~': resolve(__dirname, 'src'),
       // Resolve symlink ourselves
-      '@react-three/fiber': resolve('node_modules', '@react-three', 'fiber'),
-      three: resolve('node_modules', 'three'),
+      // '@react-three/fiber': resolve('node_modules', '@react-three', 'fiber'),
+      // three: resolve('node_modules', 'three'),
       // 'three-stdlib': resolve('../three-stdlib/dist'),
     },
   },
