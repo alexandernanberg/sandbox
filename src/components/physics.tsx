@@ -1,4 +1,3 @@
-// import * as RAPIER from '@dimforge/rapier3d-compat'
 import * as RAPIER from '@dimforge/rapier3d'
 import type { Object3DProps } from '@react-three/fiber'
 import { useFrame } from '@react-three/fiber'
@@ -19,7 +18,6 @@ import {
   useMemo,
   useRef,
 } from 'react'
-// import { suspend } from 'suspend-react'
 import type { LineSegments } from 'three'
 import { BufferAttribute, Matrix4, Object3D, Quaternion, Vector3 } from 'three'
 import { useConstant } from '~/utils'
@@ -91,8 +89,6 @@ export function Physics({
   debug = false,
   gravity = DEFAULT_GRAVITY,
 }: PhysicsProps) {
-  // suspend(() => RAPIER.init(), ['rapier'])
-
   const worldRef = useRef<RAPIER.World | null>(null)
 
   const eventQueue = useConstant(() => new RAPIER.EventQueue(true))
@@ -443,15 +439,17 @@ export const RigidBody = forwardRef(function RigidBody(
     const r = rigidBody.rotation()
     const matrixOffset = rigidBodyParentOffsets.get(rigidBody.handle)
 
-    _object3d.position.set(t.x, t.y, t.z)
-    _object3d.quaternion.set(r.x, r.y, r.z, r.w)
-
     if (matrixOffset) {
+      _object3d.position.set(t.x, t.y, t.z)
+      _object3d.quaternion.set(r.x, r.y, r.z, r.w)
       _object3d.applyMatrix4(matrixOffset)
-    }
 
-    object3d.position.copy(object3d.position)
-    object3d.quaternion.copy(_object3d.quaternion)
+      object3d.position.setFromMatrixPosition(_object3d.matrix)
+      object3d.quaternion.setFromRotationMatrix(_object3d.matrix)
+    } else {
+      object3d.position.set(t.x, t.y, t.z)
+      object3d.quaternion.set(r.x, r.y, r.z, r.w)
+    }
   })
 
   const onCollisionEnterHandler = useEffectEvent(
