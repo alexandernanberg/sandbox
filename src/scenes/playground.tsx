@@ -1,15 +1,19 @@
-import { useTexture } from '@react-three/drei'
+import { PerspectiveCamera, useTexture } from '@react-three/drei'
 import type { Color, GroupProps } from '@react-three/fiber'
 import { useFrame } from '@react-three/fiber'
 import { button, useControls } from 'leva'
-import type { MutableRefObject } from 'react'
+import type { MutableRefObject, RefObject } from 'react'
 import { forwardRef, useRef, useState } from 'react'
 import seedrandom from 'seedrandom'
-import { RepeatWrapping } from 'three'
-import type {
+import type { Object3D } from 'three'
+import { Quaternion, RepeatWrapping, Vector3 } from 'three'
+import type { InputManagerRef } from '~/components/input-manager'
+import { InputManager } from '~/components/input-manager'
+import {
   CuboidColliderProps,
   RigidBodyApi,
   RigidBodyProps,
+  usePhysicsUpdate,
 } from '~/components/physics'
 import {
   BallCollider,
@@ -18,12 +22,13 @@ import {
   CuboidCollider,
   CylinderCollider,
   RigidBody,
+  useCharacterController,
   useSphericalJoint,
 } from '~/components/physics'
 import Ramp from '~/models/ramp'
 import Slope from '~/models/slope'
 import Stone from '~/models/stone'
-import { useForkRef } from '~/utils'
+import { useConstant, useForkRef } from '~/utils'
 
 export function Playground() {
   const [items, setItems] = useState<Array<number>>([])
@@ -52,6 +57,9 @@ export function Playground() {
     },
   )
 
+  const inputManagerRef = useRef<InputManagerRef>(null)
+  const targetRef = useRef<Object3D>(null)
+
   return (
     <>
       <Floor />
@@ -61,7 +69,17 @@ export function Playground() {
         <Ball key={item} position={[Math.random(), 6, Math.random()]} />
       ))}
 
-      <Character />
+      <InputManager ref={inputManagerRef} />
+
+      <Player
+        position={[0, 3, 0]}
+        inputManagerRef={inputManagerRef}
+        ref={targetRef}
+      />
+      <ThirdPersonCamera
+        targetRef={targetRef}
+        inputManagerRef={inputManagerRef}
+      />
 
       <Slopes position={[0, 0, 12]} />
 
@@ -153,22 +171,134 @@ export function Playground() {
   )
 }
 
-function Character(props: RigidBodyProps) {
+interface PlayerProps extends RigidBodyProps {
+  inputManagerRef: RefObject<InputManagerRef>
+}
+
+const Player = forwardRef<Object3D, PlayerProps>(function Player(
+  { inputManagerRef, ...props },
+  forwardedRef,
+) {
+  const rigidBodyRef = useRef<RigidBodyApi>(null)
+  const characterControllerRef = useCharacterController({ offset: 0.1 })
+
+  const gravity = -9.81
+  const speed = 0.1
+  const playerVelocity = new Vector3(0, 0, 0)
+  const jumpHeight = 1
+
+  usePhysicsUpdate((delta) => {
+    const rigidBody = rigidBodyRef.current
+    const inputManager = inputManagerRef.current
+    if (!rigidBody || !inputManager) return
+    const characterController = characterControllerRef.current()
+
+    const input = inputManager.getInput()
+    const inputMovement = input.movement.normalize()
+    const nextPos = rigidBody.translation()
+
+    const isGrounded = characterController.computedGrounded()
+
+    playerVelocity.x = inputMovement.x * speed
+    playerVelocity.z = inputMovement.y * speed
+
+    if (isGrounded && playerVelocity.y < 0) {
+      playerVelocity.y = 0
+    }
+
+    if (isGrounded && input.keyboard.Space) {
+      playerVelocity.y += Math.sqrt(jumpHeight * -0.05 * gravity)
+    }
+
+    playerVelocity.y += gravity * delta
+
+    characterController.computeColliderMovement(
+      rigidBody.collider(0),
+      playerVelocity,
+    )
+
+    const movement = characterController.computedMovement()
+    nextPos.x += movement.x
+    nextPos.y += movement.y
+    nextPos.z += movement.z
+    rigidBody.setNextKinematicTranslation(nextPos)
+  })
+
   return (
-    <RigidBody
-      restrictRotation={[true, false, true]}
-      position={[0, 1.75 / 2, 0]}
-      {...props}
-    >
-      <CapsuleCollider args={[0.5, 1.75]}>
-        <mesh castShadow receiveShadow>
-          <capsuleGeometry args={[0.5, 1.75, 10, 20]} />
-          <meshPhongMaterial color={0xf0f0f0} />
-        </mesh>
-      </CapsuleCollider>
+    <RigidBody ref={rigidBodyRef} type="kinematic-position-based" {...props}>
+      <object3D ref={forwardedRef}>
+        <CapsuleCollider args={[0.5, 1.75]}>
+          <mesh castShadow receiveShadow>
+            <capsuleGeometry args={[0.5, 1.75, 10, 20]} />
+            <meshPhongMaterial color={0xf0f0f0} />
+          </mesh>
+        </CapsuleCollider>
+      </object3D>
     </RigidBody>
   )
+})
+
+interface ThirdPersonCameraProps {
+  targetRef: RefObject<Object3D>
+  inputManagerRef: RefObject<InputManagerRef>
 }
+
+const ThirdPersonCamera = forwardRef<Object3D, ThirdPersonCameraProps>(
+  function ThirdPersonCamera({ targetRef, inputManagerRef }, forwardedRef) {
+    const ref = useRef()
+    const cameraRef = forwardedRef || ref
+    const groupRef = useRef()
+
+    const currentPosition = useConstant(() => new Vector3())
+    const currentLookAt = useConstant(() => new Vector3())
+
+    useFrame((_, delta) => {
+      const camera = cameraRef.current
+      const target = targetRef.current
+      const inputManager = inputManagerRef.current
+
+      if (!target || !inputManager) return
+      // const group = groupRef.current;
+      const input = inputManager.getInput()
+
+      // console.log(input.lookAt)
+
+      const pos = new Vector3()
+      target.getWorldPosition(pos)
+      const quat = new Quaternion()
+      target.getWorldQuaternion(quat)
+
+      const idealOffset = new Vector3(0.5, 2.5, -3)
+      idealOffset.applyQuaternion(quat)
+      idealOffset.add(pos)
+
+      const idealLookAt = new Vector3(0, 0, 5)
+      idealLookAt.applyQuaternion(quat)
+      idealLookAt.add(pos)
+
+      const t = 1.05 - Math.pow(0.001, delta)
+      currentPosition.lerp(idealOffset, t)
+      currentLookAt.lerp(idealLookAt, t)
+
+      camera.position.copy(currentPosition)
+      camera.lookAt(currentLookAt)
+    })
+
+    return (
+      <group>
+        <PerspectiveCamera
+          makeDefault
+          ref={cameraRef}
+          fov={90}
+          position={[0, 4, 8]}
+          zoom={1.2}
+          near={0.1}
+          far={1000}
+        />
+      </group>
+    )
+  },
+)
 
 interface ChainSegmentProps extends RigidBodyProps {
   target: MutableRefObject<RigidBodyApi | null>
@@ -394,6 +524,7 @@ function RockingBoard(props: GroupProps) {
         position={[0, 0.75, 0]}
         rotation-z={-0.3}
         restrictRotation={[true, true, false]}
+        restrictPosition={[true, true, true]}
       >
         <CuboidCollider args={[7, 0.25, 1]} restitution={0} density={1}>
           <mesh castShadow receiveShadow>
@@ -540,11 +671,11 @@ function clamp(value: number, min: number, max: number) {
 function Elevator(props: RigidBodyProps) {
   const ref = useRef<RigidBodyApi>(null)
 
-  useFrame((state) => {
+  usePhysicsUpdate(() => {
     const rigidBody = ref.current
     if (!rigidBody) return
     const vec = rigidBody.translation()
-    vec.y = clamp(3.875 + Math.sin(state.clock.elapsedTime) * 5, 0.25, 7.75)
+    vec.y = clamp(3.875 + Math.sin(performance.now() / 1000) * 5, 0.25, 7.75)
     rigidBody.setNextKinematicTranslation(vec)
   })
 

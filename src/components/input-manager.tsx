@@ -11,7 +11,7 @@ import { Vector2 } from 'three'
 import { useConstant } from '~/utils'
 
 interface InputManagerProps {
-  cameraRef: RefObject<Camera>
+  // cameraRef: RefObject<Camera>
 }
 
 interface InputManagerState {
@@ -109,15 +109,15 @@ export const InputManager = forwardRef<InputManagerRef, InputManagerProps>(
         state.lookAt.y -= movementY
       }
 
-      // const onClick = () => {
-      //   domElement.requestPointerLock();
-      // };
+      const onClick = () => {
+        domElement.requestPointerLock()
+      }
 
       const onPointerLockChange = () => {
         state.pointerLocked = document.pointerLockElement === domElement
       }
 
-      // domElement.addEventListener("click", onClick, false);
+      domElement.addEventListener('click', onClick, false)
       domElement.addEventListener('pointerlockchange', onPointerLockChange)
       domElement.addEventListener('pointerlockerror', (e) => {
         console.log('err', e)

@@ -53,6 +53,7 @@ export interface PhysicsContextValue {
   rigidBodyMeshes: Map<number, Object3D>
   rigidBodyEvents: EventMap
   rigidBodyParentOffsets: Map<number, Matrix4>
+  updateListeners: Set<RefObject<(delta: number) => void>>
 }
 
 const PhysicsContext = createContext<PhysicsContextValue | null>(null)
@@ -98,6 +99,9 @@ export function Physics({
   const rigidBodyEvents = useConstant<EventMap>(() => new Map())
   const rigidBodyParentOffsets = useConstant(() => new Map<number, Matrix4>())
   const debugMeshRef = useRef<LineSegments>(null)
+  const updateListeners = useConstant(
+    () => new Set<RefObject<(delta: number) => void>>(),
+  )
 
   const worldGetter = useRef(() => {
     if (worldRef.current === null) {
@@ -108,8 +112,6 @@ export function Physics({
     }
     return worldRef.current
   })
-
-  console.log(eventQueue)
 
   // Clean up
   useEffect(() => {
@@ -139,9 +141,16 @@ export function Physics({
 
     const frameTime = Math.min(0.25, delta)
     accumulator += frameTime
+    let fixedDelta = delta
 
     // Fixed update
     while (accumulator >= fixedStep) {
+      fixedDelta += performance.now()
+      console.log(accumulator / fixedStep)
+      for (const cb of updateListeners) {
+        cb.current?.(delta)
+      }
+
       world.step(eventQueue)
 
       eventQueue.drainCollisionEvents((handle1, handle2, started) => {
@@ -217,6 +226,7 @@ export function Physics({
       rigidBodyMeshes,
       rigidBodyEvents,
       rigidBodyParentOffsets,
+      updateListeners,
     }),
     [
       debug,
@@ -225,6 +235,7 @@ export function Physics({
       rigidBodyMeshes,
       rigidBodyEvents,
       rigidBodyParentOffsets,
+      updateListeners,
     ],
   )
 
@@ -268,6 +279,18 @@ function handleCollisionEvent(
     rigidBodyMesh &&
       rigidBodyEvent?.onCollisionExit?.({ target: rigidBodyMesh })
   }
+}
+
+export function usePhysicsUpdate(cb: (delta: number) => void) {
+  const context = usePhysicsContext()
+  const ref = useRefCallback(cb)
+
+  useLayoutEffect(() => {
+    context.updateListeners.add(ref)
+    return () => {
+      context.updateListeners.delete(ref)
+    }
+  }, [context.updateListeners, ref])
 }
 
 ///////////////////////////////////////////////////////////////
@@ -972,6 +995,52 @@ export function useSphericalJoint(
 }
 
 ///////////////////////////////////////////////////////////////
+// CharacterController
+///////////////////////////////////////////////////////////////
+
+interface CharacterControllerParams {
+  offset: number
+}
+
+export function useCharacterController(params: CharacterControllerParams) {
+  const { worldRef } = usePhysicsContext()
+  const characterControllerRef =
+    useRef<RAPIER.KinematicCharacterController | null>(null)
+
+  const characterControllerGetter = useRef(() => {
+    if (characterControllerRef.current === null) {
+      const world = worldRef.current()
+
+      const characterController = world.createCharacterController(params.offset)
+
+      characterController.enableAutostep(0.7, 0.3, true)
+      characterController.enableSnapToGround(0.3)
+      characterController.setCharacterMass(100)
+      characterController.setApplyImpulsesToDynamicBodies(true)
+      characterController.setSlideEnabled(true)
+
+      characterControllerRef.current = characterController
+    }
+
+    return characterControllerRef.current
+  })
+
+  useLayoutEffect(() => {
+    const world = worldRef.current()
+    const characterController = characterControllerGetter.current()
+
+    return () => {
+      if (characterController) {
+        world.removeCharacterController(characterController)
+        characterControllerRef.current = null
+      }
+    }
+  }, [worldRef])
+
+  return characterControllerGetter
+}
+
+///////////////////////////////////////////////////////////////
 // Utils
 ///////////////////////////////////////////////////////////////
 
@@ -991,4 +1060,14 @@ function useEffectEvent<T extends (...args: any[]) => any>(handler: T) {
     const fn = handlerRef.current
     return fn?.(...args)
   }, [])
+}
+
+function useRefCallback<T extends (...args: any[]) => any>(handler: T) {
+  const handlerRef = useRef<T | null>(null)
+
+  useLayoutEffect(() => {
+    handlerRef.current = handler
+  })
+
+  return handlerRef
 }
