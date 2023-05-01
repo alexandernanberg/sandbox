@@ -110,7 +110,7 @@ export const InputManager = forwardRef<InputManagerRef, InputManagerProps>(
       }
 
       const onClick = () => {
-        domElement.requestPointerLock()
+        // domElement.requestPointerLock()
       }
 
       const onPointerLockChange = () => {
