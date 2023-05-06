@@ -1,23 +1,26 @@
-import { PerspectiveCamera, useTexture } from '@react-three/drei'
-import { Color, GroupProps, useFrame, useUpdate } from '@react-three/fiber'
+import { PerspectiveCamera, Text, useTexture } from '@react-three/drei'
+import type { Color, GroupProps } from '@react-three/fiber'
+import { useUpdate } from '@react-three/fiber'
 import { button, useControls } from 'leva'
 import type { MutableRefObject, RefObject } from 'react'
-import { forwardRef, useRef, useState } from 'react'
+import { Suspense, forwardRef, useRef, useState } from 'react'
 import seedrandom from 'seedrandom'
 import type { Object3D } from 'three'
 import { Quaternion, RepeatWrapping, Vector3 } from 'three'
 import type { InputManagerRef } from '~/components/input-manager'
 import { InputManager } from '~/components/input-manager'
+import type {
+  CuboidColliderProps,
+  RigidBodyApi,
+  RigidBodyProps,
+} from '~/components/physics'
 import {
   BallCollider,
   CapsuleCollider,
   ConeCollider,
   CuboidCollider,
-  CuboidColliderProps,
   CylinderCollider,
   RigidBody,
-  RigidBodyApi,
-  RigidBodyProps,
   useCharacterController,
   useSphericalJoint,
 } from '~/components/physics'
@@ -27,7 +30,11 @@ import Stone from '~/models/stone'
 import { Stages } from '~/stages'
 import { useConstant, useForkRef } from '~/utils'
 
-export function Playground() {
+interface PlaygroundProps {
+  debugCamera: boolean
+}
+
+export function Playground({ debugCamera }: PlaygroundProps) {
   const [items, setItems] = useState<Array<number>>([])
 
   const spawnItems = (num = 1) => {
@@ -76,9 +83,10 @@ export function Playground() {
       <ThirdPersonCamera
         targetRef={targetRef}
         inputManagerRef={inputManagerRef}
+        makeDefault={!debugCamera}
       />
 
-      <Slopes position={[0, 0, 12]} />
+      <Slopes position={[8, 0, 3]} />
 
       <RigidBody position={[0, 3, 12.5]} scale={0.5}>
         <CuboidCollider args={[1, 1, 1]}>
@@ -117,7 +125,7 @@ export function Playground() {
 
       <RockingBoard position={[-8, 0.5, 12]} />
 
-      <Swing position={[8, 0, 12]} rotation-y={-Math.PI / 2} />
+      {/* <Swing position={[8, 0, 12]} rotation-y={-Math.PI / 2} /> */}
 
       <RigidBody position={[-7, 12, 0]}>
         <CuboidCollider args={[1, 1, 1]}>
@@ -209,8 +217,6 @@ const Player = forwardRef<Object3D, PlayerProps>(function Player(
       )
     }
 
-    console.log(Stages.Fixed.fixedStep)
-
     playerVelocity.y += gravity * (Stages.Fixed.fixedStep / 10)
 
     characterController.computeColliderMovement(
@@ -219,7 +225,6 @@ const Player = forwardRef<Object3D, PlayerProps>(function Player(
     )
 
     const movement = characterController.computedMovement()
-    console.log(movement)
     nextPos.x += movement.x
     nextPos.y += movement.y
     nextPos.z += movement.z
@@ -243,10 +248,14 @@ const Player = forwardRef<Object3D, PlayerProps>(function Player(
 interface ThirdPersonCameraProps {
   targetRef: RefObject<Object3D>
   inputManagerRef: RefObject<InputManagerRef>
+  makeDefault?: boolean
 }
 
 const ThirdPersonCamera = forwardRef<Object3D, ThirdPersonCameraProps>(
-  function ThirdPersonCamera({ targetRef, inputManagerRef }, forwardedRef) {
+  function ThirdPersonCamera(
+    { targetRef, inputManagerRef, makeDefault = true },
+    forwardedRef,
+  ) {
     const ref = useRef()
     const cameraRef = forwardedRef || ref
     const groupRef = useRef()
@@ -289,7 +298,7 @@ const ThirdPersonCamera = forwardRef<Object3D, ThirdPersonCameraProps>(
     return (
       <group>
         <PerspectiveCamera
-          makeDefault
+          makeDefault={makeDefault}
           ref={cameraRef}
           fov={90}
           position={[0, 4, 8]}
@@ -560,49 +569,51 @@ function Box({
   )
 }
 
+function runFromAngleAndRaise(angle: number, rise: number) {
+  const radians = (angle * Math.PI) / 180
+  return rise / Math.tan(radians)
+}
+
 function Slopes(props: GroupProps) {
+  const slopes = [30, 45, 60, 80, 90].map((angle, index) => {
+    const run = runFromAngleAndRaise(angle, 2)
+    return (
+      <group key={angle}>
+        <CuboidCollider args={[2, 4, 2]} position={[0, 2, 2 * index]}>
+          <Suspense fallback={null}>
+            {/* eslint-disable-next-line @typescript-eslint/ban-ts-comment */}
+            {/* @ts-expect-error */}
+            <Text
+              position={[-1.01, 1, 0]}
+              rotation={[0, -Math.PI / 2, 0]}
+              color={'#000'}
+              fontSize={0.75}
+              maxWidth={200}
+              lineHeight={1}
+              textAlign="center"
+              anchorX="center"
+              anchorY="middle"
+            >
+              {angle}&deg;
+            </Text>
+          </Suspense>
+          <mesh castShadow receiveShadow>
+            <boxGeometry args={[2, 4, 2]} />
+            <meshPhongMaterial color={0xfffff0} />
+          </mesh>
+        </CuboidCollider>
+        <Slope
+          position={[-1.001 - run / 2, 1, 2 * index]}
+          scale={[run, 2, 2]}
+          rotation={[0, Math.PI, 0]}
+        />
+      </group>
+    )
+  })
+
   return (
     <group {...props}>
-      <RigidBody
-        type="fixed"
-        position={[3, 0.125, 0]}
-        rotation={[0, Math.PI / 2, 0]}
-        scale={[1, 0.25, 1]}
-      >
-        <Slope />
-      </RigidBody>
-      <RigidBody
-        type="fixed"
-        position={[2, 0.25, 0]}
-        rotation={[0, Math.PI / 2, 0]}
-        scale={[1, 0.5, 1]}
-      >
-        <Slope />
-      </RigidBody>
-      <RigidBody
-        type="fixed"
-        position={[1, 0.375, 0]}
-        rotation={[0, Math.PI / 2, 0]}
-        scale={[1, 0.75, 1]}
-      >
-        <Slope />
-      </RigidBody>
-      <RigidBody
-        type="fixed"
-        position={[0, 0.5, 0]}
-        rotation={[0, Math.PI / 2, 0]}
-        scale={[1, 1, 1]}
-      >
-        <Slope />
-      </RigidBody>
-      <RigidBody
-        type="fixed"
-        position={[-1, 0.625, 0]}
-        rotation={[0, Math.PI / 2, 0]}
-        scale={[1, 1.25, 1]}
-      >
-        <Slope />
-      </RigidBody>
+      <RigidBody type="fixed">{slopes}</RigidBody>
     </group>
   )
 }

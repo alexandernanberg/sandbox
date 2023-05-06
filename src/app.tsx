@@ -59,9 +59,7 @@ export function App() {
   return (
     <LightProvider debug={lightsControl.debug}>
       <Stats />
-      <PerspectiveCamera makeDefault position={[8, 8, -10]} />
-      <OrbitControls target={[-2, 0, 6]} />
-
+      <OrbitControls target={[-2, 0, 6]} makeDefault={cameraControls.debug} />
       <fog attach="fog" args={[0xffffff, 10, 90]} />
       <Sky />
 
@@ -70,7 +68,7 @@ export function App() {
         debug={physicsControls.debug}
         gravity={physicsControls.gravity}
       >
-        <Playground />
+        <Playground debugCamera={cameraControls.debug} />
       </Physics>
     </LightProvider>
   )
