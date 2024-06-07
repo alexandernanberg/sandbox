@@ -6,7 +6,6 @@ import {
   Stats,
 } from '@react-three/drei'
 import { Canvas } from '@react-three/fiber'
-import { button, useControls } from 'leva'
 import { Suspense, useReducer } from 'react'
 import {
   DirectionalLight,
@@ -30,30 +29,33 @@ export function Root() {
 }
 
 export function App() {
-  const [physicsKey, updatePhysicsKey] = useReducer((num) => num + 1, 0)
+  const [physicsKey, updatePhysicsKey] = useReducer((num: number) => num + 1, 0)
 
-  const cameraControls = useControls(
-    'Camera',
-    {
-      debug: { label: 'Debug', value: false },
-    },
-    { collapsed: true },
-  )
-  const lightsControl = useControls(
-    'Lights',
-    {
-      debug: { label: 'Debug', value: false },
-    },
-    { collapsed: true },
-  )
-  const physicsControls = useControls('Physics', {
-    debug: { label: 'Debug', value: false },
-    gravity: { label: 'Gravity', value: [0, -9.81, 0] },
-    _reset: {
-      label: 'Reset',
-      ...button(updatePhysicsKey),
-    },
-  })
+  const cameraControls = { debug: false }
+  // const cameraControls = useControls(
+  //   'Camera',
+  //   {
+  //     debug: { label: 'Debug', value: false },
+  //   },
+  //   { collapsed: true },
+  // )
+  const lightsControl = { debug: false }
+  // const lightsControl = useControls(
+  //   'Lights',
+  //   {
+  //     debug: { label: 'Debug', value: false },
+  //   },
+  //   { collapsed: true },
+  // )
+  const physicsControls = { debug: false, gravity: [0, -9.81, 0] } as const
+  // const physicsControls = useControls('Physics', {
+  //   debug: { label: 'Debug', value: false },
+  //   gravity: { label: 'Gravity', value: [0, -9.81, 0] },
+  //   _reset: {
+  //     label: 'Reset',
+  //     ...button(updatePhysicsKey),
+  //   },
+  // })
 
   return (
     <LightProvider debug={lightsControl.debug}>
@@ -74,16 +76,17 @@ export function App() {
 }
 
 function Sky() {
-  const controls = useControls(
-    'Sky',
-    {
-      sun: {
-        label: 'Sun position',
-        value: [100, 200, 100],
-      },
-    },
-    { collapsed: true },
-  )
+  const controls = { sun: [100, 200, 100] } as const
+  // const controls = useControls(
+  //   'Sky',
+  //   {
+  //     sun: {
+  //       label: 'Sun position',
+  //       value: [100, 200, 100],
+  //     },
+  //   },
+  //   { collapsed: true },
+  // )
 
   const { sun: position } = controls
 

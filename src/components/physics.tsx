@@ -1,7 +1,7 @@
 import * as RAPIER from '@dimforge/rapier3d'
-import type { Object3DProps } from '@react-three/fiber'
 import { useFrame } from '@react-three/fiber'
 import type {
+  ComponentProps,
   ForwardedRef,
   MutableRefObject,
   ReactNode,
@@ -18,15 +18,17 @@ import {
   useMemo,
   useRef,
 } from 'react'
-import type { LineSegments } from 'three'
-import { BufferAttribute, Matrix4, Object3D, Quaternion, Vector3 } from 'three'
+import type { LineSegments, Matrix4 } from 'three'
+import { BufferAttribute, Object3D, Quaternion, Vector3 } from 'three'
 import { useConstant } from '~/utils'
 
 const _object3d = new Object3D()
 const _position = new Vector3()
-const _matrix = new Matrix4()
+// const _matrix = new Matrix4()
 const _scale = new Vector3()
 const _quaternion = new Quaternion()
+
+type Object3DProps = ComponentProps<'object3D'>
 
 interface CollisionEvent {
   target: Object3D
@@ -127,17 +129,13 @@ export function Physics({
   // Update gravity
   useEffect(() => {
     const world = worldGetter.current()
-    if (world == null) return
-    if (gravity != null) {
-      world.gravity = Array.isArray(gravity)
-        ? new Vector3().fromArray(gravity)
-        : gravity
-    }
+    world.gravity = Array.isArray(gravity)
+      ? new Vector3().fromArray(gravity)
+      : gravity
   }, [gravity])
 
   useFrame((state, delta) => {
     const world = worldGetter.current()
-    if (world == null) return
 
     const frameTime = Math.min(0.25, delta)
     accumulator += frameTime
@@ -146,7 +144,6 @@ export function Physics({
     // Fixed update
     while (accumulator >= fixedStep) {
       fixedDelta += performance.now()
-      console.log(accumulator / fixedStep)
       for (const cb of updateListeners) {
         cb.current?.(delta)
       }
@@ -439,6 +436,7 @@ export const RigidBody = forwardRef(function RigidBody(
     return () => {
       if (rigidBodyRef.current !== null) {
         // Check if the rigid body has already been removed.
+        // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
         if (world.getRigidBody(rigidBody.handle)) {
           world.removeRigidBody(rigidBody)
         }
@@ -522,6 +520,7 @@ function createRigidBodyDesc(type: RigidBodyType): RAPIER.RigidBodyDesc {
     case 'kinematic-position-based':
       return RAPIER.RigidBodyDesc.kinematicPositionBased()
     default:
+      // eslint-disable-next-line @typescript-eslint/restrict-template-expressions
       throw new Error(`Unsupported RigidBody.type: "${type}"`)
   }
 }
@@ -634,6 +633,7 @@ export function useCollider<
     return () => {
       if (colliderRef.current === null) {
         // Check if the collider has already been removed.
+        // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
         if (world.getCollider(collider.handle)) {
           world.removeCollider(collider, true)
         }
@@ -1030,10 +1030,8 @@ export function useCharacterController(params: CharacterControllerParams) {
     const characterController = characterControllerGetter.current()
 
     return () => {
-      if (characterController) {
-        world.removeCharacterController(characterController)
-        characterControllerRef.current = null
-      }
+      world.removeCharacterController(characterController)
+      characterControllerRef.current = null
     }
   }, [worldRef])
 

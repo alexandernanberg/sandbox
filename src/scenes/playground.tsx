@@ -1,9 +1,8 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
 
 import { PerspectiveCamera, Text, useTexture } from '@react-three/drei'
-import type { GroupProps, Color } from '@react-three/fiber'
+import type { Color } from '@react-three/fiber'
 import { useFrame } from '@react-three/fiber'
-import { button, useControls } from 'leva'
 import type { ComponentProps, MutableRefObject, RefObject } from 'react'
 import { Suspense, forwardRef, useRef, useState } from 'react'
 import seedrandom from 'seedrandom'
@@ -46,22 +45,22 @@ export function Playground({ debugCamera }: PlaygroundProps) {
     ])
   }
 
-  const objectControls = useControls(
-    'Objects',
-    {
-      _spawn: {
-        label: 'Spawn 10 balls',
-        ...button(() => spawnItems(10)),
-      },
-      _reset: {
-        label: 'Reset',
-        ...button(() => setItems([])),
-      },
-    },
-    {
-      collapsed: true,
-    },
-  )
+  // const objectControls = useControls(
+  //   'Objects',
+  //   {
+  //     _spawn: {
+  //       label: 'Spawn 10 balls',
+  //       ...button(() => spawnItems(10)),
+  //     },
+  //     _reset: {
+  //       label: 'Reset',
+  //       ...button(() => setItems([])),
+  //     },
+  //   },
+  //   {
+  //     collapsed: true,
+  //   },
+  // )
 
   const inputManagerRef = useRef<InputManagerRef>(null)
   const targetRef = useRef<Object3D>(null)
@@ -363,7 +362,7 @@ const ChainSegment = forwardRef<RigidBodyApi, ChainSegmentProps>(
 //   </>
 // })
 
-function Swing(props: GroupProps) {
+function Swing(props: ComponentProps<'group'>) {
   const rackRef = useRef<RigidBodyApi>(null)
   const chain1Ref = useRef<RigidBodyApi>(null)
   const chain2Ref = useRef<RigidBodyApi>(null)
