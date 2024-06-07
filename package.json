@@ -33,6 +33,7 @@
     "@types/seedrandom": "^3.0.8",
     "@types/three": "^0.158.1",
     "@vitejs/plugin-react": "^4.3.0",
+    "babel-plugin-react-compiler": "0.0.0-experimental-938cd9a-20240601",
     "eslint": "^8.57.0",
     "eslint-config-alexandernanberg": "^3.8.1",
     "prettier": "^3.3.1",

@@ -1,7 +1,6 @@
 /* Visit https://aka.ms/tsconfig.json to read more about this file */
 {
   "compilerOptions": {
-    "rootDir": "src",
     "strict": true,
     "target": "ESNext",
     "lib": ["DOM", "DOM.Iterable", "ESNext"],

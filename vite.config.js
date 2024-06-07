@@ -5,7 +5,10 @@ import { defineConfig } from 'vite'
 import wasm from 'vite-plugin-wasm'
 
 export default defineConfig({
-  plugins: [wasm(), react()],
+  plugins: [
+    wasm(),
+    react({ babel: { plugins: [['babel-plugin-react-compiler', {}]] } }),
+  ],
   build: {
     chunkSizeWarningLimit: 1024,
     target: 'esnext',
