@@ -1,7 +1,7 @@
 import { useAnimations, useGLTF } from '@react-three/drei'
 import { useGraph } from '@react-three/fiber'
 import { createMachine } from '@xstate/fsm'
-import { forwardRef, useEffect, useMemo, useRef } from 'react'
+import { useEffect, useMemo, useRef } from 'react'
 import type { Object3D } from 'three'
 import type { GLTF } from 'three-stdlib'
 import { SkeletonUtils } from 'three/addons/SkeletonUtils'
@@ -33,7 +33,7 @@ const characterMachine = createMachine({
 
 console.log(characterMachine.transition(characterMachine.initialState, 'WALK'))
 
-const Character = forwardRef(function Character(props, forwardedRef) {
+function Character(props, forwardedRef) {
   const ref = useRef<Object3D>(null)
   const characterRef = forwardedRef || ref
   const { scene, materials, animations } = useGLTF('/ybot.glb') as GLTFResult
@@ -77,7 +77,7 @@ const Character = forwardRef(function Character(props, forwardedRef) {
       </group>
     </group>
   )
-})
+}
 
 export default Character
 

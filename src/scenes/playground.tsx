@@ -4,7 +4,7 @@ import { PerspectiveCamera, Text, useTexture } from '@react-three/drei'
 import type { Color } from '@react-three/fiber'
 import { useFrame } from '@react-three/fiber'
 import type { ComponentProps, MutableRefObject, RefObject } from 'react'
-import { Suspense, forwardRef, useRef, useState } from 'react'
+import { Suspense, useRef, useState } from 'react'
 import seedrandom from 'seedrandom'
 import type { Object3D } from 'three'
 import { Quaternion, RepeatWrapping, Vector3 } from 'three'
@@ -177,14 +177,12 @@ export function Playground({ debugCamera }: PlaygroundProps) {
   )
 }
 
-interface PlayerProps extends RigidBodyProps {
+interface PlayerProps extends Omit<RigidBodyProps, 'ref'> {
+  ref: Object3D
   inputManagerRef: RefObject<InputManagerRef>
 }
 
-const Player = forwardRef<Object3D, PlayerProps>(function Player(
-  { inputManagerRef, ...props },
-  forwardedRef,
-) {
+function Player({ inputManagerRef, ref, ...props }: PlayerProps) {
   const rigidBodyRef = useRef<RigidBodyApi>(null)
   const characterControllerRef = useCharacterController({ offset: 0.1 })
 
@@ -232,7 +230,7 @@ const Player = forwardRef<Object3D, PlayerProps>(function Player(
 
   return (
     <RigidBody ref={rigidBodyRef} type="kinematic-position-based" {...props}>
-      <object3D ref={forwardedRef}>
+      <object3D ref={ref}>
         <CapsuleCollider args={[0.5, 1.75]}>
           <mesh castShadow receiveShadow>
             <capsuleGeometry args={[0.5, 1.75, 10, 20]} />
@@ -242,100 +240,99 @@ const Player = forwardRef<Object3D, PlayerProps>(function Player(
       </object3D>
     </RigidBody>
   )
-})
+}
 
 interface ThirdPersonCameraProps {
+  ref?: Object3D
   targetRef: RefObject<Object3D>
   inputManagerRef: RefObject<InputManagerRef>
   makeDefault?: boolean
 }
 
-const ThirdPersonCamera = forwardRef<Object3D, ThirdPersonCameraProps>(
-  function ThirdPersonCamera(
-    { targetRef, inputManagerRef, makeDefault = true },
-    forwardedRef,
-  ) {
-    const ref = useRef()
-    const cameraRef = forwardedRef || ref
-    const groupRef = useRef()
+function ThirdPersonCamera({
+  targetRef,
+  inputManagerRef,
+  ref: forwardedRef,
+  makeDefault = true,
+}: ThirdPersonCameraProps) {
+  const ref = useRef()
+  const cameraRef = forwardedRef || ref
+  const groupRef = useRef()
 
-    const currentPosition = useConstant(() => new Vector3())
-    const currentLookAt = useConstant(() => new Vector3())
+  const currentPosition = useConstant(() => new Vector3())
+  const currentLookAt = useConstant(() => new Vector3())
 
-    useFrame((_, delta) => {
-      const camera = cameraRef.current
-      const target = targetRef.current
-      const inputManager = inputManagerRef.current
+  useFrame((_, delta) => {
+    const camera = cameraRef.current
+    const target = targetRef.current
+    const inputManager = inputManagerRef.current
 
-      if (!target || !inputManager) return
-      // const group = groupRef.current;
-      const input = inputManager.getInput()
+    if (!target || !inputManager) return
+    // const group = groupRef.current;
+    const input = inputManager.getInput()
 
-      // console.log(input.lookAt)
+    // console.log(input.lookAt)
 
-      const pos = new Vector3()
-      target.getWorldPosition(pos)
-      const quat = new Quaternion()
-      target.getWorldQuaternion(quat)
+    const pos = new Vector3()
+    target.getWorldPosition(pos)
+    const quat = new Quaternion()
+    target.getWorldQuaternion(quat)
 
-      const idealOffset = new Vector3(0.5, 2.5, -3)
-      idealOffset.applyQuaternion(quat)
-      idealOffset.add(pos)
+    const idealOffset = new Vector3(0.5, 2.5, -3)
+    idealOffset.applyQuaternion(quat)
+    idealOffset.add(pos)
 
-      const idealLookAt = new Vector3(0, 0, 5)
-      idealLookAt.applyQuaternion(quat)
-      idealLookAt.add(pos)
+    const idealLookAt = new Vector3(0, 0, 5)
+    idealLookAt.applyQuaternion(quat)
+    idealLookAt.add(pos)
 
-      const t = 1.05 - Math.pow(0.001, delta)
-      currentPosition.lerp(idealOffset, t)
-      currentLookAt.lerp(idealLookAt, t)
+    const t = 1.05 - Math.pow(0.001, delta)
+    currentPosition.lerp(idealOffset, t)
+    currentLookAt.lerp(idealLookAt, t)
 
-      camera.position.copy(currentPosition)
-      camera.lookAt(currentLookAt)
-    })
+    camera.position.copy(currentPosition)
+    camera.lookAt(currentLookAt)
+  })
 
-    return (
-      <group>
-        <PerspectiveCamera
-          makeDefault={makeDefault}
-          ref={cameraRef}
-          fov={90}
-          position={[0, 4, 8]}
-          zoom={1.2}
-          near={0.1}
-          far={1000}
-        />
-      </group>
-    )
-  },
-)
+  return (
+    <group>
+      <PerspectiveCamera
+        makeDefault={makeDefault}
+        ref={cameraRef}
+        fov={90}
+        position={[0, 4, 8]}
+        zoom={1.2}
+        near={0.1}
+        far={1000}
+      />
+    </group>
+  )
+}
 
 interface ChainSegmentProps extends RigidBodyProps {
   target: MutableRefObject<RigidBodyApi | null>
 }
 
-const ChainSegment = forwardRef<RigidBodyApi, ChainSegmentProps>(
-  function ChainSegment({ target }, forwardedRef) {
-    const ownRef = useRef<RigidBodyApi | null>(null)
-    const ref = useForkRef(ownRef, forwardedRef)
+function ChainSegment({ ref: forwardedRef, target }: ChainSegmentProps) {
+  const ownRef = useRef<RigidBodyApi | null>(null)
+  const ref = useForkRef(ownRef, forwardedRef)
 
-    useSphericalJoint(ownRef, target, [
-      { x: 0, y: 0.26, z: 0 },
-      { x: 0, y: -0.26, z: 0 },
-    ])
+  useSphericalJoint(ownRef, target, [
+    { x: 0, y: 0.26, z: 0 },
+    { x: 0, y: -0.26, z: 0 },
+  ])
 
-    return (
-      <RigidBody ref={ref} position={[0, 0, 0]}>
-        <CylinderCollider args={[0.05, 0.5]}>
-          <mesh castShadow receiveShadow>
-            <cylinderGeometry args={[0.05, 0.05, 0.5, 6]} />
-            <meshPhongMaterial color={0xadadad} />
-          </mesh>
-        </CylinderCollider>
-      </RigidBody>
-    )
-  },
-)
+  return (
+    <RigidBody ref={ref} position={[0, 0, 0]}>
+      <CylinderCollider args={[0.05, 0.5]}>
+        <mesh castShadow receiveShadow>
+          <cylinderGeometry args={[0.05, 0.05, 0.5, 6]} />
+          <meshPhongMaterial color={0xadadad} />
+        </mesh>
+      </CylinderCollider>
+    </RigidBody>
+  )
+}
 
 // interface ChainProps {
 //   target: MutableRefObject<RigidBodyApi | null>

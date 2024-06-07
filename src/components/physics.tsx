@@ -2,14 +2,13 @@ import * as RAPIER from '@dimforge/rapier3d'
 import { useFrame } from '@react-three/fiber'
 import type {
   ComponentProps,
-  ForwardedRef,
   MutableRefObject,
   ReactNode,
+  Ref,
   RefObject,
 } from 'react'
 import {
   createContext,
-  forwardRef,
   useCallback,
   useContext,
   useEffect,
@@ -312,6 +311,7 @@ export interface RigidBodyApi extends RAPIER.RigidBody {}
 type Triplet = [number, number, number]
 
 export interface RigidBodyProps extends Omit<Object3DProps, 'ref'> {
+  ref?: Ref<RigidBodyApi | null>
   type?: RigidBodyType
   linearDamping?: number
   linearVelocity?: Triplet | Vector3
@@ -330,29 +330,27 @@ export interface RigidBodyProps extends Omit<Object3DProps, 'ref'> {
   onCollisionExit?: CollisionEventCallback
 }
 
-export const RigidBody = forwardRef(function RigidBody(
-  {
-    type = 'dynamic',
-    children,
-    linearDamping,
-    linearVelocity,
-    angularDamping,
-    angularVelocity,
-    gravityScale = 1,
-    dominanceGroup = 0,
-    ccd = false,
-    canSleep = true,
-    restrictPosition,
-    restrictRotation,
-    lockPosition = false,
-    lockRotation = false,
-    onCollision,
-    onCollisionEnter = noop,
-    onCollisionExit = noop,
-    ...props
-  }: RigidBodyProps,
-  ref?: ForwardedRef<RigidBodyApi | null>,
-) {
+export function RigidBody({
+  ref,
+  type = 'dynamic',
+  children,
+  linearDamping,
+  linearVelocity,
+  angularDamping,
+  angularVelocity,
+  gravityScale = 1,
+  dominanceGroup = 0,
+  ccd = false,
+  canSleep = true,
+  restrictPosition,
+  restrictRotation,
+  lockPosition = false,
+  lockRotation = false,
+  onCollision,
+  onCollisionEnter = noop,
+  onCollisionExit = noop,
+  ...props
+}: RigidBodyProps) {
   const { worldRef, rigidBodyMeshes, rigidBodyEvents, rigidBodyParentOffsets } =
     usePhysicsContext()
   const object3dRef = useRef<Object3D>(null)
@@ -507,7 +505,7 @@ export const RigidBody = forwardRef(function RigidBody(
       </object3D>
     </RigidBodyContext.Provider>
   )
-})
+}
 
 function createRigidBodyDesc(type: RigidBodyType): RAPIER.RigidBodyDesc {
   switch (type) {
