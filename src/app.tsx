@@ -15,12 +15,11 @@ import {
 } from '~/components/lights'
 import { Physics } from '~/components/physics'
 import { Playground } from '~/scenes/playground'
-import { lifecycle } from './stages'
 
 export function Root() {
   return (
     <>
-      <Canvas camera={{ position: [6, 6, -4] }} shadows stages={lifecycle}>
+      <Canvas camera={{ position: [6, 6, -4] }} shadows>
         <Suspense fallback={null}>
           <App />
         </Suspense>

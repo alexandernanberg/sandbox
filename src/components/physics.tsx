@@ -1,5 +1,6 @@
 import * as RAPIER from '@dimforge/rapier3d'
-import { Object3DProps, useUpdate } from '@react-three/fiber'
+import type { Object3DProps } from '@react-three/fiber'
+import { useFrame } from '@react-three/fiber'
 import type {
   ForwardedRef,
   MutableRefObject,
@@ -19,7 +20,6 @@ import {
 } from 'react'
 import type { LineSegments } from 'three'
 import { BufferAttribute, Matrix4, Object3D, Quaternion, Vector3 } from 'three'
-import { Stages } from '~/stages'
 import { useConstant } from '~/utils'
 
 const _object3d = new Object3D()
@@ -82,6 +82,9 @@ export interface PhysicsProps {
 
 const DEFAULT_GRAVITY = new Vector3(0, -9.81, 0)
 
+const fixedStep = 1 / 60
+let accumulator = 0
+
 export function Physics({
   children,
   debug = false,
@@ -105,7 +108,7 @@ export function Physics({
       worldRef.current = new RAPIER.World(
         Array.isArray(gravity) ? new Vector3().fromArray(gravity) : gravity,
       )
-      worldRef.current.timestep = Stages.Physics.fixedStep
+      worldRef.current.timestep = fixedStep
     }
     return worldRef.current
   })
@@ -132,55 +135,65 @@ export function Physics({
     }
   }, [gravity])
 
-  useUpdate(() => {
+  useFrame((state, delta) => {
     const world = worldGetter.current()
     if (world == null) return
 
-    world.step(eventQueue)
+    const frameTime = Math.min(0.25, delta)
+    accumulator += frameTime
+    let fixedDelta = delta
 
-    eventQueue.drainCollisionEvents((handle1, handle2, started) => {
-      handleCollisionEvent(
-        world,
-        handle1,
-        colliderEvents,
-        colliderMeshes,
-        rigidBodyEvents,
-        rigidBodyMeshes,
-        started,
-      )
-      handleCollisionEvent(
-        world,
-        handle2,
-        colliderEvents,
-        colliderMeshes,
-        rigidBodyEvents,
-        rigidBodyMeshes,
-        started,
-      )
-    })
+    // Fixed update
+    while (accumulator >= fixedStep) {
+      fixedDelta += performance.now()
+      console.log(accumulator / fixedStep)
+      for (const cb of updateListeners) {
+        cb.current?.(delta)
+      }
 
-    if (debug) {
-      const mesh = debugMeshRef.current
-      if (!mesh) return
+      world.step(eventQueue)
 
-      const buffers = world.debugRender()
+      eventQueue.drainCollisionEvents((handle1, handle2, started) => {
+        handleCollisionEvent(
+          world,
+          handle1,
+          colliderEvents,
+          colliderMeshes,
+          rigidBodyEvents,
+          rigidBodyMeshes,
+          started,
+        )
+        handleCollisionEvent(
+          world,
+          handle2,
+          colliderEvents,
+          colliderMeshes,
+          rigidBodyEvents,
+          rigidBodyMeshes,
+          started,
+        )
+      })
 
-      mesh.geometry.setAttribute(
-        'position',
-        new BufferAttribute(buffers.vertices, 3),
-      )
-      mesh.geometry.setAttribute(
-        'color',
-        new BufferAttribute(buffers.colors, 4),
-      )
+      if (debug) {
+        const mesh = debugMeshRef.current
+        if (!mesh) return
+
+        const buffers = world.debugRender()
+
+        mesh.geometry.setAttribute(
+          'position',
+          new BufferAttribute(buffers.vertices, 3),
+        )
+        mesh.geometry.setAttribute(
+          'color',
+          new BufferAttribute(buffers.colors, 4),
+        )
+      }
+
+      accumulator -= fixedStep
     }
-  }, Stages.Physics)
 
-  useUpdate(() => {
-    const world = worldGetter.current()
-    if (world == null) return
-
-    const alpha = Stages.Fixed.alpha
+    const alpha = accumulator / fixedStep
 
     world.forEachRigidBody((rigidBody) => {
       if (rigidBody.isSleeping() || rigidBody.isFixed()) return

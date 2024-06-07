@@ -1,8 +1,10 @@
+/* eslint-disable @typescript-eslint/no-unused-vars */
+
 import { PerspectiveCamera, Text, useTexture } from '@react-three/drei'
-import type { Color, GroupProps } from '@react-three/fiber'
-import { useUpdate } from '@react-three/fiber'
+import type { GroupProps, Color } from '@react-three/fiber'
+import { useFrame } from '@react-three/fiber'
 import { button, useControls } from 'leva'
-import type { MutableRefObject, RefObject } from 'react'
+import type { ComponentProps, MutableRefObject, RefObject } from 'react'
 import { Suspense, forwardRef, useRef, useState } from 'react'
 import seedrandom from 'seedrandom'
 import type { Object3D } from 'three'
@@ -22,12 +24,12 @@ import {
   CylinderCollider,
   RigidBody,
   useCharacterController,
+  usePhysicsUpdate,
   useSphericalJoint,
 } from '~/components/physics'
 import Ramp from '~/models/ramp'
 import Slope from '~/models/slope'
 import Stone from '~/models/stone'
-import { Stages } from '~/stages'
 import { useConstant, useForkRef } from '~/utils'
 
 interface PlaygroundProps {
@@ -192,7 +194,7 @@ const Player = forwardRef<Object3D, PlayerProps>(function Player(
   const playerVelocity = new Vector3(0, 0, 0)
   const jumpHeight = 1
 
-  useUpdate(() => {
+  usePhysicsUpdate((delta) => {
     const rigidBody = rigidBodyRef.current
     const inputManager = inputManagerRef.current
     if (!rigidBody || !inputManager) return
@@ -212,12 +214,10 @@ const Player = forwardRef<Object3D, PlayerProps>(function Player(
     }
 
     if (isGrounded && input.keyboard.Space) {
-      playerVelocity.y += Math.sqrt(
-        jumpHeight * -3 * (gravity * (Stages.Fixed.fixedStep / 10)),
-      )
+      playerVelocity.y += Math.sqrt(jumpHeight * -0.05 * gravity)
     }
 
-    playerVelocity.y += gravity * (Stages.Fixed.fixedStep / 10)
+    playerVelocity.y += gravity * delta
 
     characterController.computeColliderMovement(
       rigidBody.collider(0),
@@ -229,7 +229,7 @@ const Player = forwardRef<Object3D, PlayerProps>(function Player(
     nextPos.y += movement.y
     nextPos.z += movement.z
     rigidBody.setNextKinematicTranslation(nextPos)
-  }, Stages.Fixed)
+  })
 
   return (
     <RigidBody ref={rigidBodyRef} type="kinematic-position-based" {...props}>
@@ -263,7 +263,7 @@ const ThirdPersonCamera = forwardRef<Object3D, ThirdPersonCameraProps>(
     const currentPosition = useConstant(() => new Vector3())
     const currentLookAt = useConstant(() => new Vector3())
 
-    useUpdate((_, delta) => {
+    useFrame((_, delta) => {
       const camera = cameraRef.current
       const target = targetRef.current
       const inputManager = inputManagerRef.current
@@ -293,7 +293,7 @@ const ThirdPersonCamera = forwardRef<Object3D, ThirdPersonCameraProps>(
 
       camera.position.copy(currentPosition)
       camera.lookAt(currentLookAt)
-    }, Stages.Late)
+    })
 
     return (
       <group>
@@ -581,8 +581,6 @@ function Slopes(props: GroupProps) {
       <group key={angle}>
         <CuboidCollider args={[2, 4, 2]} position={[0, 2, 2 * index]}>
           <Suspense fallback={null}>
-            {/* eslint-disable-next-line @typescript-eslint/ban-ts-comment */}
-            {/* @ts-expect-error */}
             <Text
               position={[-1.01, 1, 0]}
               rotation={[0, -Math.PI / 2, 0]}
@@ -684,13 +682,13 @@ function clamp(value: number, min: number, max: number) {
 function Elevator(props: RigidBodyProps) {
   const ref = useRef<RigidBodyApi>(null)
 
-  useUpdate(() => {
+  usePhysicsUpdate(() => {
     const rigidBody = ref.current
     if (!rigidBody) return
     const vec = rigidBody.translation()
     vec.y = clamp(3.875 + Math.sin(performance.now() / 1000) * 5, 0.25, 7.75)
     rigidBody.setNextKinematicTranslation(vec)
-  }, Stages.Fixed)
+  })
 
   return (
     <RigidBody ref={ref} type="kinematic-position-based" {...props}>
