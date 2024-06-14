@@ -1,10 +1,11 @@
 import { useFrame, useThree } from '@react-three/fiber'
+import type { Ref } from 'react'
 import { createContext, useEffect, useImperativeHandle } from 'react'
 import { Vector2 } from 'three'
 import { useConstant } from '~/utils'
 
 interface InputManagerProps {
-  ref: InputManagerRef
+  ref: Ref<InputManagerRef>
 
   // cameraRef: RefObject<Camera>
 }
@@ -23,11 +24,11 @@ export interface InputManagerRef {
 
 // TODO: support QWERTY and AZERTY
 
-const context = createContext(null)
+// const context = createContext(null)
 
 export function InputManager({
-  cameraRef,
   ref: forwardedRef,
+  // cameraRef,
 }: InputManagerProps) {
   const gl = useThree((state) => state.gl)
 
@@ -46,8 +47,10 @@ export function InputManager({
 
     if (state.gamepadIndex !== null) {
       const gamepad = navigator.getGamepads()[state.gamepadIndex]
-      input.movement.x = applyDeadzone(gamepad.axes[0]) * -1
-      input.movement.y = applyDeadzone(gamepad.axes[1]) * -1
+      if (gamepad) {
+        input.movement.x = applyDeadzone(gamepad.axes[0]) * -1
+        input.movement.y = applyDeadzone(gamepad.axes[1]) * -1
+      }
     }
 
     return state

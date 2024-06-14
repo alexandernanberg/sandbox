@@ -1,7 +1,6 @@
 import {
   Loader,
   OrbitControls,
-  PerspectiveCamera,
   Sky as SkyShader,
   Stats,
 } from '@react-three/drei'
@@ -14,13 +13,16 @@ import {
 } from '~/components/lights'
 import { Physics } from '~/components/physics'
 import { Playground } from '~/scenes/playground'
+import { DebugControls, useControls } from './components/debug-controls'
 
 export function Root() {
   return (
     <>
       <Canvas camera={{ position: [6, 6, -4] }} shadows>
         <Suspense fallback={null}>
-          <App />
+          <DebugControls>
+            <App />
+          </DebugControls>
         </Suspense>
       </Canvas>
       <Loader />
@@ -31,31 +33,28 @@ export function Root() {
 export function App() {
   const [physicsKey, updatePhysicsKey] = useReducer((num: number) => num + 1, 0)
 
-  const cameraControls = { debug: false }
-  // const cameraControls = useControls(
-  //   'Camera',
-  //   {
-  //     debug: { label: 'Debug', value: false },
-  //   },
-  //   { collapsed: true },
-  // )
-  const lightsControl = { debug: false }
-  // const lightsControl = useControls(
-  //   'Lights',
-  //   {
-  //     debug: { label: 'Debug', value: false },
-  //   },
-  //   { collapsed: true },
-  // )
-  const physicsControls = { debug: false, gravity: [0, -9.81, 0] } as const
-  // const physicsControls = useControls('Physics', {
-  //   debug: { label: 'Debug', value: false },
-  //   gravity: { label: 'Gravity', value: [0, -9.81, 0] },
-  //   _reset: {
-  //     label: 'Reset',
-  //     ...button(updatePhysicsKey),
-  //   },
-  // })
+  const cameraControls = useControls(
+    'Camera',
+    { debug: { value: false } },
+    { expanded: false, index: 0 },
+  )
+  const lightsControl = useControls(
+    'Lights',
+    { debug: { value: false } },
+    { expanded: false, index: 1 },
+  )
+  const physicsControls = useControls(
+    'Physics',
+    {
+      debug: { value: false },
+      gravity: { value: [0, -9.81, 0] },
+      _reset: {
+        title: 'Reset',
+        action: updatePhysicsKey,
+      },
+    },
+    { index: 3 },
+  )
 
   return (
     <LightProvider debug={lightsControl.debug}>
@@ -76,19 +75,16 @@ export function App() {
 }
 
 function Sky() {
-  const controls = { sun: [100, 200, 100] } as const
-  // const controls = useControls(
-  //   'Sky',
-  //   {
-  //     sun: {
-  //       label: 'Sun position',
-  //       value: [100, 200, 100],
-  //     },
-  //   },
-  //   { collapsed: true },
-  // )
-
-  const { sun: position } = controls
+  const { sun: position } = useControls(
+    'Sky',
+    {
+      sun: {
+        label: 'Sun position',
+        value: [100, 200, 100],
+      },
+    },
+    { expanded: false, index: 2 },
+  )
 
   return (
     <>

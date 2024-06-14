@@ -133,16 +133,17 @@ export function Physics({
       : gravity
   }, [gravity])
 
-  useFrame((state, delta) => {
+  useFrame((_state, delta) => {
     const world = worldGetter.current()
 
     const frameTime = Math.min(0.25, delta)
     accumulator += frameTime
-    let fixedDelta = delta
+    // TODO: why was this added
+    // let fixedDelta = delta
 
     // Fixed update
     while (accumulator >= fixedStep) {
-      fixedDelta += performance.now()
+      // fixedDelta += performance.now()
       for (const cb of updateListeners) {
         cb.current?.(delta)
       }
@@ -485,8 +486,8 @@ export function RigidBody({
     return () => void rigidBodyEvents.delete(rigidBody.handle)
   }, [onCollisionEnterHandler, onCollisionExitHandler, rigidBodyEvents])
 
-  const hasEventListeners =
-    !!onCollision || !!onCollisionEnter || !!onCollisionExit
+  // TODO: make this dynamic based on onCollision?
+  const hasEventListeners = true
 
   const context = useMemo<RigidBodyContextValue>(
     () => ({
@@ -594,10 +595,10 @@ export function useCollider<
         colliderDesc.setRotation(rotation)
       }
 
-      const listenForColliderContactEvents =
-        !!onCollision || !!onCollisionEnter || !!onCollisionExit
+      // TODO: make this dynamic based on onCollision
+      // const listenForColliderContactEvents = true
 
-      if (listenForContactEvents || listenForColliderContactEvents) {
+      if (listenForContactEvents) {
         colliderDesc.setActiveEvents(RAPIER.ActiveEvents.COLLISION_EVENTS)
       }
 
@@ -1045,6 +1046,7 @@ function noop() {
 }
 
 // Based on https://github.com/reactjs/rfcs/pull/220
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 function useEffectEvent<T extends (...args: any[]) => any>(handler: T) {
   const handlerRef = useRef<T | null>(null)
 
@@ -1052,12 +1054,15 @@ function useEffectEvent<T extends (...args: any[]) => any>(handler: T) {
     handlerRef.current = handler
   })
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   return useCallback((...args: any[]) => {
     const fn = handlerRef.current
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-return, @typescript-eslint/no-unsafe-argument
     return fn?.(...args)
   }, [])
 }
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 function useRefCallback<T extends (...args: any[]) => any>(handler: T) {
   const handlerRef = useRef<T | null>(null)
 

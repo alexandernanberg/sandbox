@@ -20,9 +20,10 @@ function setRef<T>(
     ref(value)
   } else {
     try {
-      ref.current = value // eslint-disable-line no-param-reassign
+      ref.current = value
     } catch (error) {
-      throw new Error(`Cannot assign value "${value}" to ref "${ref}"`)
+      // eslint-disable-next-line @typescript-eslint/restrict-template-expressions
+      throw new Error(`Cannot assign value "${value}" to ref`)
     }
   }
 }
@@ -44,7 +45,10 @@ export function useForkRef<T>(
   )
 }
 
-export function useInterval<T extends () => void>(cb: T, delay?: number) {
+export function useInterval<T extends () => void>(
+  cb: T,
+  delay?: number | null,
+) {
   const ref = useRef<T>()
 
   useEffect(() => {

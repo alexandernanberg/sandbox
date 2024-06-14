@@ -3,11 +3,15 @@
 import { PerspectiveCamera, Text, useTexture } from '@react-three/drei'
 import type { Color } from '@react-three/fiber'
 import { useFrame } from '@react-three/fiber'
-import type { ComponentProps, MutableRefObject, RefObject } from 'react'
+import type { ComponentProps, MutableRefObject, Ref, RefObject } from 'react'
 import { Suspense, useRef, useState } from 'react'
 import seedrandom from 'seedrandom'
-import type { Object3D } from 'three'
+import type {
+  Object3D,
+  PerspectiveCamera as PerspectiveCameraImpl,
+} from 'three'
 import { Quaternion, RepeatWrapping, Vector3 } from 'three'
+import { useControls } from '~/components/debug-controls'
 import type { InputManagerRef } from '~/components/input-manager'
 import { InputManager } from '~/components/input-manager'
 import type {
@@ -45,22 +49,21 @@ export function Playground({ debugCamera }: PlaygroundProps) {
     ])
   }
 
-  // const objectControls = useControls(
-  //   'Objects',
-  //   {
-  //     _spawn: {
-  //       label: 'Spawn 10 balls',
-  //       ...button(() => spawnItems(10)),
-  //     },
-  //     _reset: {
-  //       label: 'Reset',
-  //       ...button(() => setItems([])),
-  //     },
-  //   },
-  //   {
-  //     collapsed: true,
-  //   },
-  // )
+  const objectControls = useControls(
+    'Objects',
+    {
+      _spawn: {
+        title: 'Spawn 10 balls',
+        action: () => spawnItems(10),
+      },
+      _reset: {
+        title: 'Reset',
+        index: 1,
+        action: () => setItems([]),
+      },
+    },
+    { expanded: true, index: 4 },
+  )
 
   const inputManagerRef = useRef<InputManagerRef>(null)
   const targetRef = useRef<Object3D>(null)
@@ -178,7 +181,7 @@ export function Playground({ debugCamera }: PlaygroundProps) {
 }
 
 interface PlayerProps extends Omit<RigidBodyProps, 'ref'> {
-  ref: Object3D
+  ref: Ref<Object3D>
   inputManagerRef: RefObject<InputManagerRef>
 }
 
@@ -243,7 +246,7 @@ function Player({ inputManagerRef, ref, ...props }: PlayerProps) {
 }
 
 interface ThirdPersonCameraProps {
-  ref?: Object3D
+  ref?: Ref<PerspectiveCameraImpl>
   targetRef: RefObject<Object3D>
   inputManagerRef: RefObject<InputManagerRef>
   makeDefault?: boolean
@@ -255,7 +258,8 @@ function ThirdPersonCamera({
   ref: forwardedRef,
   makeDefault = true,
 }: ThirdPersonCameraProps) {
-  const ref = useRef()
+  const ownRef = useRef<PerspectiveCameraImpl | null>(null)
+  const ref = useForkRef(ownRef, forwardedRef)
   const cameraRef = forwardedRef || ref
   const groupRef = useRef()
 
@@ -263,7 +267,9 @@ function ThirdPersonCamera({
   const currentLookAt = useConstant(() => new Vector3())
 
   useFrame((_, delta) => {
-    const camera = cameraRef.current
+    const camera = ownRef.current
+    if (!camera) return
+
     const target = targetRef.current
     const inputManager = inputManagerRef.current
 
@@ -298,7 +304,7 @@ function ThirdPersonCamera({
     <group>
       <PerspectiveCamera
         makeDefault={makeDefault}
-        ref={cameraRef}
+        ref={ref}
         fov={90}
         position={[0, 4, 8]}
         zoom={1.2}
@@ -516,7 +522,7 @@ function Ball(props: RigidBodyProps) {
   )
 }
 
-function RockingBoard(props: GroupProps) {
+function RockingBoard(props: ComponentProps<'group'>) {
   return (
     <group {...props}>
       <RigidBody type="fixed" rotation-x={Math.PI / 2}>
@@ -570,7 +576,7 @@ function runFromAngleAndRaise(angle: number, rise: number) {
   return rise / Math.tan(radians)
 }
 
-function Slopes(props: GroupProps) {
+function Slopes(props: ComponentProps<'group'>) {
   const slopes = [30, 45, 60, 80, 90].map((angle, index) => {
     const run = runFromAngleAndRaise(angle, 2)
     return (
