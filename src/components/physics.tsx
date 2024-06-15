@@ -11,7 +11,6 @@ import {
   createContext,
   use,
   useCallback,
-  useContext,
   useEffect,
   useImperativeHandle,
   useLayoutEffect,
@@ -61,7 +60,7 @@ export interface PhysicsContextValue {
 const PhysicsContext = createContext<PhysicsContextValue | null>(null)
 
 function usePhysicsContext() {
-  const context = useContext(PhysicsContext)
+  const context = use(PhysicsContext)
 
   if (context == null) {
     throw new Error(
@@ -557,8 +556,7 @@ export function useCollider<
     onCollisionExit = noop,
   } = props
   const { worldRef, colliderEvents, colliderMeshes } = usePhysicsContext()
-  const { rigidBodyRef, listenForContactEvents } =
-    useContext(RigidBodyContext) || {}
+  const { rigidBodyRef, listenForContactEvents } = use(RigidBodyContext) || {}
 
   const colliderRef = useRef<RAPIER.Collider | null>(null)
   const scaleRef = useRef<Vector3 | null>(null)

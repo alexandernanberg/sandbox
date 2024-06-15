@@ -3,7 +3,7 @@ import type { MutableRefObject, ReactNode } from 'react'
 import {
   createContext,
   startTransition,
-  useContext,
+  use,
   useEffect,
   useRef,
   useState,
@@ -55,7 +55,7 @@ export function DebugControls({ children, ...props }: DebugControlProps) {
 }
 
 export function useDebugControls() {
-  const context = useContext(TweakpaneContext)
+  const context = use(TweakpaneContext)
   if (!context) {
     throw new Error('')
   }

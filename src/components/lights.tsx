@@ -1,6 +1,6 @@
 import { useHelper } from '@react-three/drei'
 import type { ReactNode } from 'react'
-import { createContext, useContext, useEffect, useMemo, useRef } from 'react'
+import { createContext, use, useEffect, useMemo, useRef } from 'react'
 import type {
   Camera,
   DirectionalLight as ThreeDirectionalLight,
@@ -30,7 +30,7 @@ export function LightProvider({ debug = false, children }: LightProviderProps) {
 export function DirectionalLight(
   props: JSX.IntrinsicElements['directionalLight'],
 ) {
-  const { debug } = useContext(LightContext)
+  const { debug } = use(LightContext)
   const ref = useRef<ThreeDirectionalLight>(null)
   const cameraRef = useRef<Camera | null>(null)
 
@@ -44,7 +44,7 @@ export function DirectionalLight(
 }
 
 export function SpotLight(props: JSX.IntrinsicElements['spotLight']) {
-  const { debug } = useContext(LightContext)
+  const { debug } = use(LightContext)
   const ref = useRef<ThreeSpotLight>(null)
 
   useHelper(debug && ref, SpotLightHelper, 0xff0000)
@@ -55,7 +55,7 @@ export function SpotLight(props: JSX.IntrinsicElements['spotLight']) {
 export function HemisphereLight(
   props: JSX.IntrinsicElements['hemisphereLight'],
 ) {
-  const { debug } = useContext(LightContext)
+  const { debug } = use(LightContext)
   const ref = useRef<ThreeHemisphereLight>(null)
 
   useHelper(debug && ref, HemisphereLightHelper, 1, 0xff0000)
