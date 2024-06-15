@@ -109,19 +109,19 @@ export function InputManager({
       state.lookAt.y -= movementY
     }
 
-    const onClick = () => {
-      domElement.requestPointerLock()
-    }
+    // const onClick = () => {
+    //   domElement.requestPointerLock()
+    // }
 
-    const onPointerLockChange = () => {
-      state.pointerLocked = document.pointerLockElement === domElement
-    }
+    // const onPointerLockChange = () => {
+    //   state.pointerLocked = document.pointerLockElement === domElement
+    // }
 
-    domElement.addEventListener('click', onClick, false)
-    domElement.addEventListener('pointerlockchange', onPointerLockChange)
-    domElement.addEventListener('pointerlockerror', (e) => {
-      console.log('err', e)
-    })
+    // domElement.addEventListener('click', onClick, false)
+    // domElement.addEventListener('pointerlockchange', onPointerLockChange)
+    // domElement.addEventListener('pointerlockerror', (e) => {
+    //   console.log('err', e)
+    // })
 
     document.addEventListener('pointermove', onPointerMove, false)
 

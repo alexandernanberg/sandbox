@@ -2,11 +2,13 @@
 import react from '@vitejs/plugin-react'
 import { resolve } from 'path'
 import { defineConfig } from 'vite'
-import wasm from 'vite-plugin-wasm'
+// import wasm from 'vite-plugin-wasm'
 
 export default defineConfig({
   plugins: [
-    wasm(),
+    // Does not work in prod
+    // https://github.com/Menci/vite-plugin-wasm/issues/57
+    // wasm(),
     react({ babel: { plugins: [['babel-plugin-react-compiler', {}]] } }),
   ],
   build: {

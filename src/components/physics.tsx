@@ -1,4 +1,4 @@
-import * as RAPIER from '@dimforge/rapier3d'
+import * as RAPIER from '@dimforge/rapier3d-compat'
 import { useFrame } from '@react-three/fiber'
 import type {
   ComponentProps,
@@ -9,6 +9,7 @@ import type {
 } from 'react'
 import {
   createContext,
+  use,
   useCallback,
   useContext,
   useEffect,
@@ -86,11 +87,14 @@ const DEFAULT_GRAVITY = new Vector3(0, -9.81, 0)
 const fixedStep = 1 / 60
 let accumulator = 0
 
+const init = RAPIER.init()
+
 export function Physics({
   children,
   debug = false,
   gravity = DEFAULT_GRAVITY,
 }: PhysicsProps) {
+  use(init)
   const worldRef = useRef<RAPIER.World | null>(null)
 
   const eventQueue = useConstant(() => new RAPIER.EventQueue(true))
@@ -368,12 +372,12 @@ export function RigidBody({
 
       if (restrictPosition) {
         const [x, y, z] = restrictPosition
-        rigidBodyDesc.restrictTranslations(!x, !y, !z)
+        rigidBodyDesc.enabledTranslations(!x, !y, !z)
       }
 
       if (restrictRotation) {
         const [x, y, z] = restrictRotation
-        rigidBodyDesc.restrictRotations(!x, !y, !z)
+        rigidBodyDesc.enabledRotations(!x, !y, !z)
       }
 
       if (lockPosition) {
