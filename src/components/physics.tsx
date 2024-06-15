@@ -29,22 +29,34 @@ const _quaternion = new Quaternion()
 
 type Object3DProps = ComponentProps<'object3D'>
 
+///////////////////////////////////////////////////////////////
+// Events
+///////////////////////////////////////////////////////////////
+
 interface CollisionEvent {
   target: Object3D
 }
 type CollisionEventCallback = (event: CollisionEvent) => void
 
+interface ContactForceEvent {
+  totalForce: () => RAPIER.Vector3
+  totalForceMagnitude: () => number
+  maxForceDirection: () => RAPIER.Vector3
+  maxForceMagnitude: () => number
+}
+type ContactForceEventCallback = (event: ContactForceEvent) => void
+
+interface PhysicsEvents {
+  onCollisionEnter?: CollisionEventCallback
+  onCollisionExit?: CollisionEventCallback
+  onContactForce?: ContactForceEventCallback
+}
+
+type EventMap = Map<number, PhysicsEvents>
+
 ///////////////////////////////////////////////////////////////
 // PhysicsContext
 ///////////////////////////////////////////////////////////////
-
-type EventMap = Map<
-  number,
-  {
-    onCollisionEnter?: CollisionEventCallback
-    onCollisionExit?: CollisionEventCallback
-  }
->
 
 export interface PhysicsContextValue {
   worldRef: MutableRefObject<() => RAPIER.World>
@@ -69,6 +81,11 @@ function usePhysicsContext() {
   }
 
   return context
+}
+
+export function usePhysics() {
+  const context = usePhysicsContext()
+  return { worldRef: context.worldRef }
 }
 
 ///////////////////////////////////////////////////////////////
@@ -154,6 +171,7 @@ export function Physics({
       world.step(eventQueue)
 
       eventQueue.drainCollisionEvents((handle1, handle2, started) => {
+        // TODO: world.contactPair
         handleCollisionEvent(
           world,
           handle1,
@@ -172,6 +190,40 @@ export function Physics({
           rigidBodyMeshes,
           started,
         )
+      })
+
+      eventQueue.drainContactForceEvents((event) => {
+        const source1 = getColliderSource(
+          world,
+          event.collider1(),
+          colliderEvents,
+          colliderMeshes,
+          rigidBodyEvents,
+          rigidBodyMeshes,
+        )
+        const source2 = getColliderSource(
+          world,
+          event.collider2(),
+          colliderEvents,
+          colliderMeshes,
+          rigidBodyEvents,
+          rigidBodyMeshes,
+        )
+
+        const collisionPayload = {
+          totalForce: () => event.totalForce(),
+          totalForceMagnitude: () => event.totalForceMagnitude(),
+          maxForceDirection: () => event.maxForceDirection(),
+          maxForceMagnitude: () => event.maxForceMagnitude(),
+        }
+
+        const collisionPayload1 = { ...collisionPayload }
+        const collisionPayload2 = { ...collisionPayload }
+
+        source1.collider.events?.onContactForce?.(collisionPayload1)
+        source1.rigidBody.events?.onContactForce?.(collisionPayload1)
+        source2.collider.events?.onContactForce?.(collisionPayload2)
+        source2.rigidBody.events?.onContactForce?.(collisionPayload2)
       })
 
       if (debug) {
@@ -252,6 +304,49 @@ export function Physics({
   )
 }
 
+interface CollisionSource {
+  collider: {
+    mesh?: Object3D
+    events?: PhysicsEvents
+  }
+  rigidBody: {
+    mesh?: Object3D
+    events?: PhysicsEvents
+  }
+}
+
+function getColliderSource(
+  world: RAPIER.World,
+  colliderHandle: number,
+  colliderEventsMap: EventMap,
+  colliderMeshesMap: Map<number, Object3D>,
+  rigidBodyEventsMap: EventMap,
+  rigidBodyMeshesMap: Map<number, Object3D>,
+): CollisionSource {
+  const collider = world.getCollider(colliderHandle)
+  const colliderMesh = colliderMeshesMap.get(colliderHandle)
+  const colliderEvents = colliderEventsMap.get(colliderHandle)
+
+  const rigidBodyHandle = collider.parent()?.handle
+  const rigidBodyMesh = rigidBodyHandle
+    ? rigidBodyMeshesMap.get(rigidBodyHandle)
+    : undefined
+  const rigidBodyEvents = rigidBodyHandle
+    ? rigidBodyEventsMap.get(rigidBodyHandle)
+    : undefined
+
+  return {
+    collider: {
+      mesh: colliderMesh,
+      events: colliderEvents,
+    },
+    rigidBody: {
+      mesh: rigidBodyMesh,
+      events: rigidBodyEvents,
+    },
+  }
+}
+
 function handleCollisionEvent(
   world: RAPIER.World,
   colliderHandle: number,
@@ -261,23 +356,22 @@ function handleCollisionEvent(
   rigidBodyMeshes: Map<number, Object3D>,
   started: boolean,
 ) {
-  const collider = colliderMeshes.get(colliderHandle)
-  const colliderEvent = colliderEvents.get(colliderHandle)
+  const { collider, rigidBody } = getColliderSource(
+    world,
+    colliderHandle,
+    colliderEvents,
+    colliderMeshes,
+    rigidBodyEvents,
+    rigidBodyMeshes,
+  )
 
-  const rigidBody = world.getCollider(colliderHandle).parent()
-  const rigidBodyMesh =
-    rigidBody != null ? rigidBodyMeshes.get(rigidBody.handle) : null
-  const rigidBodyEvent =
-    rigidBody != null ? rigidBodyEvents.get(rigidBody.handle) : null
-
+  // TODO: lazy target?
   if (started) {
-    collider && colliderEvent?.onCollisionEnter?.({ target: collider })
-    rigidBodyMesh &&
-      rigidBodyEvent?.onCollisionEnter?.({ target: rigidBodyMesh })
+    collider.events?.onCollisionEnter?.({ target: collider.mesh! })
+    rigidBody.events?.onCollisionEnter?.({ target: rigidBody.mesh! })
   } else {
-    collider && colliderEvent?.onCollisionExit?.({ target: collider })
-    rigidBodyMesh &&
-      rigidBodyEvent?.onCollisionExit?.({ target: rigidBodyMesh })
+    collider.events?.onCollisionExit?.({ target: collider.mesh! })
+    rigidBody.events?.onCollisionExit?.({ target: rigidBody.mesh! })
   }
 }
 
@@ -299,7 +393,8 @@ export function usePhysicsUpdate(cb: (delta: number) => void) {
 
 interface RigidBodyContextValue {
   rigidBodyRef: MutableRefObject<() => RAPIER.RigidBody>
-  listenForContactEvents: boolean
+  hasCollisionEvent: boolean
+  hasContactForceEvent: boolean
 }
 
 const RigidBodyContext = createContext<RigidBodyContextValue | null>(null)
@@ -332,6 +427,7 @@ export interface RigidBodyProps extends Omit<Object3DProps, 'ref'> {
   onCollision?: CollisionEventCallback
   onCollisionEnter?: CollisionEventCallback
   onCollisionExit?: CollisionEventCallback
+  onContactForce?: ContactForceEventCallback
 }
 
 export function RigidBody({
@@ -351,8 +447,9 @@ export function RigidBody({
   lockPosition = false,
   lockRotation = false,
   onCollision,
-  onCollisionEnter = noop,
-  onCollisionExit = noop,
+  onCollisionEnter,
+  onCollisionExit,
+  onContactForce,
   ...props
 }: RigidBodyProps) {
   const { worldRef, rigidBodyMeshes, rigidBodyEvents, rigidBodyParentOffsets } =
@@ -476,28 +573,37 @@ export function RigidBody({
   })
 
   const onCollisionEnterHandler = useEffectEvent(
-    onCollision || onCollisionEnter,
+    onCollision || onCollisionEnter || noop,
   )
-  const onCollisionExitHandler = useEffectEvent(onCollisionExit)
+  const onCollisionExitHandler = useEffectEvent(onCollisionExit || noop)
+  const onContactForceHandler = useEffectEvent(onContactForce || noop)
 
   useEffect(() => {
     const rigidBody = rigidBodyGetter.current()
     rigidBodyEvents.set(rigidBody.handle, {
       onCollisionEnter: onCollisionEnterHandler,
       onCollisionExit: onCollisionExitHandler,
+      onContactForce: onContactForceHandler,
     })
     return () => void rigidBodyEvents.delete(rigidBody.handle)
-  }, [onCollisionEnterHandler, onCollisionExitHandler, rigidBodyEvents])
+  }, [
+    rigidBodyEvents,
+    onCollisionEnterHandler,
+    onCollisionExitHandler,
+    onContactForceHandler,
+  ])
 
-  // TODO: make this dynamic based on onCollision?
-  const hasEventListeners = true
+  const hasCollisionEvent =
+    !!onCollision || !!onCollisionEnter || !!onCollisionExit
+  const hasContactForceEvent = !!onContactForce
 
   const context = useMemo<RigidBodyContextValue>(
     () => ({
       rigidBodyRef: rigidBodyGetter,
-      listenForContactEvents: hasEventListeners,
+      hasCollisionEvent,
+      hasContactForceEvent,
     }),
-    [hasEventListeners],
+    [hasCollisionEvent, hasContactForceEvent],
   )
 
   useImperativeHandle(ref, rigidBodyGetter.current)
@@ -535,9 +641,11 @@ export interface ColliderProps extends Omit<Object3DProps, 'args'> {
   friction?: number
   restitution?: number
   density?: number
+  sensor?: boolean
   onCollision?: CollisionEventCallback
   onCollisionEnter?: CollisionEventCallback
   onCollisionExit?: CollisionEventCallback
+  onContactForce?: ContactForceEventCallback
 }
 
 export function useCollider<
@@ -551,15 +659,25 @@ export function useCollider<
     friction,
     restitution,
     density,
+    sensor,
     onCollision,
-    onCollisionEnter = noop,
-    onCollisionExit = noop,
+    onCollisionEnter,
+    onCollisionExit,
+    onContactForce,
   } = props
   const { worldRef, colliderEvents, colliderMeshes } = usePhysicsContext()
-  const { rigidBodyRef, listenForContactEvents } = use(RigidBodyContext) || {}
+  const context = use(RigidBodyContext)
+  const { rigidBodyRef } = context || {}
 
   const colliderRef = useRef<RAPIER.Collider | null>(null)
   const scaleRef = useRef<Vector3 | null>(null)
+
+  const hasCollisionEvent =
+    context?.hasCollisionEvent ||
+    !!onCollision ||
+    !!onCollisionEnter ||
+    !!onCollisionExit
+  const hasContactForceEvent = context?.hasContactForceEvent || !!onContactForce
 
   const colliderGetter = useRef((position?: Vector3, rotation?: Quaternion) => {
     if (colliderRef.current === null) {
@@ -597,12 +715,15 @@ export function useCollider<
         colliderDesc.setRotation(rotation)
       }
 
-      // TODO: make this dynamic based on onCollision
-      // const listenForColliderContactEvents = true
-
-      if (listenForContactEvents) {
-        colliderDesc.setActiveEvents(RAPIER.ActiveEvents.COLLISION_EVENTS)
+      if (sensor) {
+        colliderDesc.setSensor(sensor)
       }
+
+      setColliderActiveEvents(
+        colliderDesc,
+        hasCollisionEvent,
+        hasContactForceEvent,
+      )
 
       colliderRef.current = world.createCollider(colliderDesc, rigidBody)
     }
@@ -644,21 +765,52 @@ export function useCollider<
     }
   }, [colliderMeshes, object3dRef, worldRef])
 
+  useEffect(() => {
+    const collider = colliderGetter.current()
+    setColliderActiveEvents(collider, hasCollisionEvent, hasContactForceEvent)
+  }, [hasCollisionEvent, hasContactForceEvent])
+
   const onCollisionEnterHandler = useEffectEvent(
-    onCollision || onCollisionEnter,
+    onCollision || onCollisionEnter || noop,
   )
-  const onCollisionExitHandler = useEffectEvent(onCollisionExit)
+  const onCollisionExitHandler = useEffectEvent(onCollisionExit || noop)
+  const onContactForceHandler = useEffectEvent(onContactForce || noop)
 
   useEffect(() => {
     const collider = colliderGetter.current()
     colliderEvents.set(collider.handle, {
       onCollisionEnter: onCollisionEnterHandler,
       onCollisionExit: onCollisionExitHandler,
+      onContactForce: onContactForceHandler,
     })
     return () => void colliderEvents.delete(collider.handle)
-  }, [colliderEvents, onCollisionEnterHandler, onCollisionExitHandler])
+  }, [
+    colliderEvents,
+    onCollisionEnterHandler,
+    onCollisionExitHandler,
+    onContactForceHandler,
+  ])
 
   return colliderGetter
+}
+
+function setColliderActiveEvents(
+  collider: RAPIER.ColliderDesc | RAPIER.Collider,
+  hasCollisionEvent: boolean,
+  hasContactForceEvent: boolean,
+) {
+  if (hasCollisionEvent && hasContactForceEvent) {
+    collider.setActiveEvents(
+      RAPIER.ActiveEvents.COLLISION_EVENTS |
+        RAPIER.ActiveEvents.CONTACT_FORCE_EVENTS,
+    )
+  } else if (hasCollisionEvent) {
+    collider.setActiveEvents(RAPIER.ActiveEvents.COLLISION_EVENTS)
+  } else if (hasContactForceEvent) {
+    collider.setActiveEvents(RAPIER.ActiveEvents.CONTACT_FORCE_EVENTS)
+  } else {
+    collider.setActiveEvents(RAPIER.ActiveEvents.NONE)
+  }
 }
 
 ///////////////////////////////////////////////////////////////
