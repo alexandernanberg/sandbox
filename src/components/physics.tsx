@@ -65,8 +65,9 @@ export interface PhysicsContextValue {
   colliderEvents: EventMap
   rigidBodyMeshes: Map<number, Object3D>
   rigidBodyEvents: EventMap
-  rigidBodyParentOffsets: Map<number, Matrix4>
-  updateListeners: Set<RefObject<(delta: number) => void>>
+  rigidBodyInvertedWorldMatrices: Map<number, Matrix4>
+  beforeStepCallbacks: Set<RefObject<(delta: number) => void>>
+  afterStepCallbacks: Set<RefObject<(delta: number) => void>>
 }
 
 const PhysicsContext = createContext<PhysicsContextValue | null>(null)
@@ -100,7 +101,7 @@ export interface PhysicsProps {
 
 const DEFAULT_GRAVITY = new Vector3(0, -9.81, 0)
 
-const fixedStep = 1 / 60
+const fixedTimeStep = 1 / 50
 let accumulator = 0
 
 const init = RAPIER.init()
@@ -114,22 +115,36 @@ export function Physics({
   const worldRef = useRef<RAPIER.World | null>(null)
 
   const eventQueue = useConstant(() => new RAPIER.EventQueue(true))
-  const colliderMeshes = useConstant(() => new Map<number, Object3D>())
-  const colliderEvents = useConstant<EventMap>(() => new Map())
-  const rigidBodyMeshes = useConstant(() => new Map<number, Object3D>())
-  const rigidBodyEvents = useConstant<EventMap>(() => new Map())
-  const rigidBodyParentOffsets = useConstant(() => new Map<number, Matrix4>())
-  const debugMeshRef = useRef<LineSegments>(null)
-  const updateListeners = useConstant(
+  const afterStepCallbacks = useConstant(
     () => new Set<RefObject<(delta: number) => void>>(),
   )
+  const beforeStepCallbacks = useConstant(
+    () => new Set<RefObject<(delta: number) => void>>(),
+  )
+
+  const colliderMeshes = useConstant(() => new Map<number, Object3D>())
+  const colliderEvents = useConstant(() => new Map<number, PhysicsEvents>())
+
+  const rigidBodyMeshes = useConstant(() => new Map<number, Object3D>())
+  const rigidBodyEvents = useConstant(() => new Map<number, PhysicsEvents>())
+  const rigidBodyInvertedWorldMatrices = useConstant(
+    () => new Map<number, Matrix4>(),
+  )
+  const rigidBodyPrevPositions = useConstant(
+    () => new Map<number, RAPIER.Vector3>(),
+  )
+  const rigidBodyPrevRotations = useConstant(
+    () => new Map<number, RAPIER.Rotation>(),
+  )
+
+  const debugMeshRef = useRef<LineSegments>(null)
 
   const worldGetter = useRef(() => {
     if (worldRef.current === null) {
       worldRef.current = new RAPIER.World(
         Array.isArray(gravity) ? new Vector3().fromArray(gravity) : gravity,
       )
-      worldRef.current.timestep = fixedStep
+      worldRef.current.timestep = fixedTimeStep
     }
     return worldRef.current
   })
@@ -156,19 +171,31 @@ export function Physics({
   useFrame((_state, delta) => {
     const world = worldGetter.current()
 
-    const frameTime = Math.min(0.25, delta)
-    accumulator += frameTime
-    // TODO: why was this added
-    // let fixedDelta = delta
+    if (delta > 0.25) {
+      delta = 0.25
+    }
+
+    accumulator += delta
 
     // Fixed update
-    while (accumulator >= fixedStep) {
-      // fixedDelta += performance.now()
-      for (const cb of updateListeners) {
-        cb.current?.(delta)
+    while (accumulator >= fixedTimeStep) {
+      for (const cb of beforeStepCallbacks) {
+        cb.current?.(fixedTimeStep)
       }
 
+      rigidBodyPrevPositions.clear()
+      rigidBodyPrevRotations.clear()
+      world.forEachRigidBody((body) => {
+        // TODO: body.nextTranslation?
+        rigidBodyPrevPositions.set(body.handle, body.translation())
+        rigidBodyPrevRotations.set(body.handle, body.rotation())
+      })
+
       world.step(eventQueue)
+
+      for (const cb of afterStepCallbacks) {
+        cb.current?.(fixedTimeStep)
+      }
 
       eventQueue.drainCollisionEvents((handle1, handle2, started) => {
         // TODO: world.contactPair
@@ -242,10 +269,10 @@ export function Physics({
         )
       }
 
-      accumulator -= fixedStep
+      accumulator -= fixedTimeStep
     }
 
-    const alpha = accumulator / fixedStep
+    const alpha = accumulator / fixedTimeStep
 
     world.forEachRigidBody((rigidBody) => {
       if (rigidBody.isSleeping() || rigidBody.isFixed()) return
@@ -255,13 +282,27 @@ export function Physics({
 
       const t = rigidBody.translation()
       const r = rigidBody.rotation()
-      const matrixOffset = rigidBodyParentOffsets.get(rigidBody.handle)
 
-      _object3d.position.set(t.x, t.y, t.z)
-      _object3d.quaternion.set(r.x, r.y, r.z, r.w)
+      const invertedWorldMatrix = rigidBodyInvertedWorldMatrices.get(
+        rigidBody.handle,
+      )
+      const prevPosition = rigidBodyPrevPositions.get(rigidBody.handle)
+      const prevRotation = rigidBodyPrevRotations.get(rigidBody.handle)
 
-      if (matrixOffset) {
-        _object3d.applyMatrix4(matrixOffset)
+      if (prevPosition && prevRotation) {
+        mesh.position.copy(prevPosition)
+        mesh.quaternion.copy(prevRotation)
+
+        if (invertedWorldMatrix) {
+          mesh.applyMatrix4(invertedWorldMatrix)
+        }
+      }
+
+      _object3d.position.copy(t)
+      _object3d.quaternion.copy(r)
+
+      if (invertedWorldMatrix) {
+        _object3d.applyMatrix4(invertedWorldMatrix)
       }
 
       mesh.position.lerp(_object3d.position, alpha)
@@ -277,8 +318,9 @@ export function Physics({
       colliderEvents,
       rigidBodyMeshes,
       rigidBodyEvents,
-      rigidBodyParentOffsets,
-      updateListeners,
+      rigidBodyInvertedWorldMatrices,
+      afterStepCallbacks,
+      beforeStepCallbacks,
     }),
     [
       debug,
@@ -286,8 +328,9 @@ export function Physics({
       colliderEvents,
       rigidBodyMeshes,
       rigidBodyEvents,
-      rigidBodyParentOffsets,
-      updateListeners,
+      rigidBodyInvertedWorldMatrices,
+      afterStepCallbacks,
+      beforeStepCallbacks,
     ],
   )
 
@@ -375,16 +418,22 @@ function handleCollisionEvent(
   }
 }
 
-export function usePhysicsUpdate(cb: (delta: number) => void) {
+export function usePhysicsUpdate(
+  cb: (delta: number) => void,
+  stage: 'early' | 'late' = 'early',
+) {
   const context = usePhysicsContext()
   const ref = useRefCallback(cb)
 
+  const key = stage === 'early' ? 'beforeStepCallbacks' : 'afterStepCallbacks'
+  const subscriptions = context[key]
+
   useLayoutEffect(() => {
-    context.updateListeners.add(ref)
+    subscriptions.add(ref)
     return () => {
-      context.updateListeners.delete(ref)
+      subscriptions.delete(ref)
     }
-  }, [context.updateListeners, ref])
+  }, [ref, subscriptions])
 }
 
 ///////////////////////////////////////////////////////////////
@@ -452,8 +501,12 @@ export function RigidBody({
   onContactForce,
   ...props
 }: RigidBodyProps) {
-  const { worldRef, rigidBodyMeshes, rigidBodyEvents, rigidBodyParentOffsets } =
-    usePhysicsContext()
+  const {
+    worldRef,
+    rigidBodyMeshes,
+    rigidBodyEvents,
+    rigidBodyInvertedWorldMatrices,
+  } = usePhysicsContext()
   const object3dRef = useRef<Object3D>(null)
   const rigidBodyRef = useRef<RAPIER.RigidBody | null>(null)
 
@@ -519,12 +572,12 @@ export function RigidBody({
     const world = worldRef.current()
     const rigidBody = rigidBodyGetter.current()
 
-    // object3d.updateWorldMatrix(true, false)
     object3d.matrixWorld.decompose(_position, _quaternion, _scale)
 
     if (object3d.parent && object3d.parent.type !== 'Scene') {
-      const parentMatrixOffset = object3d.parent.matrixWorld.clone().invert()
-      rigidBodyParentOffsets.set(rigidBody.handle, parentMatrixOffset)
+      // object3d.updateWorldMatrix(true, false)
+      const invertedWorldMatrix = object3d.parent.matrixWorld.clone().invert()
+      rigidBodyInvertedWorldMatrices.set(rigidBody.handle, invertedWorldMatrix)
     }
 
     rigidBodyMeshes.set(rigidBody.handle, object3d)
@@ -542,9 +595,9 @@ export function RigidBody({
         rigidBodyRef.current = null
       }
       rigidBodyMeshes.delete(rigidBody.handle)
-      rigidBodyParentOffsets.delete(rigidBody.handle)
+      rigidBodyInvertedWorldMatrices.delete(rigidBody.handle)
     }
-  }, [worldRef, rigidBodyMeshes, rigidBodyParentOffsets])
+  }, [worldRef, rigidBodyMeshes, rigidBodyInvertedWorldMatrices])
 
   // Because position/rotation props are forwarded directly to the Object3d, the
   // 3d and physics world can become out of sync for sleeping bodies (which are
@@ -557,18 +610,18 @@ export function RigidBody({
 
     const t = rigidBody.translation()
     const r = rigidBody.rotation()
-    const matrixOffset = rigidBodyParentOffsets.get(rigidBody.handle)
+    const matrixOffset = rigidBodyInvertedWorldMatrices.get(rigidBody.handle)
 
     if (matrixOffset) {
-      _object3d.position.set(t.x, t.y, t.z)
-      _object3d.quaternion.set(r.x, r.y, r.z, r.w)
+      _object3d.position.copy(t)
+      _object3d.quaternion.copy(r)
       _object3d.applyMatrix4(matrixOffset)
 
       object3d.position.setFromMatrixPosition(_object3d.matrix)
       object3d.quaternion.setFromRotationMatrix(_object3d.matrix)
     } else {
-      object3d.position.set(t.x, t.y, t.z)
-      object3d.quaternion.set(r.x, r.y, r.z, r.w)
+      object3d.position.copy(t)
+      object3d.quaternion.copy(r)
     }
   })
 
@@ -1166,9 +1219,9 @@ export function useCharacterController(params: CharacterControllerParams) {
 
       const characterController = world.createCharacterController(params.offset)
 
-      characterController.enableAutostep(0.7, 0.3, true)
+      characterController.enableAutostep(0.5, 0.1, true)
       characterController.enableSnapToGround(0.3)
-      characterController.setCharacterMass(100)
+      characterController.setCharacterMass(75)
       characterController.setApplyImpulsesToDynamicBodies(true)
       characterController.setSlideEnabled(true)
 
