@@ -93,18 +93,16 @@ export function usePhysics() {
 // Physics
 ///////////////////////////////////////////////////////////////
 
+const DEFAULT_GRAVITY = new Vector3(0, -9.81, 0)
+const fixedTimeStep = 1 / 60
+
+const init = RAPIER.init()
+
 export interface PhysicsProps {
   children?: ReactNode
   debug?: boolean
   gravity?: Triplet | Vector3
 }
-
-const DEFAULT_GRAVITY = new Vector3(0, -9.81, 0)
-
-const fixedTimeStep = 1 / 50
-let accumulator = 0
-
-const init = RAPIER.init()
 
 export function Physics({
   children,
@@ -113,8 +111,9 @@ export function Physics({
 }: PhysicsProps) {
   use(init)
   const worldRef = useRef<RAPIER.World | null>(null)
+  const eventQueueRef = useRef<RAPIER.EventQueue | null>(null)
 
-  const eventQueue = useConstant(() => new RAPIER.EventQueue(true))
+  const frameAccumulatorRef = useRef(0)
   const afterStepCallbacks = useConstant(
     () => new Set<RefObject<(delta: number) => void>>(),
   )
@@ -149,16 +148,26 @@ export function Physics({
     return worldRef.current
   })
 
+  const eventQueueGetter = useRef(() => {
+    if (eventQueueRef.current === null) {
+      eventQueueRef.current = new RAPIER.EventQueue(true)
+    }
+    return eventQueueRef.current
+  })
+
   // Clean up
   useEffect(() => {
     return () => {
-      eventQueue.free()
       if (worldRef.current !== null) {
         worldRef.current.free()
         worldRef.current = null
       }
+      if (eventQueueRef.current !== null) {
+        eventQueueRef.current.free()
+        eventQueueRef.current = null
+      }
     }
-  }, [eventQueue])
+  }, [])
 
   // Update gravity
   useEffect(() => {
@@ -170,15 +179,16 @@ export function Physics({
 
   useFrame((_state, delta) => {
     const world = worldGetter.current()
+    const eventQueue = eventQueueGetter.current()
 
     if (delta > 0.25) {
       delta = 0.25
     }
 
-    accumulator += delta
+    frameAccumulatorRef.current += delta
 
     // Fixed update
-    while (accumulator >= fixedTimeStep) {
+    while (frameAccumulatorRef.current >= fixedTimeStep) {
       for (const cb of beforeStepCallbacks) {
         cb.current?.(fixedTimeStep)
       }
@@ -269,10 +279,10 @@ export function Physics({
         )
       }
 
-      accumulator -= fixedTimeStep
+      frameAccumulatorRef.current -= fixedTimeStep
     }
 
-    const alpha = accumulator / fixedTimeStep
+    const alpha = frameAccumulatorRef.current / fixedTimeStep
 
     world.forEachRigidBody((rigidBody) => {
       if (rigidBody.isSleeping() || rigidBody.isFixed()) return
@@ -593,9 +603,9 @@ export function RigidBody({
           world.removeRigidBody(rigidBody)
         }
         rigidBodyRef.current = null
+        rigidBodyMeshes.delete(rigidBody.handle)
+        rigidBodyInvertedWorldMatrices.delete(rigidBody.handle)
       }
-      rigidBodyMeshes.delete(rigidBody.handle)
-      rigidBodyInvertedWorldMatrices.delete(rigidBody.handle)
     }
   }, [worldRef, rigidBodyMeshes, rigidBodyInvertedWorldMatrices])
 
@@ -659,7 +669,7 @@ export function RigidBody({
     [hasCollisionEvent, hasContactForceEvent],
   )
 
-  useImperativeHandle(ref, rigidBodyGetter.current)
+  useImperativeHandle(ref, () => rigidBodyRef.current)
 
   return (
     <RigidBodyContext.Provider value={context}>
@@ -806,7 +816,7 @@ export function useCollider<
     colliderMeshes.set(collider.handle, object3d)
 
     return () => {
-      if (colliderRef.current === null) {
+      if (colliderRef.current !== null) {
         // Check if the collider has already been removed.
         // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
         if (world.getCollider(collider.handle)) {

@@ -6,12 +6,15 @@
 
 ### Physics
 
-- [ ] Add joints
-- [ ] Ray casting kinematic body
+TBD
 
 ### Character controller
 
 - [ ] Movement
+- [ ] Jump buffer
+- [ ] Jump forgiveness
+- [ ] State machine
+- [ ] Animations
 
 ### Camera
 

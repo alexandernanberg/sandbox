@@ -21,7 +21,7 @@ function setRef<T>(
   } else {
     try {
       ref.current = value
-    } catch (error) {
+    } catch {
       // eslint-disable-next-line @typescript-eslint/restrict-template-expressions
       throw new Error(`Cannot assign value "${value}" to ref`)
     }
