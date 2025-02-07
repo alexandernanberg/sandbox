@@ -1,19 +1,17 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
 
-import { PerspectiveCamera, Text, useTexture } from '@react-three/drei'
-import type { Color } from '@react-three/fiber'
-import { useFrame } from '@react-three/fiber'
-import type { ComponentProps, MutableRefObject, Ref, RefObject } from 'react'
-import { Suspense, useRef, useState } from 'react'
+import {Text, useTexture} from '@react-three/drei'
+import type {Color} from '@react-three/fiber'
+import {useFrame} from '@react-three/fiber'
+import type {ComponentProps, RefObject} from 'react'
+import {Suspense, useImperativeHandle, useRef, useState} from 'react'
 import seedrandom from 'seedrandom'
-import type {
-  Object3D,
-  PerspectiveCamera as PerspectiveCameraImpl,
-} from 'three'
-import { Quaternion, RepeatWrapping, Vector3 } from 'three'
-import { useControls } from '~/components/debug-controls'
-import type { InputManagerRef } from '~/components/input-manager'
-import { InputManager } from '~/components/input-manager'
+import type {Object3D} from 'three'
+import {RepeatWrapping} from 'three'
+import {CharacterController, Player} from '~/components/character-controller'
+import {useControls} from '~/components/debug-controls'
+import type {InputManagerRef} from '~/components/input-manager'
+import {InputManager} from '~/components/input-manager'
 import type {
   CuboidColliderProps,
   RigidBodyApi,
@@ -21,25 +19,22 @@ import type {
 } from '~/components/physics'
 import {
   BallCollider,
-  CapsuleCollider,
   ConeCollider,
   CuboidCollider,
   CylinderCollider,
   RigidBody,
-  useCharacterController,
   usePhysicsUpdate,
   useSphericalJoint,
 } from '~/components/physics'
 import Ramp from '~/models/ramp'
 import Slope from '~/models/slope'
 import Stone from '~/models/stone'
-import { useConstant, useForkRef } from '~/utils'
 
 interface PlaygroundProps {
   debugCamera: boolean
 }
 
-export function Playground({ debugCamera }: PlaygroundProps) {
+export function Playground({debugCamera}: PlaygroundProps) {
   const [items, setItems] = useState<Array<number>>([])
 
   const spawnItems = (num = 1) => {
@@ -62,21 +57,18 @@ export function Playground({ debugCamera }: PlaygroundProps) {
         action: () => setItems([]),
       },
     },
-    { expanded: true, index: 4 },
+    {expanded: true, index: 4},
   )
 
   const inputManagerRef = useRef<InputManagerRef>(null)
   const targetRef = useRef<Object3D>(null)
 
+  useFrame((_, delta) => {
+    // console.log(delta)
+  })
+
   return (
     <>
-      <Floor />
-      <Walls />
-
-      {items.map((item) => (
-        <Ball key={item} position={[Math.random(), 6, Math.random()]} />
-      ))}
-
       <InputManager ref={inputManagerRef} />
 
       <Player
@@ -84,11 +76,13 @@ export function Playground({ debugCamera }: PlaygroundProps) {
         inputManagerRef={inputManagerRef}
         ref={targetRef}
       />
-      <ThirdPersonCamera
-        targetRef={targetRef}
-        inputManagerRef={inputManagerRef}
-        makeDefault={!debugCamera}
-      />
+
+      <Floor />
+      <Walls />
+
+      {items.map((item) => (
+        <Ball key={item} position={[Math.random(), 6, Math.random()]} />
+      ))}
 
       <Slopes position={[8, 0, 3]} />
 
@@ -180,152 +174,18 @@ export function Playground({ debugCamera }: PlaygroundProps) {
   )
 }
 
-interface PlayerProps extends Omit<RigidBodyProps, 'ref'> {
-  ref: Ref<Object3D>
-  inputManagerRef: RefObject<InputManagerRef>
-}
-
-function Player({ inputManagerRef, ref, ...props }: PlayerProps) {
-  const rigidBodyRef = useRef<RigidBodyApi>(null)
-  const characterControllerRef = useCharacterController({ offset: 0.1 })
-
-  const gravity = -9.81
-  const speed = 0.1
-  const playerVelocity = new Vector3(0, 0, 0)
-  const jumpHeight = 1
-
-  usePhysicsUpdate((delta) => {
-    const rigidBody = rigidBodyRef.current
-    const inputManager = inputManagerRef.current
-    if (!rigidBody || !inputManager) return
-    const characterController = characterControllerRef.current()
-
-    const input = inputManager.getInput()
-    const inputMovement = input.movement.normalize()
-    const nextPos = rigidBody.translation()
-
-    const isGrounded = characterController.computedGrounded()
-
-    playerVelocity.x = inputMovement.x * speed
-    playerVelocity.z = inputMovement.y * speed
-
-    if (isGrounded && playerVelocity.y < 0) {
-      playerVelocity.y = 0
-    }
-
-    if (isGrounded && input.keyboard.Space) {
-      playerVelocity.y += Math.sqrt(jumpHeight * -0.05 * gravity)
-    }
-
-    playerVelocity.y += gravity * delta
-
-    characterController.computeColliderMovement(
-      rigidBody.collider(0),
-      playerVelocity,
-    )
-
-    const movement = characterController.computedMovement()
-    nextPos.x += movement.x
-    nextPos.y += movement.y
-    nextPos.z += movement.z
-    rigidBody.setNextKinematicTranslation(nextPos)
-  })
-
-  return (
-    <RigidBody ref={rigidBodyRef} type="kinematic-position-based" {...props}>
-      <object3D ref={ref}>
-        <CapsuleCollider args={[0.5, 1.75]}>
-          <mesh castShadow receiveShadow>
-            <capsuleGeometry args={[0.5, 1.75, 10, 20]} />
-            <meshPhongMaterial color={0xf0f0f0} />
-          </mesh>
-        </CapsuleCollider>
-      </object3D>
-    </RigidBody>
-  )
-}
-
-interface ThirdPersonCameraProps {
-  ref?: Ref<PerspectiveCameraImpl>
-  targetRef: RefObject<Object3D>
-  inputManagerRef: RefObject<InputManagerRef>
-  makeDefault?: boolean
-}
-
-function ThirdPersonCamera({
-  targetRef,
-  inputManagerRef,
-  ref: forwardedRef,
-  makeDefault = true,
-}: ThirdPersonCameraProps) {
-  const ownRef = useRef<PerspectiveCameraImpl | null>(null)
-  const ref = useForkRef(ownRef, forwardedRef)
-  const cameraRef = forwardedRef || ref
-  const groupRef = useRef()
-
-  const currentPosition = useConstant(() => new Vector3())
-  const currentLookAt = useConstant(() => new Vector3())
-
-  useFrame((_, delta) => {
-    const camera = ownRef.current
-    if (!camera) return
-
-    const target = targetRef.current
-    const inputManager = inputManagerRef.current
-
-    if (!target || !inputManager) return
-    // const group = groupRef.current;
-    const input = inputManager.getInput()
-
-    // console.log(input.lookAt)
-
-    const pos = new Vector3()
-    target.getWorldPosition(pos)
-    const quat = new Quaternion()
-    target.getWorldQuaternion(quat)
-
-    const idealOffset = new Vector3(0.5, 2.5, -3)
-    idealOffset.applyQuaternion(quat)
-    idealOffset.add(pos)
-
-    const idealLookAt = new Vector3(0, 0, 5)
-    idealLookAt.applyQuaternion(quat)
-    idealLookAt.add(pos)
-
-    const t = 1.05 - Math.pow(0.001, delta)
-    currentPosition.lerp(idealOffset, t)
-    currentLookAt.lerp(idealLookAt, t)
-
-    camera.position.copy(currentPosition)
-    camera.lookAt(currentLookAt)
-  })
-
-  return (
-    <group>
-      <PerspectiveCamera
-        makeDefault={makeDefault}
-        ref={ref}
-        fov={90}
-        position={[0, 4, 8]}
-        zoom={1.2}
-        near={0.1}
-        far={1000}
-      />
-    </group>
-  )
-}
-
 interface ChainSegmentProps extends RigidBodyProps {
-  target: MutableRefObject<RigidBodyApi | null>
+  target: RefObject<RigidBodyApi | null>
 }
 
-function ChainSegment({ ref: forwardedRef, target }: ChainSegmentProps) {
-  const ownRef = useRef<RigidBodyApi | null>(null)
-  const ref = useForkRef(ownRef, forwardedRef)
+function ChainSegment({ref: forwardedRef, target}: ChainSegmentProps) {
+  const ref = useRef<RigidBodyApi>(null)
 
-  useSphericalJoint(ownRef, target, [
-    { x: 0, y: 0.26, z: 0 },
-    { x: 0, y: -0.26, z: 0 },
+  useImperativeHandle(forwardedRef, () => ref.current!)
+
+  useSphericalJoint(ref, target, [
+    {x: 0, y: 0.26, z: 0},
+    {x: 0, y: -0.26, z: 0},
   ])
 
   return (
@@ -378,17 +238,17 @@ function Swing(props: ComponentProps<'group'>) {
   // ])
 
   useSphericalJoint(chain2Ref, chain1Ref, [
-    { x: 0, y: 0.26, z: 0 },
-    { x: 0, y: -0.26, z: 0 },
+    {x: 0, y: 0.26, z: 0},
+    {x: 0, y: -0.26, z: 0},
   ])
 
   useSphericalJoint(chain3Ref, chain2Ref, [
-    { x: 0, y: 0.26, z: 0 },
-    { x: 0, y: -0.26, z: 0 },
+    {x: 0, y: 0.26, z: 0},
+    {x: 0, y: -0.26, z: 0},
   ])
   useSphericalJoint(chain4Ref, chain3Ref, [
-    { x: 0, y: 0.26, z: 0 },
-    { x: 0, y: -0.26, z: 0 },
+    {x: 0, y: 0.26, z: 0},
+    {x: 0, y: -0.26, z: 0},
   ])
 
   return (
@@ -494,7 +354,7 @@ function Ball(props: RigidBodyProps) {
       {...props}
       ref={ref}
       onPointerDown={() => {
-        ref.current?.applyImpulse({ x: 0, y: 50, z: 0 }, true)
+        ref.current?.applyImpulse({x: 0, y: 5, z: 0}, true)
       }}
       // onCollision={() => {
       // ref.current?.setLinvel({ x: 0, y: 5, z: 0 }, true)
@@ -512,7 +372,7 @@ function Ball(props: RigidBodyProps) {
       //   setColor('red')
       // }}
     >
-      <BallCollider args={[0.5]} restitution={1} friction={0.9} density={12}>
+      <BallCollider args={[0.5]} restitution={1} friction={0.9} density={1}>
         <mesh castShadow receiveShadow>
           <sphereGeometry args={[0.5]} />
           <meshPhongMaterial color={color} />
@@ -560,7 +420,7 @@ function Box({
   args = [1, 1, 1],
   color = 0xfffff0,
   ...props
-}: CuboidColliderProps & { color?: Color }) {
+}: CuboidColliderProps & {color?: Color}) {
   return (
     <CuboidCollider args={args} {...props}>
       <mesh castShadow receiveShadow>
@@ -581,7 +441,13 @@ function Slopes(props: ComponentProps<'group'>) {
     const run = runFromAngleAndRaise(angle, 2)
     return (
       <group key={angle}>
-        <CuboidCollider args={[2, 4, 2]} position={[0, 2, 2 * index]}>
+        <CuboidCollider
+          args={[2, 4, 2]}
+          position={[0, 2, 2 * index]}
+          onContactForce={(event) => {
+            console.log(event.totalForce())
+          }}
+        >
           <Suspense fallback={null}>
             <Text
               position={[-1.01, 1, 0]}
@@ -619,32 +485,36 @@ function Slopes(props: ComponentProps<'group'>) {
 }
 
 function Walls() {
-  const width = 1
+  const thickness = 1
   const height = 10
+  const area = 50
+
+  const y = height / 2
+  const pos = area / 2 + thickness / 2
+
   return (
     <>
-      <RigidBody type="fixed" position={[15.5, height / 2, 0]}>
-        <CuboidCollider args={[width, height, 30]} />
+      <RigidBody type="fixed" position={[pos, y, 0]}>
+        <CuboidCollider args={[thickness, height, area]} />
       </RigidBody>
-      <RigidBody type="fixed" position={[-15.5, height / 2, 0]}>
-        <CuboidCollider args={[width, height, 30]} />
+      <RigidBody type="fixed" position={[pos * -1, y, 0]}>
+        <CuboidCollider args={[thickness, height, area]} />
       </RigidBody>
-      <RigidBody type="fixed" position={[0, height / 2, 15.5]}>
-        <CuboidCollider args={[30, height, width]} />
+      <RigidBody type="fixed" position={[0, y, pos]}>
+        <CuboidCollider args={[area, height, thickness]} />
       </RigidBody>
-      <RigidBody type="fixed" position={[0, height / 2, -15.5]}>
-        <CuboidCollider args={[30, height, width]} />
+      <RigidBody type="fixed" position={[0, y, pos * -1]}>
+        <CuboidCollider args={[area, height, thickness]} />
       </RigidBody>
     </>
   )
 }
 
 function Floor() {
-  const size = 30
-  const textureRepeat = 30 / 2 / 2
-  const tileTexture = useTexture(
-    'https://cdn.jsdelivr.net/gh/pmndrs/drei-assets@latest/prototype/light/texture_08.png',
-  )
+  const size = 50
+  const textureRepeat = size / 2
+  const tileTexture = useTexture('/textures/prototype/light/texture_08.png')
+  // eslint-disable-next-line react-compiler/react-compiler
   tileTexture.wrapS = tileTexture.wrapT = RepeatWrapping
   tileTexture.repeat.set(textureRepeat, textureRepeat)
 
@@ -661,9 +531,7 @@ function Floor() {
 }
 
 function Wall() {
-  const wallTexture = useTexture(
-    'https://cdn.jsdelivr.net/gh/pmndrs/drei-assets@latest/prototype/light/texture_12.png',
-  )
+  const wallTexture = useTexture('/textures/prototype/light/texture_12.png')
 
   return (
     <RigidBody type="fixed" position={[5, 3 / 2, 2]}>
@@ -685,11 +553,11 @@ function Elevator(props: RigidBodyProps) {
   const ref = useRef<RigidBodyApi>(null)
 
   usePhysicsUpdate(() => {
-    const rigidBody = ref.current
-    if (!rigidBody) return
-    const vec = rigidBody.translation()
-    vec.y = clamp(3.875 + Math.sin(performance.now() / 1000) * 5, 0.25, 7.75)
-    rigidBody.setNextKinematicTranslation(vec)
+    // const rigidBody = ref.current
+    // if (!rigidBody) return
+    // const vec = rigidBody.translation()
+    // vec.y = clamp(3.875 + Math.sin(performance.now() / 1000) * 5, 0.25, 7.75)
+    // rigidBody.setNextKinematicTranslation(vec)
   })
 
   return (
@@ -751,7 +619,7 @@ function generateConvexPolyhedron() {
     vertices.push(rng() * scale, rng() * scale, rng() * scale)
   }
 
-  return { vertices: new Float32Array(vertices) }
+  return {vertices: new Float32Array(vertices)}
 }
 
 function generateTrimesh(nsubdivs: number, wx: number, wy: number, wz: number) {

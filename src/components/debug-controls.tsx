@@ -1,5 +1,5 @@
-import type { BindingApi, ButtonApi, ButtonParams } from '@tweakpane/core'
-import type { MutableRefObject, ReactNode } from 'react'
+import type {BindingApi, ButtonApi, ButtonParams} from '@tweakpane/core'
+import type {ReactNode, RefObject} from 'react'
 import {
   createContext,
   startTransition,
@@ -8,16 +8,11 @@ import {
   useRef,
   useState,
 } from 'react'
-import type {
-  Vector2Like,
-  Vector2Tuple,
-  Vector3Like,
-  Vector3Tuple,
-} from 'three'
-import type { BindingParams, FolderApi, FolderParams } from 'tweakpane'
-import { Pane } from 'tweakpane'
+import type {Vector2Like, Vector2Tuple, Vector3Like, Vector3Tuple} from 'three'
+import type {BindingParams, FolderApi, FolderParams} from 'tweakpane'
+import {Pane} from 'tweakpane'
 
-const TweakpaneContext = createContext<MutableRefObject<
+const TweakpaneContext = createContext<RefObject<
   () => Pane | FolderApi
 > | null>(null)
 
@@ -26,12 +21,12 @@ interface DebugControlProps
   children: ReactNode
 }
 
-export function DebugControls({ children, ...props }: DebugControlProps) {
-  const guiRef = useRef<Pane | null>(null)
+export function DebugControls({children, ...props}: DebugControlProps) {
+  const guiRef = useRef<Pane>(null)
 
   const guiGetter = useRef(() => {
     if (guiRef.current === null) {
-      guiRef.current = new Pane({ title: 'Parameters', ...props })
+      guiRef.current = new Pane({title: 'Parameters', ...props})
     }
     return guiRef.current
   })
@@ -71,14 +66,14 @@ type ControlValue =
   | Vector3Like
   | Vector2Like
 
-type BindingItem = BindingParams & { value: ControlValue }
-type ButtonItem = ButtonParams & { action: () => void; title: string }
+type BindingItem = BindingParams & {value: ControlValue}
+type ButtonItem = ButtonParams & {action: () => void; title: string}
 
 type SchemaItem = BindingItem | ButtonItem
 type Schema = Record<string, SchemaItem>
 
 type ControlValues<T extends Schema> = {
-  [K in keyof T]: T[K] extends { value: infer V } ? V : never
+  [K in keyof T]: T[K] extends {value: infer V} ? V : never
 }
 
 export function useControls<T extends Schema>(
@@ -95,14 +90,14 @@ export function useControls<T extends Schema>(
 
   for (const key of Object.keys(schema) as Array<keyof T>) {
     if ('action' in schema[key]) continue
-    const { value } = schema[key]
+    const {value} = schema[key]
     if (Array.isArray(value)) {
       if (value.length === 3) {
         transforms.set(key, '3d')
-        initialState[key] = { x: value[0], y: value[1], z: value[2] }
+        initialState[key] = {x: value[0], y: value[1], z: value[2]}
       } else {
         transforms.set(key, '2d')
-        initialState[key] = { x: value[0], y: value[1] }
+        initialState[key] = {x: value[0], y: value[1]}
       }
       continue
     }
@@ -113,26 +108,26 @@ export function useControls<T extends Schema>(
   const [state, setState] = useState(initialState)
 
   useEffect(() => {
-    const folder = pane.current().addFolder({ title: label, ...params })
+    const folder = pane.current().addFolder({title: label, ...params})
     const bindings: Array<BindingApi | ButtonApi> = []
-    const bindingState = { ...state }
+    const bindingState = {...state}
 
     for (const key of Object.keys(schema) as Array<keyof T>) {
       const item = schema[key]
 
       if ('action' in item) {
-        const { action, ...opts } = item
+        const {action, ...opts} = item
         const button = folder.addButton(opts)
         button.on('click', action)
         bindings.push(button)
         continue
       }
 
-      const { value, ...opts } = item
+      const {value, ...opts} = item
       const binding = folder.addBinding(bindingState, key, opts)
       binding.on('change', (event) => {
         startTransition(() => {
-          setState((prev) => ({ ...prev, [key]: event.value }))
+          setState((prev) => ({...prev, [key]: event.value}))
         })
       })
       bindings.push(binding)
@@ -146,7 +141,7 @@ export function useControls<T extends Schema>(
     }
   }, [pane])
 
-  const returnValue = { ...state }
+  const returnValue = {...state}
   for (const [key, type] of transforms) {
     const value = returnValue[key]
 

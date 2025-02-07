@@ -9,11 +9,14 @@
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
     "allowSyntheticDefaultImports": true,
+    "noUncheckedIndexedAccess": true,
     "moduleResolution": "node",
     "isolatedModules": true,
     "resolveJsonModule": true,
     "paths": {
       "~/*": ["./src/*"]
     }
-  }
+  },
+  "include": ["."],
+  "exclude": ["node_modules"]
 }

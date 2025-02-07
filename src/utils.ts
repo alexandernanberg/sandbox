@@ -1,20 +1,20 @@
-import type { MutableRefObject, Ref, RefCallback } from 'react'
-import { useEffect, useMemo, useRef } from 'react'
+import type {Ref, RefCallback} from 'react'
+import {useEffect, useRef} from 'react'
 
 export function useConstant<T>(fn: () => T): T {
-  const ref = useRef<{ v: T }>()
+  const ref = useRef<{v: T}>(null)
 
+  // eslint-disable-next-line react-compiler/react-compiler
   if (!ref.current) {
-    ref.current = { v: fn() }
+    // eslint-disable-next-line react-compiler/react-compiler
+    ref.current = {v: fn()}
   }
 
+  // eslint-disable-next-line react-compiler/react-compiler
   return ref.current.v
 }
 
-function setRef<T>(
-  ref: MutableRefObject<T | null> | RefCallback<T> | null | undefined,
-  value: T | null,
-): void {
+function assignRef<T>(ref: Ref<T> | null | undefined, value: T | null): void {
   if (ref == null) return
   if (typeof ref === 'function') {
     ref(value)
@@ -28,28 +28,21 @@ function setRef<T>(
   }
 }
 
-export function useForkRef<T>(
+export function mergeRefs<T>(
   ...refs: Array<Ref<T> | null | undefined>
-): RefCallback<T> | null {
-  return useMemo(
-    () => {
-      if (refs.every((ref) => ref == null)) {
-        return null
-      }
-      return (refValue) => {
-        refs.forEach((ref) => setRef(ref, refValue))
-      }
-    },
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    refs,
-  )
+): RefCallback<T> {
+  return (refValue) => {
+    for (const ref of refs) {
+      assignRef(ref, refValue)
+    }
+  }
 }
 
 export function useInterval<T extends () => void>(
   cb: T,
   delay?: number | null,
 ) {
-  const ref = useRef<T>()
+  const ref = useRef<T>(null)
 
   useEffect(() => {
     ref.current = cb

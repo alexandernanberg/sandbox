@@ -1,59 +1,52 @@
-import {
-  Loader,
-  OrbitControls,
-  Sky as SkyShader,
-  Stats,
-} from '@react-three/drei'
-import { Canvas } from '@react-three/fiber'
-import { Suspense, useReducer } from 'react'
+import {Loader, OrbitControls, Sky as SkyShader, Stats} from '@react-three/drei'
+import {Canvas} from '@react-three/fiber'
+import {useReducer} from 'react'
 import {
   DirectionalLight,
   HemisphereLight,
   LightProvider,
 } from '~/components/lights'
-import { Physics } from '~/components/physics'
-import { Playground } from '~/scenes/playground'
-import { DebugControls, useControls } from './components/debug-controls'
+import {Physics} from '~/components/physics'
+import {Playground} from '~/scenes/playground'
+import {DebugControls, useControls} from './components/debug-controls'
 
 export function Root() {
   return (
     <>
-      <Canvas camera={{ position: [6, 6, -4] }} shadows>
-        <Suspense fallback={null}>
-          <DebugControls>
-            <App />
-          </DebugControls>
-        </Suspense>
+      <Canvas camera={{position: [6, 6, -4]}} shadows>
+        <DebugControls>
+          <App />
+        </DebugControls>
       </Canvas>
       <Loader />
     </>
   )
 }
 
-export function App() {
+function App() {
   const [physicsKey, updatePhysicsKey] = useReducer((num: number) => num + 1, 0)
 
   const cameraControls = useControls(
     'Camera',
-    { debug: { value: false } },
-    { expanded: false, index: 0 },
+    {debug: {value: false}},
+    {expanded: false, index: 0},
   )
   const lightsControl = useControls(
     'Lights',
-    { debug: { value: false } },
-    { expanded: false, index: 1 },
+    {debug: {value: false}},
+    {expanded: false, index: 1},
   )
   const physicsControls = useControls(
     'Physics',
     {
-      debug: { value: false },
-      gravity: { value: [0, -9.81, 0] },
+      debug: {value: false},
+      gravity: {value: [0, -9.81, 0]},
       _reset: {
         title: 'Reset',
         action: updatePhysicsKey,
       },
     },
-    { index: 3 },
+    {index: 3},
   )
 
   return (
@@ -75,7 +68,7 @@ export function App() {
 }
 
 function Sky() {
-  const { sun: position } = useControls(
+  const {sun: position} = useControls(
     'Sky',
     {
       sun: {
@@ -83,7 +76,7 @@ function Sky() {
         value: [100, 200, 100],
       },
     },
-    { expanded: false, index: 2 },
+    {expanded: false, index: 2},
   )
 
   return (

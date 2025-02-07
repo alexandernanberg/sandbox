@@ -1,25 +1,19 @@
 import * as RAPIER from '@dimforge/rapier3d-compat'
-import { useFrame } from '@react-three/fiber'
-import type {
-  ComponentProps,
-  MutableRefObject,
-  ReactNode,
-  Ref,
-  RefObject,
-} from 'react'
+import {useFrame} from '@react-three/fiber'
+import type {ComponentProps, ReactNode, Ref, RefObject} from 'react'
 import {
   createContext,
   use,
-  useCallback,
   useEffect,
   useImperativeHandle,
   useLayoutEffect,
   useMemo,
   useRef,
 } from 'react'
-import type { LineSegments, Matrix4 } from 'three'
-import { BufferAttribute, Object3D, Quaternion, Vector3 } from 'three'
-import { useConstant } from '~/utils'
+import type {LineSegments, Matrix4} from 'three'
+import {BufferAttribute, Object3D, Quaternion, Vector3} from 'three'
+import {useEffectEvent} from '~/lib/use-effect-event'
+import {useConstant} from '~/utils'
 
 const _object3d = new Object3D()
 const _position = new Vector3()
@@ -59,7 +53,7 @@ type EventMap = Map<number, PhysicsEvents>
 ///////////////////////////////////////////////////////////////
 
 export interface PhysicsContextValue {
-  worldRef: MutableRefObject<() => RAPIER.World>
+  worldRef: RefObject<() => RAPIER.World>
   debug: boolean
   colliderMeshes: Map<number, Object3D>
   colliderEvents: EventMap
@@ -86,7 +80,7 @@ function usePhysicsContext() {
 
 export function usePhysics() {
   const context = usePhysicsContext()
-  return { worldRef: context.worldRef }
+  return {worldRef: context.worldRef}
 }
 
 ///////////////////////////////////////////////////////////////
@@ -110,8 +104,8 @@ export function Physics({
   gravity = DEFAULT_GRAVITY,
 }: PhysicsProps) {
   use(init)
-  const worldRef = useRef<RAPIER.World | null>(null)
-  const eventQueueRef = useRef<RAPIER.EventQueue | null>(null)
+  const worldRef = useRef<RAPIER.World>(null)
+  const eventQueueRef = useRef<RAPIER.EventQueue>(null)
 
   const frameAccumulatorRef = useRef(0)
   const afterStepCallbacks = useConstant(
@@ -190,7 +184,7 @@ export function Physics({
     // Fixed update
     while (frameAccumulatorRef.current >= fixedTimeStep) {
       for (const cb of beforeStepCallbacks) {
-        cb.current?.(fixedTimeStep)
+        cb.current(fixedTimeStep)
       }
 
       rigidBodyPrevPositions.clear()
@@ -204,7 +198,7 @@ export function Physics({
       world.step(eventQueue)
 
       for (const cb of afterStepCallbacks) {
-        cb.current?.(fixedTimeStep)
+        cb.current(fixedTimeStep)
       }
 
       eventQueue.drainCollisionEvents((handle1, handle2, started) => {
@@ -254,8 +248,8 @@ export function Physics({
           maxForceMagnitude: () => event.maxForceMagnitude(),
         }
 
-        const collisionPayload1 = { ...collisionPayload }
-        const collisionPayload2 = { ...collisionPayload }
+        const collisionPayload1 = {...collisionPayload}
+        const collisionPayload2 = {...collisionPayload}
 
         source1.collider.events?.onContactForce?.(collisionPayload1)
         source1.rigidBody.events?.onContactForce?.(collisionPayload1)
@@ -409,7 +403,7 @@ function handleCollisionEvent(
   rigidBodyMeshes: Map<number, Object3D>,
   started: boolean,
 ) {
-  const { collider, rigidBody } = getColliderSource(
+  const {collider, rigidBody} = getColliderSource(
     world,
     colliderHandle,
     colliderEvents,
@@ -420,11 +414,11 @@ function handleCollisionEvent(
 
   // TODO: lazy target?
   if (started) {
-    collider.events?.onCollisionEnter?.({ target: collider.mesh! })
-    rigidBody.events?.onCollisionEnter?.({ target: rigidBody.mesh! })
+    collider.events?.onCollisionEnter?.({target: collider.mesh!})
+    rigidBody.events?.onCollisionEnter?.({target: rigidBody.mesh!})
   } else {
-    collider.events?.onCollisionExit?.({ target: collider.mesh! })
-    rigidBody.events?.onCollisionExit?.({ target: rigidBody.mesh! })
+    collider.events?.onCollisionExit?.({target: collider.mesh!})
+    rigidBody.events?.onCollisionExit?.({target: rigidBody.mesh!})
   }
 }
 
@@ -451,7 +445,7 @@ export function usePhysicsUpdate(
 ///////////////////////////////////////////////////////////////
 
 interface RigidBodyContextValue {
-  rigidBodyRef: MutableRefObject<() => RAPIER.RigidBody>
+  rigidBodyRef: RefObject<() => RAPIER.RigidBody>
   hasCollisionEvent: boolean
   hasContactForceEvent: boolean
 }
@@ -469,7 +463,7 @@ export interface RigidBodyApi extends RAPIER.RigidBody {}
 type Triplet = [number, number, number]
 
 export interface RigidBodyProps extends Omit<Object3DProps, 'ref'> {
-  ref?: Ref<RigidBodyApi | null>
+  ref?: Ref<RigidBodyApi>
   type?: RigidBodyType
   linearDamping?: number
   linearVelocity?: Triplet | Vector3
@@ -518,7 +512,7 @@ export function RigidBody({
     rigidBodyInvertedWorldMatrices,
   } = usePhysicsContext()
   const object3dRef = useRef<Object3D>(null)
-  const rigidBodyRef = useRef<RAPIER.RigidBody | null>(null)
+  const rigidBodyRef = useRef<RAPIER.RigidBody>(null)
 
   const rigidBodyGetter = useRef(() => {
     if (rigidBodyRef.current === null) {
@@ -669,7 +663,7 @@ export function RigidBody({
     [hasCollisionEvent, hasContactForceEvent],
   )
 
-  useImperativeHandle(ref, () => rigidBodyRef.current)
+  useImperativeHandle(ref, () => rigidBodyRef.current!)
 
   return (
     <RigidBodyContext.Provider value={context}>
@@ -716,7 +710,7 @@ export function useCollider<
 >(
   cb: T,
   props: Omit<ColliderProps, 'children'>,
-  object3dRef: RefObject<Object3D | undefined>,
+  object3dRef: RefObject<Object3D | null>,
 ) {
   const {
     friction,
@@ -728,12 +722,12 @@ export function useCollider<
     onCollisionExit,
     onContactForce,
   } = props
-  const { worldRef, colliderEvents, colliderMeshes } = usePhysicsContext()
+  const {worldRef, colliderEvents, colliderMeshes} = usePhysicsContext()
   const context = use(RigidBodyContext)
-  const { rigidBodyRef } = context || {}
+  const {rigidBodyRef} = context || {}
 
-  const colliderRef = useRef<RAPIER.Collider | null>(null)
-  const scaleRef = useRef<Vector3 | null>(null)
+  const colliderRef = useRef<RAPIER.Collider>(null)
+  const scaleRef = useRef<Vector3>(null)
 
   const hasCollisionEvent =
     context?.hasCollisionEvent ||
@@ -920,7 +914,7 @@ export interface BallColliderProps extends ColliderProps {
   args: [radius: number]
 }
 
-export function BallCollider({ children, args, ...props }: BallColliderProps) {
+export function BallCollider({children, args, ...props}: BallColliderProps) {
   const [radius] = args
   const object3dRef = useRef<Object3D>(null)
 
@@ -1007,7 +1001,7 @@ export interface ConeColliderProps extends ColliderProps {
   args: [radius: number, height: number]
 }
 
-export function ConeCollider({ children, args, ...props }: ConeColliderProps) {
+export function ConeCollider({children, args, ...props}: ConeColliderProps) {
   const [radius, height] = args
   const object3dRef = useRef<Object3D>(null)
 
@@ -1091,7 +1085,7 @@ function scalePoints(points: Float32Array, scale: [number, number, number]) {
     const scaleIndex = i % 3
     const scaleValue = scale[scaleIndex]
     if (scaleValue !== 1) {
-      points[i] = points[i] * scaleValue
+      points[i] = points[i]! * scaleValue!
     }
   }
   return points
@@ -1165,12 +1159,12 @@ export function HeightfieldCollider({
 ///////////////////////////////////////////////////////////////
 
 export function useImpulseJoint(
-  body1: MutableRefObject<RigidBodyApi | null>,
-  body2: MutableRefObject<RigidBodyApi | null>,
+  body1: RefObject<RigidBodyApi | null>,
+  body2: RefObject<RigidBodyApi | null>,
   params: RAPIER.JointData,
 ) {
-  const { worldRef } = usePhysicsContext()
-  const jointRef = useRef<RAPIER.ImpulseJoint | null>(null)
+  const {worldRef} = usePhysicsContext()
+  const jointRef = useRef<RAPIER.ImpulseJoint>(null)
 
   const jointGetter = useRef(() => {
     if (jointRef.current === null) {
@@ -1203,55 +1197,11 @@ export function useImpulseJoint(
 }
 
 export function useSphericalJoint(
-  body1: MutableRefObject<RigidBodyApi | null>,
-  body2: MutableRefObject<RigidBodyApi | null>,
+  body1: RefObject<RigidBodyApi | null>,
+  body2: RefObject<RigidBodyApi | null>,
   params: Parameters<typeof RAPIER.JointData.spherical>,
 ) {
   return useImpulseJoint(body1, body2, RAPIER.JointData.spherical(...params))
-}
-
-///////////////////////////////////////////////////////////////
-// CharacterController
-///////////////////////////////////////////////////////////////
-
-interface CharacterControllerParams {
-  offset: number
-}
-
-export function useCharacterController(params: CharacterControllerParams) {
-  const { worldRef } = usePhysicsContext()
-  const characterControllerRef =
-    useRef<RAPIER.KinematicCharacterController | null>(null)
-
-  const characterControllerGetter = useRef(() => {
-    if (characterControllerRef.current === null) {
-      const world = worldRef.current()
-
-      const characterController = world.createCharacterController(params.offset)
-
-      characterController.enableAutostep(0.5, 0.1, true)
-      characterController.enableSnapToGround(0.3)
-      characterController.setCharacterMass(75)
-      characterController.setApplyImpulsesToDynamicBodies(true)
-      characterController.setSlideEnabled(true)
-
-      characterControllerRef.current = characterController
-    }
-
-    return characterControllerRef.current
-  })
-
-  useLayoutEffect(() => {
-    const world = worldRef.current()
-    const characterController = characterControllerGetter.current()
-
-    return () => {
-      world.removeCharacterController(characterController)
-      characterControllerRef.current = null
-    }
-  }, [worldRef])
-
-  return characterControllerGetter
 }
 
 ///////////////////////////////////////////////////////////////
@@ -1262,26 +1212,9 @@ function noop() {
   // noop
 }
 
-// Based on https://github.com/reactjs/rfcs/pull/220
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function useEffectEvent<T extends (...args: any[]) => any>(handler: T) {
-  const handlerRef = useRef<T | null>(null)
-
-  useLayoutEffect(() => {
-    handlerRef.current = handler
-  })
-
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  return useCallback((...args: any[]) => {
-    const fn = handlerRef.current
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-return, @typescript-eslint/no-unsafe-argument
-    return fn?.(...args)
-  }, [])
-}
-
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function useRefCallback<T extends (...args: any[]) => any>(handler: T) {
-  const handlerRef = useRef<T | null>(null)
+  const handlerRef = useRef<T>(handler)
 
   useLayoutEffect(() => {
     handlerRef.current = handler

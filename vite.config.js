@@ -1,7 +1,6 @@
-/* eslint-disable import/no-extraneous-dependencies */
 import react from '@vitejs/plugin-react'
-import { resolve } from 'path'
-import { defineConfig } from 'vite'
+import {resolve} from 'path'
+import {defineConfig} from 'vite'
 // import wasm from 'vite-plugin-wasm'
 
 export default defineConfig({
@@ -9,7 +8,7 @@ export default defineConfig({
     // Does not work in prod
     // https://github.com/Menci/vite-plugin-wasm/issues/57
     // wasm(),
-    react({ babel: { plugins: [['babel-plugin-react-compiler', {}]] } }),
+    react({babel: {plugins: [['babel-plugin-react-compiler', {}]]}}),
   ],
   build: {
     chunkSizeWarningLimit: 1024,
@@ -17,7 +16,7 @@ export default defineConfig({
   },
   resolve: {
     alias: {
-      '~': resolve(__dirname, 'src'),
+      '~': resolve(import.meta.dirname, 'src'),
       // Resolve symlink ourselves
       // '@react-three/fiber': resolve('node_modules', '@react-three', 'fiber'),
       // three: resolve('node_modules', 'three'),

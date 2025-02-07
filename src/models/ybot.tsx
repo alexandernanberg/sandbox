@@ -1,10 +1,11 @@
-import { useAnimations, useGLTF } from '@react-three/drei'
-import { useGraph } from '@react-three/fiber'
-import { createMachine } from '@xstate/fsm'
-import { useEffect, useMemo, useRef } from 'react'
-import type { Object3D } from 'three'
-import type { GLTF } from 'three-stdlib'
-import { SkeletonUtils } from 'three/addons/SkeletonUtils'
+import {useAnimations, useGLTF} from '@react-three/drei'
+import {useGraph} from '@react-three/fiber'
+import {createMachine} from '@xstate/fsm'
+import {useEffect, useMemo, useRef} from 'react'
+import type * as THREE from 'three'
+import type {Object3D} from 'three'
+import type {GLTF} from 'three-stdlib'
+import {SkeletonUtils} from 'three/addons/SkeletonUtils'
 
 type GLTFResult = GLTF & {
   nodes: {
@@ -25,25 +26,25 @@ const characterMachine = createMachine({
   id: 'character',
   initial: 'idle',
   states: {
-    idle: { on: { WALK: 'walk' } },
-    walk: { on: { RUN: 'run' } },
-    run: { on: { WALK: 'walk' } },
+    idle: {on: {WALK: 'walk'}},
+    walk: {on: {RUN: 'run'}},
+    run: {on: {WALK: 'walk'}},
   },
 })
 
 console.log(characterMachine.transition(characterMachine.initialState, 'WALK'))
 
-function Character(props, forwardedRef) {
+function Character(props) {
   const ref = useRef<Object3D>(null)
   const characterRef = forwardedRef || ref
-  const { scene, materials, animations } = useGLTF('/ybot.glb') as GLTFResult
+  const {scene, materials, animations} = useGLTF('/ybot.glb') as GLTFResult
   const clone = useMemo(() => SkeletonUtils.clone(scene), [scene])
-  const { nodes } = useGraph(clone) as unknown as Pick<
+  const {nodes} = useGraph(clone) as unknown as Pick<
     GLTFResult,
     'nodes' | 'materials'
   >
 
-  const { actions } = useAnimations<GLTFActions>(animations, ref)
+  const {actions} = useAnimations<GLTFActions>(animations, ref)
 
   const state = 'Idle'
   useEffect(() => {
