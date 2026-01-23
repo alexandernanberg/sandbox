@@ -39,7 +39,7 @@ function App() {
   const physicsControls = useControls(
     'Physics',
     {
-      debug: {value: false},
+      debug: {value: true},
       gravity: {value: [0, -9.81, 0]},
       _reset: {
         title: 'Reset',
