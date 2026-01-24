@@ -84,14 +84,18 @@ export function useControls<T extends Schema>(
 ): ControlValues<T> {
   const pane = useDebugControls()
 
+  // Store initial config in ref - these are only used at setup time
+  const configRef = useRef({label, schema, params})
+
   const initialState = {} as {
     [K in keyof T]: string | number | boolean | Vector3Like | Vector2Like
   }
   const transforms: Map<keyof T, '2d' | '3d'> = new Map()
 
   for (const key of Object.keys(schema) as Array<keyof T>) {
-    if ('action' in schema[key]) continue
-    const {value} = schema[key]
+    const schemaItem = schema[key] as SchemaItem
+    if ('action' in schemaItem) continue
+    const {value} = schemaItem
     if (Array.isArray(value)) {
       if (value.length === 3) {
         transforms.set(key, '3d')
@@ -107,17 +111,19 @@ export function useControls<T extends Schema>(
   }
 
   const [state, setState] = useState(initialState)
+  const initialStateRef = useRef(initialState)
 
   useEffect(() => {
-    const folder = pane.current().addFolder({title: label, ...params})
+    const {label: lbl, schema: sch, params: prm} = configRef.current
+    const folder = pane.current().addFolder({title: lbl, ...prm})
     const bindings: Array<BindingApi | ButtonApi> = []
-    const bindingState = {...state}
+    const bindingState = {...initialStateRef.current}
 
-    for (const key of Object.keys(schema) as Array<keyof T>) {
-      const item = schema[key]
+    for (const key of Object.keys(sch) as Array<keyof T>) {
+      const item = sch[key] as SchemaItem
 
       if ('action' in item) {
-        const {action, ...opts} = item
+        const {action, ...opts} = item as ButtonItem
         const button = folder.addButton(opts)
         button.on('click', action)
         bindings.push(button)

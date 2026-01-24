@@ -23,6 +23,12 @@
 - [ ] Add more obstacles, ramps, and surfaces to test movement
 - [ ] Experiment with lighting, shadows, and basic environmental effects
 
+### ECS Migration
+
+- [ ] Player movement - move from `usePhysicsUpdate` to ECS system with `PlayerInput`, `PlayerMovement` traits
+- [ ] Elevator/Oscillator - generic oscillation trait + system for kinematic bodies
+- [ ] Input state - singleton trait for input so ECS systems can read directly
+
 ### Misc
 
 - [ ] Replace `useAsset`/`useTexture` with `use(loadAsset("/path"))` https://github.com/pmndrs/react-three-fiber/issues/3411

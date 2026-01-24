@@ -21,7 +21,7 @@ export function ThirdPersonCamera({
   makeDefault = true,
 }: ThirdPersonCameraProps) {
   const ref = useRef<PerspectiveCameraImpl>(null)
-  const groupRef = useRef(null)
+  const _groupRef = useRef(null)
 
   useImperativeHandle(forwardedRef, () => ref.current!)
 

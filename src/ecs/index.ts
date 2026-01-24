@@ -57,14 +57,14 @@ const ballCollider = (radius: number, restitution = 0, friction = 0.5) =>
 // ============================================
 // Actions are safe ways to modify the world from React
 
-export const actions = createActions((world) => ({
+export const actions = createActions((w) => ({
   // Spawn a single ball at a position with ECS physics
   spawnBall: (x: number, y: number, z: number) => {
     const colors = ['red', 'green', 'blue', 'yellow', 'purple']
     const color = colors[Math.floor(Math.random() * colors.length)]
 
     // Spawn rigid body entity
-    const rbEntity = world.spawn(
+    const rbEntity = w.spawn(
       IsBall,
       IsPhysicsEntity,
       Object3DRef,
@@ -76,7 +76,7 @@ export const actions = createActions((world) => ({
     )
 
     // Spawn collider as child entity
-    world.spawn(IsColliderEntity, ChildOf(rbEntity), ballCollider(0.5, 1, 0.9))
+    w.spawn(IsColliderEntity, ChildOf(rbEntity), ballCollider(0.5, 1, 0.9))
 
     return rbEntity
   },
@@ -92,7 +92,7 @@ export const actions = createActions((world) => ({
       const color = colors[Math.floor(Math.random() * colors.length)]
 
       // Spawn rigid body entity
-      const rbEntity = world.spawn(
+      const rbEntity = w.spawn(
         IsBall,
         IsPhysicsEntity,
         Object3DRef,
@@ -104,18 +104,14 @@ export const actions = createActions((world) => ({
       )
 
       // Spawn collider as child entity
-      world.spawn(
-        IsColliderEntity,
-        ChildOf(rbEntity),
-        ballCollider(0.5, 1, 0.9),
-      )
+      w.spawn(IsColliderEntity, ChildOf(rbEntity), ballCollider(0.5, 1, 0.9))
     }
   },
 
   // Remove all balls
   clearBalls: () => {
     // Collect entities first to avoid mutating during iteration
-    const balls = [...world.query(IsBall)]
+    const balls = [...w.query(IsBall)]
     for (const entity of balls) {
       entity.destroy()
     }

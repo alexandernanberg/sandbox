@@ -29,11 +29,14 @@ interface PlaygroundProps {
   inputManagerRef: RefObject<InputManagerRef | null>
 }
 
-export function Playground({debugCamera, inputManagerRef}: PlaygroundProps) {
+export function Playground({
+  debugCamera: _debugCamera,
+  inputManagerRef,
+}: PlaygroundProps) {
   // useActions gives us ECS actions bound to the world in context
   const {spawnBalls, clearBalls} = useActions(actions)
 
-  const objectControls = useControls(
+  const _objectControls = useControls(
     'Objects',
     {
       _spawn: {
@@ -336,6 +339,7 @@ function Floor() {
   )
 }
 
+// eslint-disable-next-line @typescript-eslint/no-unused-vars -- kept for future use
 function Wall() {
   const wallTexture = useTexture('/textures/prototype/light/texture_12.png')
 

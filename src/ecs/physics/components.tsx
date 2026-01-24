@@ -175,6 +175,13 @@ export function RigidBody({
     [],
   )
 
+  // Expose entity through ref
+  useImperativeHandle<Entity | null, Entity | null>(
+    entityRef,
+    () => spawnedEntityRef.current,
+    [],
+  )
+
   // Set Object3DRef after object3d is available
   useLayoutEffect(() => {
     const object3d = object3dRef.current
@@ -184,15 +191,7 @@ export function RigidBody({
     const entity = entityGetter.current()
     entity.set(Object3DRef, {object: object3d})
 
-    // Set entityRef if provided
-    if (entityRef) {
-      entityRef.current = entity
-    }
-
     return () => {
-      if (entityRef) {
-        entityRef.current = null
-      }
       if (entity.isAlive()) {
         entity.destroy()
       }
