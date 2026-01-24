@@ -9,13 +9,13 @@ React Three Fiber is a React renderer for Three.js, allowing declarative 3D scen
 The root component that creates a Three.js renderer, scene, and camera:
 
 ```tsx
-import { Canvas } from '@react-three/fiber'
+import {Canvas} from '@react-three/fiber'
 
-<Canvas
-  camera={{ position: [0, 5, 10], fov: 75 }}
+;<Canvas
+  camera={{position: [0, 5, 10], fov: 75}}
   shadows
-  dpr={[1, 2]}  // Device pixel ratio range
-  gl={{ antialias: true }}
+  dpr={[1, 2]} // Device pixel ratio range
+  gl={{antialias: true}}
 >
   <Scene />
 </Canvas>
@@ -23,15 +23,15 @@ import { Canvas } from '@react-three/fiber'
 
 ### Canvas Props
 
-| Prop | Description |
-|------|-------------|
-| `camera` | Camera configuration (position, fov, near, far) |
-| `shadows` | Enable shadow mapping |
-| `dpr` | Device pixel ratio (number or [min, max]) |
-| `gl` | WebGL renderer settings |
-| `frameloop` | `'always'` \| `'demand'` \| `'never'` |
-| `flat` | Disable tone mapping |
-| `linear` | Disable sRGB color space |
+| Prop        | Description                                     |
+| ----------- | ----------------------------------------------- |
+| `camera`    | Camera configuration (position, fov, near, far) |
+| `shadows`   | Enable shadow mapping                           |
+| `dpr`       | Device pixel ratio (number or [min, max])       |
+| `gl`        | WebGL renderer settings                         |
+| `frameloop` | `'always'` \| `'demand'` \| `'never'`           |
+| `flat`      | Disable tone mapping                            |
+| `linear`    | Disable sRGB color space                        |
 
 ### JSX Elements
 
@@ -58,11 +58,7 @@ Three.js classes are available as JSX elements in camelCase:
 ```tsx
 <mesh castShadow receiveShadow>
   <sphereGeometry args={[1, 32, 32]} />
-  <meshPhongMaterial
-    color="#ff0000"
-    shininess={100}
-    side={THREE.DoubleSide}
-  />
+  <meshPhongMaterial color="#ff0000" shininess={100} side={THREE.DoubleSide} />
 </mesh>
 ```
 
@@ -73,7 +69,7 @@ Three.js classes are available as JSX elements in camelCase:
 Subscribe to the render loop for animations:
 
 ```tsx
-import { useFrame } from '@react-three/fiber'
+import {useFrame} from '@react-three/fiber'
 
 function RotatingBox() {
   const meshRef = useRef<THREE.Mesh>(null)
@@ -91,9 +87,10 @@ function RotatingBox() {
 ```
 
 **Priority**: Control execution order (lower runs first)
+
 ```tsx
-useFrame(callback, -1)  // Run before default (0)
-useFrame(callback, 1)   // Run after default
+useFrame(callback, -1) // Run before default (0)
+useFrame(callback, 1) // Run after default
 ```
 
 ### useThree
@@ -101,18 +98,18 @@ useFrame(callback, 1)   // Run after default
 Access Three.js context:
 
 ```tsx
-import { useThree } from '@react-three/fiber'
+import {useThree} from '@react-three/fiber'
 
 function MyComponent() {
   const {
-    camera,     // Active camera
-    scene,      // Scene object
-    gl,         // WebGL renderer
-    size,       // Canvas { width, height }
-    viewport,   // Viewport in Three.js units
-    clock,      // THREE.Clock
-    pointer,    // Normalized pointer position
-    raycaster,  // Raycaster for picking
+    camera, // Active camera
+    scene, // Scene object
+    gl, // WebGL renderer
+    size, // Canvas { width, height }
+    viewport, // Viewport in Three.js units
+    clock, // THREE.Clock
+    pointer, // Normalized pointer position
+    raycaster, // Raycaster for picking
   } = useThree()
 
   return null
@@ -124,8 +121,8 @@ function MyComponent() {
 Load assets with caching and suspense:
 
 ```tsx
-import { useLoader } from '@react-three/fiber'
-import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader'
+import {useLoader} from '@react-three/fiber'
+import {GLTFLoader} from 'three/examples/jsm/loaders/GLTFLoader'
 
 function Model() {
   const gltf = useLoader(GLTFLoader, '/model.glb')
@@ -133,7 +130,7 @@ function Model() {
 }
 
 // With Suspense
-<Suspense fallback={<LoadingSpinner />}>
+;<Suspense fallback={<LoadingSpinner />}>
   <Model />
 </Suspense>
 ```
@@ -143,9 +140,9 @@ function Model() {
 Traverse and find objects in a loaded scene:
 
 ```tsx
-import { useGraph } from '@react-three/fiber'
+import {useGraph} from '@react-three/fiber'
 
-const { nodes, materials } = useGraph(gltf.scene)
+const {nodes, materials} = useGraph(gltf.scene)
 // nodes: { MeshName: THREE.Mesh, ... }
 // materials: { MaterialName: THREE.Material, ... }
 ```
@@ -157,24 +154,39 @@ Three.js objects support pointer events via raycasting:
 ```tsx
 <mesh
   onClick={(e) => console.log('click', e.point)}
+  onContextMenu={(e) => console.log('right-click')}
+  onDoubleClick={(e) => console.log('double-click')}
   onPointerOver={(e) => setHovered(true)}
   onPointerOut={(e) => setHovered(false)}
+  onPointerEnter={(e) => console.log('enter')}
+  onPointerLeave={(e) => console.log('leave')}
   onPointerMove={(e) => console.log('move', e.point)}
   onPointerDown={(e) => console.log('down')}
   onPointerUp={(e) => console.log('up')}
+  onWheel={(e) => console.log('wheel', e.deltaY)}
 >
   ...
 </mesh>
 ```
 
-Event object includes:
-- `point`: Intersection point in world coords
-- `distance`: Distance from camera
-- `face`: Intersected face
-- `object`: The Three.js object
-- `eventObject`: The object with the handler
+### Event Object (ThreeEvent)
+
+| Property            | Type       | Description                          |
+| ------------------- | ---------- | ------------------------------------ |
+| `point`             | `Vector3`  | Intersection point in world coords   |
+| `distance`          | `number`   | Distance from camera to intersection |
+| `face`              | `Face`     | Intersected triangle face            |
+| `object`            | `Object3D` | The Three.js object hit              |
+| `eventObject`       | `Object3D` | The object with the event handler    |
+| `ray`               | `Ray`      | The ray used for intersection        |
+| `camera`            | `Camera`   | Camera used for raycasting           |
+| `pointer`           | `Vector2`  | Normalized pointer coords (-1 to 1)  |
+| `delta`             | `number`   | Distance moved since pointer down    |
+| `nativeEvent`       | `Event`    | Original DOM event                   |
+| `stopPropagation()` | `function` | Stop event from bubbling             |
 
 **Stop propagation**:
+
 ```tsx
 onClick={(e) => {
   e.stopPropagation()
@@ -216,9 +228,9 @@ import {
 For many identical objects:
 
 ```tsx
-import { Instances, Instance } from '@react-three/drei'
+import {Instances, Instance} from '@react-three/drei'
 
-<Instances limit={1000}>
+;<Instances limit={1000}>
   <boxGeometry />
   <meshStandardMaterial />
   {positions.map((pos, i) => (
@@ -246,10 +258,12 @@ Use `visible` prop instead of unmounting:
 
 ```tsx
 // Good - no remount cost
-<mesh visible={isVisible}>...</mesh>
+;<mesh visible={isVisible}>...</mesh>
 
 // Expensive - causes remount
-{isVisible && <mesh>...</mesh>}
+{
+  isVisible && <mesh>...</mesh>
+}
 ```
 
 ## Common Patterns
@@ -273,7 +287,7 @@ interface Props {
   object3DRef?: React.Ref<THREE.Object3D>
 }
 
-function MyComponent({ object3DRef }: Props) {
+function MyComponent({object3DRef}: Props) {
   return <group ref={object3DRef}>...</group>
 }
 ```
