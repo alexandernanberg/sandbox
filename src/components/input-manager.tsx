@@ -2,13 +2,14 @@ import {useFrame, useThree} from '@react-three/fiber'
 import type {Entity} from 'koota'
 import {useWorld} from 'koota/react'
 import {useEffect, useLayoutEffect, useRef} from 'react'
+import {CameraInput} from '~/ecs/camera'
 import {Input} from '~/ecs/player'
 import type {Vec2} from '~/lib/math'
 import {useConstant} from '~/utils'
 
 interface InputManagerState {
   movement: Vec2
-  lookAt: Vec2
+  lookDelta: Vec2
   keyboard: {[key in EventCode]?: boolean}
   gamepadIndex: null | number
   pointerLocked: boolean
@@ -20,10 +21,11 @@ export function InputManager() {
   const gl = useThree((state) => state.gl)
   const world = useWorld()
   const inputEntityRef = useRef<Entity | null>(null)
+  const cameraInputEntityRef = useRef<Entity | null>(null)
 
   const state = useConstant<InputManagerState>(() => ({
     movement: {x: 0, y: 0},
-    lookAt: {x: 0, y: 0},
+    lookDelta: {x: 0, y: 0},
     keyboard: {},
     gamepadIndex: null,
     pointerLocked: false,
@@ -33,6 +35,17 @@ export function InputManager() {
   useLayoutEffect(() => {
     const entity = world.spawn(Input)
     inputEntityRef.current = entity
+    return () => {
+      if (entity.isAlive()) {
+        entity.destroy()
+      }
+    }
+  }, [world])
+
+  // Create CameraInput singleton entity
+  useLayoutEffect(() => {
+    const entity = world.spawn(CameraInput)
+    cameraInputEntityRef.current = entity
     return () => {
       if (entity.isAlive()) {
         entity.destroy()
@@ -57,6 +70,13 @@ export function InputManager() {
             state.movement.x = gx
             state.movement.y = gy
           }
+          // Right stick for camera (axes 2 and 3)
+          const rx = applyDeadzone(gamepad.axes[2]!) * 10
+          const ry = applyDeadzone(gamepad.axes[3]!) * 10
+          if (rx !== 0 || ry !== 0) {
+            state.lookDelta.x = rx
+            state.lookDelta.y = ry
+          }
         }
       }
 
@@ -65,6 +85,18 @@ export function InputManager() {
         jump: state.keyboard.Space ?? false,
         sprint: state.keyboard.ShiftLeft ?? false,
       })
+
+      // Sync camera input
+      const cameraEntity = cameraInputEntityRef.current
+      if (cameraEntity) {
+        cameraEntity.set(CameraInput, {
+          delta: {x: state.lookDelta.x, y: state.lookDelta.y},
+          locked: state.pointerLocked,
+        })
+        // Clear delta after syncing (consumed once per frame)
+        state.lookDelta.x = 0
+        state.lookDelta.y = 0
+      }
     },
     -1, // negative priority = runs before physics
   )
@@ -75,17 +107,18 @@ export function InputManager() {
       let x = 0
       let y = 0
 
+      // KCC faces +Z: W=+Z (forward), S=-Z (back), A=-X (left), D=+X (right)
       if (state.keyboard.KeyW || state.keyboard.ArrowUp) {
         y += 1
-      }
-      if (state.keyboard.KeyA || state.keyboard.ArrowLeft) {
-        x += 1
       }
       if (state.keyboard.KeyS || state.keyboard.ArrowDown) {
         y -= 1
       }
-      if (state.keyboard.KeyD || state.keyboard.ArrowRight) {
+      if (state.keyboard.KeyA || state.keyboard.ArrowLeft) {
         x -= 1
+      }
+      if (state.keyboard.KeyD || state.keyboard.ArrowRight) {
+        x += 1
       }
 
       state.movement.x = x
@@ -119,40 +152,42 @@ export function InputManager() {
     }
   }, [state])
 
-  // Update look at
+  // Update look at (pointer lock for camera control)
   useEffect(() => {
     const domElement = gl.domElement
 
     const handleClick = () => {
-      // domElement.requestPointerLock()
+      if (!state.pointerLocked) {
+        void domElement.requestPointerLock()
+      }
     }
 
-    const handlePointerMove = (event: PointerEvent) => {
-      state.lookAt.x = event.movementX
-      state.lookAt.y = event.movementY
+    const handlePointerMove = (event: MouseEvent) => {
+      if (state.pointerLocked) {
+        // Accumulate delta (may have multiple events per frame)
+        state.lookDelta.x += event.movementX
+        state.lookDelta.y += event.movementY
+      }
     }
 
-    // const handlePointerLockChange = () => {
-    //   state.pointerLocked = document.pointerLockElement === domElement
-    // }
+    const handlePointerLockChange = () => {
+      state.pointerLocked = document.pointerLockElement === domElement
+    }
 
-    // const handlePointerLockError = (event: Event) => {
-    //   console.error(event)
-    // }
+    const handlePointerLockError = () => {
+      console.error('Pointer lock error')
+    }
 
     domElement.addEventListener('click', handleClick, {passive: true})
-
-    // document.addEventListener('pointerlockchange', handlePointerLockChange)
-    // document.addEventListener('pointerlockerror', handlePointerLockError)
-    // document.addEventListener('pointermove', handlePointerMove, {
-    //   passive: true,
-    // })
+    document.addEventListener('pointerlockchange', handlePointerLockChange)
+    document.addEventListener('pointerlockerror', handlePointerLockError)
+    document.addEventListener('mousemove', handlePointerMove, {passive: true})
 
     return () => {
       domElement.removeEventListener('click', handleClick)
-      document.removeEventListener('pointermove', handlePointerMove)
-      // document.removeEventListener('pointerlockchange', handlePointerLockChange)
-      // document.removeEventListener('pointerlockerror', handlePointerLockError)
+      document.removeEventListener('pointerlockchange', handlePointerLockChange)
+      document.removeEventListener('pointerlockerror', handlePointerLockError)
+      document.removeEventListener('mousemove', handlePointerMove)
     }
   }, [gl.domElement, state])
 

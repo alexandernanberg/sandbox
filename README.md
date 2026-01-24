@@ -32,3 +32,4 @@
 ### Misc
 
 - [ ] Replace `useAsset`/`useTexture` with `use(loadAsset("/path"))` https://github.com/pmndrs/react-three-fiber/issues/3411
+- [ ] Nicer skybox (Sky3D?)

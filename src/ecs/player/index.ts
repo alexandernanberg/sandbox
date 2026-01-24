@@ -1,3 +1,9 @@
-export {Input, IsPlayer, PlayerMovementConfig, PlayerVelocity} from './traits'
+export {
+  Input,
+  IsPlayer,
+  PlayerMovementConfig,
+  PlayerVelocity,
+  FacingDirection,
+} from './traits'
 
-export {playerMovementSystem} from './systems'
+export {playerMovementSystem, playerFacingSystem} from './systems'

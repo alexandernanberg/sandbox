@@ -1,6 +1,12 @@
+import * as RAPIER from '@dimforge/rapier3d-simd-compat'
 import type {World} from 'koota'
-import {playerMovementSystem} from '../player/systems'
-import {createCharacterController, characterControllerSystem} from './character'
+import {cameraInputSystem} from '../camera/systems'
+import {playerMovementSystem, playerFacingSystem} from '../player/systems'
+import {
+  createCharacterController,
+  characterControllerSystem,
+  characterPostStepSystem,
+} from './character'
 import {processCollisionEvents, clearCollisionEvents} from './events'
 import {
   initializeTransformFromObject3D,
@@ -36,13 +42,16 @@ export function stepPhysics(ecsWorld: World, delta: number): StepResult {
     delta = MAX_DELTA
   }
 
+  // Update camera orbit from mouse/gamepad input (before physics)
+  cameraInputSystem(ecsWorld)
+
   // Initialize transforms from Object3D world matrices
   initializeTransformFromObject3D(ecsWorld)
 
   // Create any new physics bodies/colliders
   createPhysicsBodies(ecsWorld, rapier)
   createColliders(ecsWorld, rapier)
-  createCharacterController(ecsWorld, rapier)
+  createCharacterController(ecsWorld, rapier, RAPIER)
 
   physicsWorld.accumulator += delta
 
@@ -64,13 +73,16 @@ export function stepPhysics(ecsWorld: World, delta: number): StepResult {
     playerMovementSystem(ecsWorld, FIXED_TIMESTEP)
 
     // Run character controller system (sets kinematic positions)
-    characterControllerSystem(ecsWorld, rapier)
+    characterControllerSystem(ecsWorld, rapier, FIXED_TIMESTEP)
 
     // Step the physics simulation
     rapier.step(eventQueue)
 
     // Sync physics state back to ECS
     syncTransformFromPhysics(ecsWorld)
+
+    // Post-step: push characters out of kinematic bodies that moved into them
+    characterPostStepSystem(ecsWorld, rapier, FIXED_TIMESTEP)
 
     // Process collision events
     processCollisionEvents(rapier, eventQueue)
@@ -91,6 +103,9 @@ export function stepPhysics(ecsWorld: World, delta: number): StepResult {
 
   // Sync to Three.js Object3Ds
   syncToObject3D(ecsWorld)
+
+  // Update player facing direction (visual mesh rotation)
+  playerFacingSystem(ecsWorld, delta)
 
   // Clear collision events at end of frame
   clearCollisionEvents(ecsWorld)

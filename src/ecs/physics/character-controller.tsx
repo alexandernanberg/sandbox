@@ -22,7 +22,16 @@ export interface CharacterControllerApi {
   /** Set movement velocity for this frame */
   setVelocity(x: number, y: number, z: number): void
   /** Get current movement state */
-  getMovement(): {mx: number; my: number; mz: number; grounded: boolean}
+  getMovement(): {
+    mx: number
+    my: number
+    mz: number
+    grounded: boolean
+    groundNormalX: number
+    groundNormalY: number
+    groundNormalZ: number
+    groundDistance: number
+  }
 }
 
 export interface CharacterControllerProps extends Omit<
@@ -34,22 +43,20 @@ export interface CharacterControllerProps extends Omit<
   height?: number
   /** Radius of the capsule */
   radius?: number
-  /** Collision offset */
-  offset?: number
+  /** Collision skin width */
+  skinWidth?: number
+  /** Distance to check for ground below character */
+  groundCheckDistance?: number
+  /** Distance to snap to ground when grounded */
+  groundSnapDistance?: number
+  /** Max slope angle (radians) that can be walked on */
+  maxSlopeAngle?: number
   /** Max height for auto-stepping */
-  autostepMaxHeight?: number
+  stepHeight?: number
   /** Min width for auto-stepping */
-  autostepMinWidth?: number
-  /** Whether auto-step includes dynamic bodies */
-  autostepIncludesDynamicBodies?: boolean
-  /** Distance to snap to ground */
-  snapToGroundDistance?: number
+  stepMinWidth?: number
   /** Character mass */
   mass?: number
-  /** Whether to apply impulses to dynamic bodies */
-  applyImpulsesToDynamicBodies?: boolean
-  /** Whether sliding is enabled */
-  slideEnabled?: boolean
   /** Ref to get the imperative API */
   ref?: React.Ref<CharacterControllerApi | null>
 }
@@ -58,29 +65,34 @@ export function CharacterController({
   children,
   height = 1.0,
   radius = 0.5,
-  offset = 0.01,
-  autostepMaxHeight = 0.5,
-  autostepMinWidth = 0.1,
-  autostepIncludesDynamicBodies = true,
-  snapToGroundDistance = 0.3,
+  skinWidth = 0.02,
+  groundCheckDistance = 0.5,
+  groundSnapDistance = 0.1,
+  maxSlopeAngle = Math.PI / 4,
+  stepHeight = 0.5,
+  stepMinWidth = 0.1,
   mass = 75,
-  applyImpulsesToDynamicBodies = true,
-  slideEnabled = true,
   ref,
   ...props
 }: CharacterControllerProps) {
   const rigidBodyRef = useRef<RigidBodyApi | null>(null)
 
+  // Compute capsule half-height from height prop
+  // Height is the total height of the cylindrical part (not including caps)
+  // So halfHeight = height / 2
+  const capsuleHalfHeight = height / 2
+
   // Store initial config
   const initialConfig = useRef({
-    offset,
-    autostepMaxHeight,
-    autostepMinWidth,
-    autostepIncludesDynamicBodies,
-    snapToGroundDistance,
+    capsuleHalfHeight,
+    capsuleRadius: radius,
+    skinWidth,
+    groundCheckDistance,
+    groundSnapDistance,
+    maxSlopeAngle,
+    stepHeight,
+    stepMinWidth,
     mass,
-    applyImpulsesToDynamicBodies,
-    slideEnabled,
   })
 
   // Add character controller traits to the entity after RigidBody creates it
@@ -96,14 +108,15 @@ export function CharacterController({
     entity.add(CharacterMovement)
     entity.add(
       CharacterControllerConfig({
-        offset: config.offset,
-        autostepMaxHeight: config.autostepMaxHeight,
-        autostepMinWidth: config.autostepMinWidth,
-        autostepIncludesDynamicBodies: config.autostepIncludesDynamicBodies,
-        snapToGroundDistance: config.snapToGroundDistance,
+        capsuleHalfHeight: config.capsuleHalfHeight,
+        capsuleRadius: config.capsuleRadius,
+        skinWidth: config.skinWidth,
+        groundCheckDistance: config.groundCheckDistance,
+        groundSnapDistance: config.groundSnapDistance,
+        maxSlopeAngle: config.maxSlopeAngle,
+        stepHeight: config.stepHeight,
+        stepMinWidth: config.stepMinWidth,
         mass: config.mass,
-        applyImpulsesToDynamicBodies: config.applyImpulsesToDynamicBodies,
-        slideEnabled: config.slideEnabled,
       }),
     )
 
@@ -142,17 +155,38 @@ export function CharacterController({
       },
       getMovement() {
         if (!entity.isAlive() || !entity.has(CharacterMovement)) {
-          return {mx: 0, my: 0, mz: 0, grounded: false}
+          return {
+            mx: 0,
+            my: 0,
+            mz: 0,
+            grounded: false,
+            groundNormalX: 0,
+            groundNormalY: 1,
+            groundNormalZ: 0,
+            groundDistance: 0,
+          }
         }
         const m = entity.get(CharacterMovement)!
-        return {mx: m.mx, my: m.my, mz: m.mz, grounded: m.grounded}
+        return {
+          mx: m.mx,
+          my: m.my,
+          mz: m.mz,
+          grounded: m.grounded,
+          groundNormalX: m.groundNormalX,
+          groundNormalY: m.groundNormalY,
+          groundNormalZ: m.groundNormalZ,
+          groundDistance: m.groundDistance,
+        }
       },
     }
   }, [])
 
   return (
     <RigidBody ref={rigidBodyRef} type="kinematic-position-based" {...props}>
-      <CapsuleCollider args={[radius, height]}>{children}</CapsuleCollider>
+      {/* friction=0 prevents objects from launching off the capsule's curved surfaces */}
+      <CapsuleCollider args={[radius, height]} friction={0}>
+        {children}
+      </CapsuleCollider>
     </RigidBody>
   )
 }

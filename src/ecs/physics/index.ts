@@ -17,6 +17,8 @@ export {
   Object3DRef,
   ParentInverseMatrix,
   ChildOf,
+  // Kinematic bodies
+  KinematicVelocity,
   // Tags
   IsPhysicsEntity,
   IsColliderEntity,
@@ -38,7 +40,7 @@ export {
 
 // Character controller
 export {
-  CharacterControllerRef,
+  CharacterShapeRef,
   CharacterControllerConfig,
   CharacterMovement,
   IsCharacterController,

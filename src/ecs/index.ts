@@ -123,3 +123,6 @@ export * from './physics'
 
 // Re-export player traits
 export * from './player'
+
+// Re-export camera traits
+export * from './camera'

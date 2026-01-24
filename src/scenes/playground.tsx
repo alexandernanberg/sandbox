@@ -5,9 +5,17 @@ import {useActions} from 'koota/react'
 import type {ComponentProps} from 'react'
 import {Suspense, useLayoutEffect, useRef, useState} from 'react'
 import {RepeatWrapping} from 'three'
-import {useControls} from '~/components/debug-controls'
-import {actions, IsPlayer, PlayerMovementConfig, PlayerVelocity} from '~/ecs'
+import {ThirdPersonCamera} from '~/components/cameras'
+import {useControls, useMonitor} from '~/components/debug-controls'
+import {
+  actions,
+  IsPlayer,
+  PlayerMovementConfig,
+  PlayerVelocity,
+  FacingDirection,
+} from '~/ecs'
 import {Balls} from '~/ecs/balls'
+import {IsCameraTarget} from '~/ecs/camera'
 import {
   RigidBody,
   CuboidCollider,
@@ -17,6 +25,8 @@ import {
   usePhysicsUpdate,
   RigidBodyRef,
   CharacterController,
+  CharacterMovement,
+  KinematicVelocity,
 } from '~/ecs/physics'
 import type {CharacterControllerApi} from '~/ecs/physics'
 import Ramp from '~/models/ramp'
@@ -49,6 +59,7 @@ export function Playground({debugCamera: _debugCamera}: PlaygroundProps) {
 
   return (
     <>
+      <ThirdPersonCamera />
       <Player position={[0, 2, 0]} />
 
       <Floor />
@@ -119,6 +130,18 @@ export function Playground({debugCamera: _debugCamera}: PlaygroundProps) {
           </CuboidCollider>
         </RigidBody>
       </group>
+
+      {/* Spinning platforms */}
+      <SpinningPlatform position={[-12, 0.5, 8]} speed={1.5} />
+      <SpinningPlatform
+        position={[-12, 0.5, -8]}
+        speed={0.8}
+        size={[10, 0.25, 2]}
+        color={0xd94a90}
+      />
+
+      {/* Trampoline */}
+      <Trampoline position={[12, 0, 8]} />
 
       <RigidBody position={[0, 4, -2]} scale={3} angularVelocity={[10, 0, 0]}>
         <Stone />
@@ -360,14 +383,46 @@ interface ElevatorProps {
 
 function Elevator({position}: ElevatorProps) {
   const entityRef = useRef<Entity | null>(null)
+  const prevY = useRef<number | null>(null)
+
+  useLayoutEffect(() => {
+    const entity = entityRef.current
+    if (!entity) return
+    entity.add(KinematicVelocity)
+    return () => {
+      if (entity.isAlive()) {
+        entity.remove(KinematicVelocity)
+      }
+    }
+  }, [])
 
   usePhysicsUpdate(() => {
     const entity = entityRef.current
     if (!entity) return
     const bodyRef = entity.get(RigidBodyRef)
     if (!bodyRef?.body) return
+
     const vec = bodyRef.body.translation()
-    vec.y = clamp(3.875 + Math.sin(performance.now() / 1000) * 5, 0.25, 7.75)
+    const newY = clamp(
+      3.875 + Math.sin(performance.now() / 1000) * 5,
+      0.25,
+      7.75,
+    )
+
+    // Set velocity (per-frame delta)
+    if (prevY.current !== null) {
+      entity.set(KinematicVelocity, {
+        x: 0,
+        y: newY - prevY.current,
+        z: 0,
+        ax: 0,
+        ay: 0,
+        az: 0,
+      })
+    }
+    prevY.current = newY
+
+    vec.y = newY
     bodyRef.body.setNextKinematicTranslation(vec)
   })
 
@@ -410,6 +465,119 @@ function Tower() {
 }
 
 // ============================================
+// Spinning Platform
+// ============================================
+
+interface SpinningPlatformProps {
+  position?: [number, number, number]
+  speed?: number
+  size?: [number, number, number]
+  color?: number
+}
+
+function SpinningPlatform({
+  position,
+  speed = 1,
+  size = [4, 0.25, 4],
+  color = 0x4a90d9,
+}: SpinningPlatformProps) {
+  const entityRef = useRef<Entity | null>(null)
+  const angle = useRef(0)
+
+  useLayoutEffect(() => {
+    const entity = entityRef.current
+    if (!entity) return
+    entity.add(KinematicVelocity)
+    return () => {
+      if (entity.isAlive()) {
+        entity.remove(KinematicVelocity)
+      }
+    }
+  }, [])
+
+  usePhysicsUpdate((delta) => {
+    const entity = entityRef.current
+    if (!entity) return
+    const bodyRef = entity.get(RigidBodyRef)
+    if (!bodyRef?.body) return
+
+    const angularVelocity = speed * delta
+    angle.current += angularVelocity
+    const body = bodyRef.body
+    const pos = body.translation()
+
+    // Set angular velocity (radians per physics step around Y axis)
+    entity.set(KinematicVelocity, {
+      x: 0,
+      y: 0,
+      z: 0,
+      ax: 0,
+      ay: angularVelocity,
+      az: 0,
+    })
+
+    // Set next kinematic rotation (quaternion for Y-axis rotation)
+    const halfAngle = angle.current / 2
+    body.setNextKinematicRotation({
+      x: 0,
+      y: Math.sin(halfAngle),
+      z: 0,
+      w: Math.cos(halfAngle),
+    })
+    body.setNextKinematicTranslation(pos)
+  })
+
+  return (
+    <RigidBody
+      position={position}
+      entityRef={entityRef}
+      type="kinematic-position-based"
+    >
+      <CuboidCollider args={size}>
+        <mesh castShadow receiveShadow>
+          <boxGeometry args={size} />
+          <meshStandardMaterial color={color} />
+        </mesh>
+      </CuboidCollider>
+    </RigidBody>
+  )
+}
+
+// ============================================
+// Trampoline
+// ============================================
+
+interface TrampolineProps {
+  position?: [number, number, number]
+}
+
+function Trampoline({position}: TrampolineProps) {
+  return (
+    <RigidBody type="fixed" position={position}>
+      {/* Frame */}
+      <CuboidCollider args={[3, 0.2, 3]} position={[0, -0.1, 0]}>
+        <mesh castShadow receiveShadow position={[0, -0.1, 0]}>
+          <boxGeometry args={[3, 0.2, 3]} />
+          <meshStandardMaterial color={0x333333} />
+        </mesh>
+      </CuboidCollider>
+      {/* Bouncy surface */}
+      <CuboidCollider
+        args={[2.5, 0.1, 2.5]}
+        position={[0, 0.1, 0]}
+        restitution={2}
+        friction={0.8}
+      >
+        <mesh castShadow receiveShadow position={[0, 0.1, 0]}>
+          <boxGeometry args={[2.5, 0.1, 2.5]} />
+          <meshStandardMaterial color={0xff4444} />
+        </mesh>
+      </CuboidCollider>
+    </RigidBody>
+  )
+}
+
+// ============================================
 // Player with ECS-driven movement
 // ============================================
 
@@ -419,6 +587,46 @@ interface PlayerProps {
 
 function Player({position}: PlayerProps) {
   const controllerRef = useRef<CharacterControllerApi | null>(null)
+
+  // KCC debug monitor
+  const kccDebug = useMonitor(
+    'KCC Debug',
+    {
+      state: {label: 'State', type: 'string'},
+      groundY: {label: 'Ground Y', format: (v) => v.toFixed(3)},
+      groundDist: {label: 'Ground Dist', format: (v) => v.toFixed(3)},
+      coyote: {label: 'Coyote'},
+      inputVel: {label: 'Input Vel', type: 'string'},
+      moveVel: {label: 'Move Vel', type: 'string'},
+    },
+    {expanded: true, index: 0},
+  )
+
+  // Update debug values each physics frame
+  usePhysicsUpdate(() => {
+    const controller = controllerRef.current
+    if (!controller?.entity?.isAlive()) return
+
+    const movement = controller.entity.get(CharacterMovement)
+    if (!movement) return
+
+    // State as readable string
+    const state = movement.grounded
+      ? 'Grounded'
+      : movement.sliding
+        ? 'Sliding'
+        : 'Airborne'
+    kccDebug.current.state = state
+    kccDebug.current.groundY = movement.groundNormalY
+    kccDebug.current.groundDist = movement.groundDistance
+    kccDebug.current.coyote = movement.coyoteCounter
+
+    // Format vectors as strings
+    const fmt = (x: number, y: number, z: number) =>
+      `${x.toFixed(2)} ${y.toFixed(2)} ${z.toFixed(2)}`
+    kccDebug.current.inputVel = fmt(movement.vx, movement.vy, movement.vz)
+    kccDebug.current.moveVel = fmt(movement.mx, movement.my, movement.mz)
+  })
 
   // Add player traits to the character controller entity
   useLayoutEffect(() => {
@@ -431,12 +639,16 @@ function Player({position}: PlayerProps) {
     entity.add(IsPlayer)
     entity.add(PlayerMovementConfig)
     entity.add(PlayerVelocity)
+    entity.add(FacingDirection)
+    entity.add(IsCameraTarget)
 
     return () => {
       if (entity.isAlive()) {
         entity.remove(IsPlayer)
         entity.remove(PlayerMovementConfig)
         entity.remove(PlayerVelocity)
+        entity.remove(FacingDirection)
+        entity.remove(IsCameraTarget)
       }
     }
   }, [])

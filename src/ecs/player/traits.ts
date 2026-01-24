@@ -27,8 +27,8 @@ export const IsPlayer = trait()
 
 /** Configuration for player movement */
 export const PlayerMovementConfig = trait({
-  walkSpeed: 5,
-  sprintSpeed: 8,
+  walkSpeed: 6,
+  sprintSpeed: 10,
   jumpHeight: 1,
   gravity: -1,
 })
@@ -39,3 +39,13 @@ export const PlayerVelocity = trait(() => ({
   y: 0,
   z: 0,
 }))
+
+/** Character facing direction for visual mesh rotation */
+export const FacingDirection = trait({
+  /** Desired facing direction (radians) */
+  targetYaw: 0,
+  /** Current interpolated yaw (radians) */
+  currentYaw: 0,
+  /** Turn speed (radians per second) */
+  turnSpeed: 10,
+})

@@ -14,6 +14,22 @@ export interface CollisionEvent {
 export type CollisionCallback = (event: CollisionEvent) => void
 
 // ============================================
+// Kinematic body velocity (for moving platforms)
+// ============================================
+
+/** Velocity of kinematic bodies - set manually when moving platforms */
+export const KinematicVelocity = trait({
+  // Linear velocity (per physics step)
+  x: 0,
+  y: 0,
+  z: 0,
+  // Angular velocity (radians per physics step, around each axis)
+  ax: 0,
+  ay: 0,
+  az: 0,
+})
+
+// ============================================
 // Transform traits (for interpolation)
 // ============================================
 

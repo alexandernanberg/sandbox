@@ -1,66 +1,199 @@
+import * as RAPIER from '@dimforge/rapier3d-simd-compat'
 import {PerspectiveCamera} from '@react-three/drei'
 import {useFrame} from '@react-three/fiber'
+import type {Entity} from 'koota'
+import {useWorld} from 'koota/react'
 import type {Ref, RefObject} from 'react'
-import {useImperativeHandle, useRef} from 'react'
+import {useImperativeHandle, useLayoutEffect, useRef} from 'react'
 import type {Object3D, PerspectiveCamera as PerspectiveCameraImpl} from 'three'
-import {Quaternion, Vector3} from 'three'
+import {Vector3} from 'three'
+import {CameraOrbit, IsCameraTarget} from '~/ecs/camera'
+import {RenderTransform} from '~/ecs/physics'
+import {getRapierWorld} from '~/ecs/physics/world'
 import {useConstant} from '~/utils'
 
 interface ThirdPersonCameraProps {
   ref?: Ref<PerspectiveCameraImpl>
-  targetRef: RefObject<Object3D | null>
+  targetRef?: RefObject<Object3D | null>
   makeDefault?: boolean
+  /** Height offset from target position */
+  heightOffset?: number
+  /** How smoothly the camera follows (higher = faster) */
+  smoothness?: number
 }
 
+/**
+ * GTA-style third person camera.
+ * - Mouse controls yaw/pitch orbit around target
+ * - Camera follows player with smooth lerping
+ * - Camera collision prevents going through walls
+ */
 export function ThirdPersonCamera({
-  targetRef,
   ref: forwardedRef,
   makeDefault = true,
+  heightOffset = 1.5,
+  smoothness = 8,
 }: ThirdPersonCameraProps) {
   const ref = useRef<PerspectiveCameraImpl>(null)
+  const world = useWorld()
+  const cameraEntityRef = useRef<Entity | null>(null)
 
   useImperativeHandle(forwardedRef, () => ref.current!)
 
+  // Persistent vectors for smooth interpolation
   const currentPosition = useConstant(() => new Vector3())
-  const currentLookAt = useConstant(() => new Vector3())
+  const targetLookAt = useConstant(() => new Vector3())
+
+  // Create camera orbit entity on mount
+  useLayoutEffect(() => {
+    const entity = world.spawn(CameraOrbit)
+    cameraEntityRef.current = entity
+    return () => {
+      if (entity.isAlive()) {
+        entity.destroy()
+      }
+    }
+  }, [world])
 
   useFrame((_, delta) => {
     const camera = ref.current
-    const target = targetRef.current
-    if (!camera || !target) return
+    const cameraEntity = cameraEntityRef.current
+    if (!camera || !cameraEntity || !cameraEntity.isAlive()) return
 
-    const pos = new Vector3()
-    const quat = new Quaternion()
-    target.getWorldPosition(pos)
-    target.getWorldQuaternion(quat)
+    // Get camera orbit state
+    const orbit = cameraEntity.get(CameraOrbit)
+    if (!orbit) return
 
-    const idealOffset = new Vector3(0, 2.5, -3)
-    idealOffset.applyQuaternion(quat)
-    idealOffset.add(pos)
+    // Find target entity (player with IsCameraTarget)
+    let targetPos: {x: number; y: number; z: number} | null = null
+    for (const entity of world.query(IsCameraTarget, RenderTransform)) {
+      const transform = entity.get(RenderTransform)!
+      targetPos = {x: transform.x, y: transform.y, z: transform.z}
+      break
+    }
 
-    const idealLookAt = new Vector3(0, 0, 5)
-    idealLookAt.applyQuaternion(quat)
-    idealLookAt.add(pos)
+    if (!targetPos) return
 
-    const t = 1.05 - Math.pow(0.001, delta)
-    currentPosition.lerp(idealOffset, t)
-    currentLookAt.lerp(idealLookAt, t)
+    // Calculate ideal camera position using spherical coordinates
+    const {yaw, pitch, distance} = orbit
+    const idealPosition = computeCameraPosition(
+      targetPos,
+      yaw,
+      pitch,
+      distance,
+      heightOffset,
+    )
 
+    // Camera collision - cast from target to ideal position
+    const collisionDistance = castCameraRay(
+      targetPos,
+      idealPosition,
+      distance,
+      heightOffset,
+    )
+
+    // If collision, pull camera closer
+    if (collisionDistance < distance) {
+      const collisionPos = computeCameraPosition(
+        targetPos,
+        yaw,
+        pitch,
+        collisionDistance - 0.1, // Small padding
+        heightOffset,
+      )
+      idealPosition.x = collisionPos.x
+      idealPosition.y = collisionPos.y
+      idealPosition.z = collisionPos.z
+    }
+
+    // Smooth camera position
+    const t = 1 - Math.exp(-smoothness * delta)
+    currentPosition.lerp(
+      new Vector3(idealPosition.x, idealPosition.y, idealPosition.z),
+      t,
+    )
+
+    // Update look at target (slightly above player center)
+    targetLookAt.set(targetPos.x, targetPos.y + heightOffset * 0.5, targetPos.z)
+
+    // Apply to camera
     camera.position.copy(currentPosition)
-    camera.lookAt(currentLookAt)
+    camera.lookAt(targetLookAt)
   })
 
   return (
-    <group>
-      <PerspectiveCamera
-        makeDefault={makeDefault}
-        ref={ref}
-        fov={90}
-        position={[0, 4, 8]}
-        zoom={1.2}
-        near={0.1}
-        far={1000}
-      />
-    </group>
+    <PerspectiveCamera
+      makeDefault={makeDefault}
+      ref={ref}
+      fov={75}
+      position={[0, 4, 8]}
+      near={0.1}
+      far={1000}
+    />
   )
+}
+
+/**
+ * Compute camera position in spherical coordinates around target.
+ */
+function computeCameraPosition(
+  target: {x: number; y: number; z: number},
+  yaw: number,
+  pitch: number,
+  distance: number,
+  heightOffset: number,
+): {x: number; y: number; z: number} {
+  // Spherical to Cartesian conversion
+  // pitch = 0 is horizontal, positive pitch looks down
+  const cosPitch = Math.cos(pitch)
+  const sinPitch = Math.sin(pitch)
+  const cosYaw = Math.cos(yaw)
+  const sinYaw = Math.sin(yaw)
+
+  return {
+    x: target.x + distance * cosPitch * sinYaw,
+    y: target.y + heightOffset + distance * sinPitch,
+    z: target.z + distance * cosPitch * cosYaw,
+  }
+}
+
+/**
+ * Cast a ray from target to ideal camera position to detect collisions.
+ * Returns the distance to first hit, or full distance if no hit.
+ */
+function castCameraRay(
+  target: {x: number; y: number; z: number},
+  idealPos: {x: number; y: number; z: number},
+  maxDistance: number,
+  heightOffset: number,
+): number {
+  const rapier = getRapierWorld()
+  if (!rapier) return maxDistance
+
+  // Ray origin slightly above target
+  const origin = {
+    x: target.x,
+    y: target.y + heightOffset,
+    z: target.z,
+  }
+
+  // Direction from origin to ideal camera position
+  const dx = idealPos.x - origin.x
+  const dy = idealPos.y - origin.y
+  const dz = idealPos.z - origin.z
+  const len = Math.sqrt(dx * dx + dy * dy + dz * dz)
+
+  if (len < 0.001) return maxDistance
+
+  const direction = {x: dx / len, y: dy / len, z: dz / len}
+
+  // Cast ray
+  const ray = new RAPIER.Ray(origin, direction)
+  const hit = rapier.castRay(ray, maxDistance, true)
+
+  if (hit) {
+    return hit.timeOfImpact
+  }
+
+  return maxDistance
 }
