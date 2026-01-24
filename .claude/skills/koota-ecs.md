@@ -22,10 +22,13 @@ Individual game objects encoded as numbers. Entities have no data themselves—t
 // Spawn entity with traits
 const entity = world.spawn(Position, Velocity, IsPlayer)
 
-// Check if alive
-entity.isAlive()
+// Check if entity exists
+world.has(entity)  // true/false
 
-// Destroy
+// Get entity ID
+entity.id()
+
+// Destroy entity
 entity.destroy()
 ```
 
@@ -101,18 +104,31 @@ movingEntities.forEach((entity) => {
   pos.x += vel.vx
 })
 
-// Iterate with updateEach (direct trait access)
+// Iterate with updateEach (direct trait access, marks as changed)
 movingEntities.updateEach(([pos, vel]) => {
   pos.x += vel.vx
   pos.y += vel.vy
   pos.z += vel.vz
 })
+
+// Read-only access (no change detection)
+movingEntities.readEach(([pos, vel]) => {
+  console.log(pos.x, vel.vx)
+})
+
+// Select specific traits from query
+world.query(Position, Velocity, Mass)
+  .select(Mass)
+  .updateEach(([mass]) => { mass.value += 1 })
+
+// Get first matching entity
+const player = world.queryFirst(IsPlayer, Position)
 ```
 
 ### Query Modifiers
 
 ```typescript
-import { Not, Or, Added, Removed, Changed } from 'koota'
+import { Not, Or, createAdded, createRemoved, createChanged } from 'koota'
 
 // Exclude entities with certain traits
 world.query(Position, Not(IsDead))
@@ -120,7 +136,11 @@ world.query(Position, Not(IsDead))
 // Match entities with either trait
 world.query(Position, Or(IsPlayer, IsEnemy))
 
-// Track trait changes (useful for systems)
+// Track trait changes - create modifier instances first
+const Added = createAdded()
+const Removed = createRemoved()
+const Changed = createChanged()
+
 world.query(Added(Position))     // Just added Position
 world.query(Removed(Health))     // Just had Health removed
 world.query(Changed(Position))   // Position was modified
@@ -149,28 +169,45 @@ Link entities together:
 ```typescript
 import { relation } from 'koota'
 
-// Define a relation
+// Basic relation
 const ChildOf = relation()
 
-// Relation with auto-destroy (destroys children when parent is destroyed)
+// Relation with data
+const Contains = relation({ store: { amount: 0 } })
+
+// Exclusive relation (entity can only have one target)
+const Targeting = relation({ exclusive: true })
+
+// Auto-destroy when parent destroyed
 const ChildOf = relation({ autoDestroy: 'orphan' })
 
 // Create parent-child relationship
 const parent = world.spawn(Position)
 const child = world.spawn(Position, ChildOf(parent))
 
-// Query by relation
-world.query(ChildOf(parent))  // All children of parent
+// Entity relation operations
+entity.add(ChildOf(parent))
+entity.remove(ChildOf(parent))
+entity.remove(ChildOf('*'))        // Remove all ChildOf relations
+entity.has(ChildOf(parent))
+entity.get(ChildOf(parent))        // Get relation data
+entity.set(ChildOf(parent), { amount: 20 })
+entity.targetFor(Contains)         // Get first target entity
+entity.targetsFor(Contains)        // Get all target entities
 
-// Wildcard query - all entities with any ChildOf relation
-world.query(ChildOf('*'))
+// Query by relation
+world.query(ChildOf(parent))       // All children of parent
+world.query(ChildOf('*'))          // All entities with any ChildOf
 ```
 
 ### Relation Options
 
 | Option | Value | Description |
 |--------|-------|-------------|
-| `autoDestroy` | `'orphan'` | Destroy child when parent is destroyed |
+| `store` | `{ key: value }` | Attach data to the relation |
+| `exclusive` | `true` | Entity can only target one entity |
+| `autoDestroy` | `'orphan'` | Destroy source when target destroyed |
+| `autoDestroy` | `'target'` | Destroy target when source destroyed |
 
 ## React Integration
 
@@ -221,19 +258,77 @@ function PlayerList() {
 
 ### useTrait
 
-Observe a single entity's trait:
+Observe a single entity's trait (re-renders on change):
 
 ```tsx
 import { useTrait } from 'koota/react'
 
 function HealthBar({ entity }) {
-  const health = useTrait(entity, Health)
+  const health = useTrait(entity, Health)  // undefined if absent
 
   if (!health) return null
 
   return (
     <div style={{ width: `${(health.current / health.max) * 100}%` }} />
   )
+}
+```
+
+### useQueryFirst
+
+Get first matching entity:
+
+```tsx
+import { useQueryFirst } from 'koota/react'
+
+function PlayerHUD() {
+  const player = useQueryFirst(IsPlayer, Position)
+  if (!player) return null
+  // ...
+}
+```
+
+### useTag / useHas
+
+Check trait presence (returns boolean):
+
+```tsx
+import { useTag, useHas } from 'koota/react'
+
+function EntityStatus({ entity }) {
+  const isActive = useTag(entity, IsActive)   // true/false
+  const hasHealth = useHas(entity, Health)    // true/false
+  // ...
+}
+```
+
+### useTarget / useTargets
+
+Observe relation targets:
+
+```tsx
+import { useTarget, useTargets } from 'koota/react'
+
+function InventoryUI({ entity }) {
+  const parent = useTarget(entity, ChildOf)      // Entity | undefined
+  const items = useTargets(entity, Contains)     // Entity[]
+  // ...
+}
+```
+
+### useTraitEffect
+
+Subscribe to trait changes without re-rendering:
+
+```tsx
+import { useTraitEffect } from 'koota/react'
+
+function SyncMeshPosition({ entity, meshRef }) {
+  useTraitEffect(entity, Position, (position) => {
+    if (!position) return
+    meshRef.current.position.set(position.x, position.y, position.z)
+  })
+  return null
 }
 ```
 
