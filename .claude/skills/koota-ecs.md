@@ -9,7 +9,7 @@ Koota is a performant ECS library with first-class React integration, used for m
 The central data container where all entities and their data are stored:
 
 ```typescript
-import { createWorld } from 'koota'
+import {createWorld} from 'koota'
 
 const world = createWorld()
 ```
@@ -22,8 +22,9 @@ Individual game objects encoded as numbers. Entities have no data themselves—t
 // Spawn entity with traits
 const entity = world.spawn(Position, Velocity, IsPlayer)
 
-// Check if entity exists
-world.has(entity)  // true/false
+// Check if entity is alive
+entity.isAlive() // true/false
+world.has(entity) // also works
 
 // Get entity ID
 entity.id()
@@ -37,13 +38,14 @@ entity.destroy()
 Reusable data containers attached to entities. Two patterns:
 
 **Schema-based** (better performance via Structure of Arrays):
+
 ```typescript
-import { trait } from 'koota'
+import {trait} from 'koota'
 
 // Define with default values
-const Position = trait({ x: 0, y: 0, z: 0 })
-const Velocity = trait({ vx: 0, vy: 0, vz: 0 })
-const Health = trait({ current: 100, max: 100 })
+const Position = trait({x: 0, y: 0, z: 0})
+const Velocity = trait({vx: 0, vy: 0, vz: 0})
+const Health = trait({current: 100, max: 100})
 
 // Tag trait (no data)
 const IsPlayer = trait()
@@ -51,8 +53,9 @@ const IsDead = trait()
 ```
 
 **Callback-based** (for complex objects like Three.js):
+
 ```typescript
-import { trait } from 'koota'
+import {trait} from 'koota'
 import * as THREE from 'three'
 
 const Mesh = trait(() => new THREE.Mesh())
@@ -67,23 +70,23 @@ const Transform = trait(() => ({
 ```typescript
 // Spawn with initial values
 const entity = world.spawn(
-  Position({ x: 10, y: 0, z: 5 }),
-  Velocity({ vx: 1, vy: 0, vz: 0 }),
-  IsPlayer
+  Position({x: 10, y: 0, z: 5}),
+  Velocity({vx: 1, vy: 0, vz: 0}),
+  IsPlayer,
 )
 
 // Add trait to existing entity
-entity.add(Health({ current: 50, max: 100 }))
+entity.add(Health({current: 50, max: 100}))
 
 // Check if entity has trait
-entity.has(Position)  // true
+entity.has(Position) // true
 
 // Get trait data (returns reference)
 const pos = entity.get(Position)
-pos.x = 20  // Modifies the entity's data
+pos.x = 20 // Modifies the entity's data
 
 // Set trait data
-entity.set(Position, { x: 30, y: 0, z: 0 })
+entity.set(Position, {x: 30, y: 0, z: 0})
 
 // Remove trait
 entity.remove(Velocity)
@@ -111,15 +114,13 @@ movingEntities.updateEach(([pos, vel]) => {
   pos.z += vel.vz
 })
 
-// Read-only access (no change detection)
-movingEntities.readEach(([pos, vel]) => {
-  console.log(pos.x, vel.vx)
-})
-
 // Select specific traits from query
-world.query(Position, Velocity, Mass)
+world
+  .query(Position, Velocity, Mass)
   .select(Mass)
-  .updateEach(([mass]) => { mass.value += 1 })
+  .updateEach(([mass]) => {
+    mass.value += 1
+  })
 
 // Get first matching entity
 const player = world.queryFirst(IsPlayer, Position)
@@ -128,7 +129,7 @@ const player = world.queryFirst(IsPlayer, Position)
 ### Query Modifiers
 
 ```typescript
-import { Not, Or, createAdded, createRemoved, createChanged } from 'koota'
+import {Not, Or, createAdded, createRemoved, createChanged} from 'koota'
 
 // Exclude entities with certain traits
 world.query(Position, Not(IsDead))
@@ -141,20 +142,20 @@ const Added = createAdded()
 const Removed = createRemoved()
 const Changed = createChanged()
 
-world.query(Added(Position))     // Just added Position
-world.query(Removed(Health))     // Just had Health removed
-world.query(Changed(Position))   // Position was modified
+world.query(Added(Position)) // Just added Position
+world.query(Removed(Health)) // Just had Health removed
+world.query(Changed(Position)) // Position was modified
 ```
 
 ### Pre-cached Queries (Performance)
 
 ```typescript
-import { defineQuery } from 'koota'
+import {createQuery} from 'koota'
 
 // Create once at module level
-const movingQuery = defineQuery(Position, Velocity)
+const movingQuery = createQuery(Position, Velocity)
 
-// Use in systems - pass defined query to world.query()
+// Use in systems - pass query to world.query()
 function movementSystem(world) {
   world.query(movingQuery).updateEach(([pos, vel]) => {
     pos.x += vel.vx
@@ -167,19 +168,19 @@ function movementSystem(world) {
 Link entities together:
 
 ```typescript
-import { relation } from 'koota'
+import {relation} from 'koota'
 
 // Basic relation
 const ChildOf = relation()
 
 // Relation with data
-const Contains = relation({ store: { amount: 0 } })
+const Contains = relation({store: {amount: 0}})
 
 // Exclusive relation (entity can only have one target)
-const Targeting = relation({ exclusive: true })
+const Targeting = relation({exclusive: true})
 
 // Auto-destroy when parent destroyed
-const ChildOf = relation({ autoDestroy: 'orphan' })
+const ChildOf = relation({autoDestroy: 'orphan'})
 
 // Create parent-child relationship
 const parent = world.spawn(Position)
@@ -188,26 +189,26 @@ const child = world.spawn(Position, ChildOf(parent))
 // Entity relation operations
 entity.add(ChildOf(parent))
 entity.remove(ChildOf(parent))
-entity.remove(ChildOf('*'))        // Remove all ChildOf relations
+entity.remove(ChildOf('*')) // Remove all ChildOf relations
 entity.has(ChildOf(parent))
-entity.get(ChildOf(parent))        // Get relation data
-entity.set(ChildOf(parent), { amount: 20 })
-entity.targetFor(Contains)         // Get first target entity
-entity.targetsFor(Contains)        // Get all target entities
+entity.get(ChildOf(parent)) // Get relation data
+entity.set(ChildOf(parent), {amount: 20})
+entity.targetFor(Contains) // Get first target entity
+entity.targetsFor(Contains) // Get all target entities
 
 // Query by relation
-world.query(ChildOf(parent))       // All children of parent
-world.query(ChildOf('*'))          // All entities with any ChildOf
+world.query(ChildOf(parent)) // All children of parent
+world.query(ChildOf('*')) // All entities with any ChildOf
 ```
 
 ### Relation Options
 
-| Option | Value | Description |
-|--------|-------|-------------|
-| `store` | `{ key: value }` | Attach data to the relation |
-| `exclusive` | `true` | Entity can only target one entity |
-| `autoDestroy` | `'orphan'` | Destroy source when target destroyed |
-| `autoDestroy` | `'target'` | Destroy target when source destroyed |
+| Option        | Value            | Description                          |
+| ------------- | ---------------- | ------------------------------------ |
+| `store`       | `{ key: value }` | Attach data to the relation          |
+| `exclusive`   | `true`           | Entity can only target one entity    |
+| `autoDestroy` | `'orphan'`       | Destroy source when target destroyed |
+| `autoDestroy` | `'target'`       | Destroy target when source destroyed |
 
 ## React Integration
 
@@ -216,9 +217,8 @@ world.query(ChildOf('*'))          // All entities with any ChildOf
 Make world available to components:
 
 ```tsx
-import { WorldProvider } from 'koota/react'
-
-<WorldProvider world={world}>
+import {WorldProvider} from 'koota/react'
+;<WorldProvider world={world}>
   <Game />
 </WorldProvider>
 ```
@@ -228,7 +228,7 @@ import { WorldProvider } from 'koota/react'
 Access the world in components:
 
 ```tsx
-import { useWorld } from 'koota/react'
+import {useWorld} from 'koota/react'
 
 function GameComponent() {
   const world = useWorld()
@@ -241,7 +241,7 @@ function GameComponent() {
 Reactive query that re-renders on changes:
 
 ```tsx
-import { useQuery } from 'koota/react'
+import {useQuery} from 'koota/react'
 
 function PlayerList() {
   const players = useQuery(IsPlayer, Position)
@@ -261,16 +261,14 @@ function PlayerList() {
 Observe a single entity's trait (re-renders on change):
 
 ```tsx
-import { useTrait } from 'koota/react'
+import {useTrait} from 'koota/react'
 
-function HealthBar({ entity }) {
-  const health = useTrait(entity, Health)  // undefined if absent
+function HealthBar({entity}) {
+  const health = useTrait(entity, Health) // undefined if absent
 
   if (!health) return null
 
-  return (
-    <div style={{ width: `${(health.current / health.max) * 100}%` }} />
-  )
+  return <div style={{width: `${(health.current / health.max) * 100}%`}} />
 }
 ```
 
@@ -279,7 +277,7 @@ function HealthBar({ entity }) {
 Get first matching entity:
 
 ```tsx
-import { useQueryFirst } from 'koota/react'
+import {useQueryFirst} from 'koota/react'
 
 function PlayerHUD() {
   const player = useQueryFirst(IsPlayer, Position)
@@ -293,11 +291,11 @@ function PlayerHUD() {
 Check trait presence (returns boolean):
 
 ```tsx
-import { useTag, useHas } from 'koota/react'
+import {useTag, useHas} from 'koota/react'
 
-function EntityStatus({ entity }) {
-  const isActive = useTag(entity, IsActive)   // true/false
-  const hasHealth = useHas(entity, Health)    // true/false
+function EntityStatus({entity}) {
+  const isActive = useTag(entity, IsActive) // true/false
+  const hasHealth = useHas(entity, Health) // true/false
   // ...
 }
 ```
@@ -307,11 +305,11 @@ function EntityStatus({ entity }) {
 Observe relation targets:
 
 ```tsx
-import { useTarget, useTargets } from 'koota/react'
+import {useTarget, useTargets} from 'koota/react'
 
-function InventoryUI({ entity }) {
-  const parent = useTarget(entity, ChildOf)      // Entity | undefined
-  const items = useTargets(entity, Contains)     // Entity[]
+function InventoryUI({entity}) {
+  const parent = useTarget(entity, ChildOf) // Entity | undefined
+  const items = useTargets(entity, Contains) // Entity[]
   // ...
 }
 ```
@@ -321,9 +319,9 @@ function InventoryUI({ entity }) {
 Subscribe to trait changes without re-rendering:
 
 ```tsx
-import { useTraitEffect } from 'koota/react'
+import {useTraitEffect} from 'koota/react'
 
-function SyncMeshPosition({ entity, meshRef }) {
+function SyncMeshPosition({entity, meshRef}) {
   useTraitEffect(entity, Position, (position) => {
     if (!position) return
     meshRef.current.position.set(position.x, position.y, position.z)
@@ -337,14 +335,14 @@ function SyncMeshPosition({ entity, meshRef }) {
 Safe way to modify world state from React:
 
 ```typescript
-import { createActions } from 'koota'
+import {createActions} from 'koota'
 
 export const actions = createActions((world) => ({
   spawnPlayer: (x: number, z: number) => {
     return world.spawn(
       IsPlayer,
-      Position({ x, y: 0, z }),
-      Health({ current: 100, max: 100 })
+      Position({x, y: 0, z}),
+      Health({current: 100, max: 100}),
     )
   },
 
@@ -364,17 +362,13 @@ export const actions = createActions((world) => ({
 Use actions in components:
 
 ```tsx
-import { useActions } from 'koota/react'
-import { actions } from './actions'
+import {useActions} from 'koota/react'
+import {actions} from './actions'
 
 function SpawnButton() {
-  const { spawnPlayer } = useActions(actions)
+  const {spawnPlayer} = useActions(actions)
 
-  return (
-    <button onClick={() => spawnPlayer(0, 0)}>
-      Spawn Player
-    </button>
-  )
+  return <button onClick={() => spawnPlayer(0, 0)}>Spawn Player</button>
 }
 ```
 
@@ -408,14 +402,14 @@ function gameLoop(delta: number) {
 ## Performance Tips
 
 1. **Use schema traits** for primitive data (numbers, booleans)
-2. **Pre-cache queries** with `defineQuery()` for hot paths
+2. **Pre-cache queries** with `createQuery()` for hot paths
 3. **Use `updateEach`** instead of `forEach` + `get()` for bulk updates
 4. **Avoid allocations** in update loops
 5. **Batch operations** when spawning many entities
 
 ```typescript
 // Good - no per-entity allocation
-const moveQuery = defineQuery(Position, Velocity)
+const moveQuery = createQuery(Position, Velocity)
 
 function moveSystem(world, dt) {
   world.query(moveQuery).updateEach(([pos, vel]) => {
@@ -426,8 +420,8 @@ function moveSystem(world, dt) {
 // Avoid - allocates function each call
 function moveSystemBad(world, dt) {
   world.query(Position, Velocity).forEach((entity) => {
-    const pos = entity.get(Position)  // Extra call
-    const vel = entity.get(Velocity)  // Extra call
+    const pos = entity.get(Position) // Extra call
+    const vel = entity.get(Velocity) // Extra call
     pos.x += vel.vx * dt
   })
 }
