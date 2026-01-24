@@ -23,12 +23,6 @@ importers:
       '@react-three/fiber':
         specifier: 9.5.0
         version: 9.5.0(@types/react@19.2.9)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(three@0.182.0)
-      '@types/react':
-        specifier: ^19.2.9
-        version: 19.2.9
-      '@types/three':
-        specifier: ^0.182.0
-        version: 0.182.0
       '@xstate/fsm':
         specifier: ^2.1.0
         version: 2.1.0
@@ -63,12 +57,18 @@ importers:
       '@tweakpane/core':
         specifier: ^2.0.5
         version: 2.0.5
+      '@types/react':
+        specifier: ^19.2.9
+        version: 19.2.9
       '@types/react-dom':
         specifier: ^19.2.3
         version: 19.2.3(@types/react@19.2.9)
       '@types/seedrandom':
         specifier: ^3.0.8
         version: 3.0.8
+      '@types/three':
+        specifier: ^0.182.0
+        version: 0.182.0
       '@vitejs/plugin-react':
         specifier: ^5.1.2
         version: 5.1.2(vite@7.3.1)
