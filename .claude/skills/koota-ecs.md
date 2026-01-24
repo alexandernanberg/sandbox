@@ -134,9 +134,9 @@ import { defineQuery } from 'koota'
 // Create once at module level
 const movingQuery = defineQuery(Position, Velocity)
 
-// Use in systems
+// Use in systems - pass defined query to world.query()
 function movementSystem(world) {
-  movingQuery(world).updateEach(([pos, vel]) => {
+  world.query(movingQuery).updateEach(([pos, vel]) => {
     pos.x += vel.vx
   })
 }
@@ -323,7 +323,7 @@ function gameLoop(delta: number) {
 const moveQuery = defineQuery(Position, Velocity)
 
 function moveSystem(world, dt) {
-  moveQuery(world).updateEach(([pos, vel]) => {
+  world.query(moveQuery).updateEach(([pos, vel]) => {
     pos.x += vel.vx * dt
   })
 }
