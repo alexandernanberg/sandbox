@@ -95,6 +95,23 @@ export type {
   ConvexHullColliderProps,
 } from './components'
 
+// Math utilities (for custom systems)
+export {
+  setVec3,
+  copyVec3,
+  addVec3,
+  lerpVec3,
+  copyQuat,
+  slerpQuat,
+  copyTransform,
+  copyFromObject3D,
+  copyFromRapier,
+  _transform,
+  _quat,
+  _vec3,
+} from './math'
+export type {Vec3, Quat, TransformData} from './math'
+
 // Systems (for advanced usage)
 export {
   initializeTransformFromObject3D,

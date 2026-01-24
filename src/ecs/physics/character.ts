@@ -1,12 +1,33 @@
 import type * as RAPIER from '@dimforge/rapier3d-simd-compat'
 import {trait, createQuery} from 'koota'
 import type {Entity, World} from 'koota'
+import {setVec3, addVec3, _vec3} from './math'
 import {RigidBodyRef, Transform, PhysicsInitialized} from './traits'
 
-// Reusable scratch objects to avoid allocations in hot paths
+// Scratch objects for character movement
 const _velocity = {x: 0, y: 0, z: 0}
 const _nextPos = {x: 0, y: 0, z: 0}
 const _movement = {vx: 0, vy: 0, vz: 0, mx: 0, my: 0, mz: 0, grounded: false}
+
+/** Update movement scratch object */
+function setMovement(
+  vx: number,
+  vy: number,
+  vz: number,
+  mx: number,
+  my: number,
+  mz: number,
+  grounded: boolean,
+) {
+  _movement.vx = vx
+  _movement.vy = vy
+  _movement.vz = vz
+  _movement.mx = mx
+  _movement.my = my
+  _movement.mz = mz
+  _movement.grounded = grounded
+  return _movement
+}
 
 // ============================================
 // Character Controller Traits
@@ -90,30 +111,27 @@ export function characterControllerSystem(
     // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
     if (!collider) continue
 
-    // Compute collider movement based on desired velocity (reuse scratch object)
-    _velocity.x = movement.vx
-    _velocity.y = movement.vy
-    _velocity.z = movement.vz
+    // Compute collider movement based on desired velocity
+    setVec3(_velocity, movement.vx, movement.vy, movement.vz)
     controller.computeColliderMovement(collider, _velocity)
 
     // Get computed movement and update state
     const computed = controller.computedMovement()
-    const grounded = controller.computedGrounded()
+    entity.set(
+      CharacterMovement,
+      setMovement(
+        movement.vx,
+        movement.vy,
+        movement.vz,
+        computed.x,
+        computed.y,
+        computed.z,
+        controller.computedGrounded(),
+      ),
+    )
 
-    // Reuse scratch object for CharacterMovement
-    _movement.vx = movement.vx
-    _movement.vy = movement.vy
-    _movement.vz = movement.vz
-    _movement.mx = computed.x
-    _movement.my = computed.y
-    _movement.mz = computed.z
-    _movement.grounded = grounded
-    entity.set(CharacterMovement, _movement)
-
-    // Apply movement to rigid body (reuse scratch object)
-    _nextPos.x = transform.x + computed.x
-    _nextPos.y = transform.y + computed.y
-    _nextPos.z = transform.z + computed.z
+    // Apply movement to rigid body
+    addVec3(_nextPos, transform, computed)
     body.setNextKinematicTranslation(_nextPos)
   }
 }

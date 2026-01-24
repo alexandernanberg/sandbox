@@ -46,6 +46,10 @@ export function processCollisionEvents(
   })
 }
 
+// Reusable collision event object to avoid allocations per collision
+// Using 'as' since we always set 'other' before passing to callbacks
+const _collisionEvent = {other: null! as Entity}
+
 function processCollisionPair(
   entity1: Entity,
   entity2: Entity,
@@ -56,24 +60,28 @@ function processCollisionPair(
     ensureCollisionEntered(entity1).entities.add(entity2)
     ensureCollisionEntered(entity2).entities.add(entity1)
 
-    // Fire callbacks
+    // Fire callbacks (reuse event object)
     if (entity1.has(CollisionCallbacks)) {
-      entity1.get(CollisionCallbacks)!.onEnter?.({other: entity2})
+      _collisionEvent.other = entity2
+      entity1.get(CollisionCallbacks)!.onEnter?.(_collisionEvent)
     }
     if (entity2.has(CollisionCallbacks)) {
-      entity2.get(CollisionCallbacks)!.onEnter?.({other: entity1})
+      _collisionEvent.other = entity1
+      entity2.get(CollisionCallbacks)!.onEnter?.(_collisionEvent)
     }
   } else {
     // Add collision exited event
     ensureCollisionExited(entity1).entities.add(entity2)
     ensureCollisionExited(entity2).entities.add(entity1)
 
-    // Fire callbacks
+    // Fire callbacks (reuse event object)
     if (entity1.has(CollisionCallbacks)) {
-      entity1.get(CollisionCallbacks)!.onExit?.({other: entity2})
+      _collisionEvent.other = entity2
+      entity1.get(CollisionCallbacks)!.onExit?.(_collisionEvent)
     }
     if (entity2.has(CollisionCallbacks)) {
-      entity2.get(CollisionCallbacks)!.onExit?.({other: entity1})
+      _collisionEvent.other = entity1
+      entity2.get(CollisionCallbacks)!.onExit?.(_collisionEvent)
     }
   }
 }
@@ -100,13 +108,14 @@ const collisionEnteredQuery = createQuery(CollisionEntered)
 const collisionExitedQuery = createQuery(CollisionExited)
 
 export function clearCollisionEvents(world: World) {
-  for (const entity of world.query(collisionEnteredQuery)) {
-    entity.get(CollisionEntered)!.entities.clear()
-  }
+  // Use updateEach for batched trait access
+  world.query(collisionEnteredQuery).updateEach(([collision]) => {
+    collision.entities.clear()
+  })
 
-  for (const entity of world.query(collisionExitedQuery)) {
-    entity.get(CollisionExited)!.entities.clear()
-  }
+  world.query(collisionExitedQuery).updateEach(([collision]) => {
+    collision.entities.clear()
+  })
 }
 
 // ============================================

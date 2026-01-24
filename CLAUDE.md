@@ -14,13 +14,13 @@
 ## Commands
 
 ```bash
-npm run dev           # Start dev server on port 3001
-npm run build         # Production build
-npm run lint          # ESLint
-npm run lint:fix      # ESLint with auto-fix
-npm run typecheck     # TypeScript type checking
-npm run format        # Format with oxfmt
-npm run format:check  # Check formatting
+pnpm run dev           # Start dev server on port 3001
+pnpm run build         # Production build
+pnpm run lint          # ESLint
+pnpm run lint:fix      # ESLint with auto-fix
+pnpm run typecheck     # TypeScript type checking
+pnpm run format        # Format with oxfmt
+pnpm run format:check  # Check formatting
 ```
 
 ## Project Structure
@@ -149,6 +149,7 @@ usePhysicsUpdate((delta) => {
 - `src/ecs/physics/traits.ts` - All physics traits
 - `src/ecs/physics/systems.ts` - Physics ECS systems
 - `src/ecs/physics/step.ts` - Main physics step function
+- `src/ecs/physics/math.ts` - Lightweight vector/quaternion utilities (no Three.js overhead)
 - `src/ecs/physics/components.tsx` - React components (RigidBody, colliders)
 
 ## Documentation
