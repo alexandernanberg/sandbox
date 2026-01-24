@@ -1,7 +1,6 @@
 import * as RAPIER from '@dimforge/rapier3d-simd-compat'
-import type {World, Entity} from 'koota'
+import type {World} from 'koota'
 import {Matrix4, Object3D} from 'three'
-import type {HandleToEntityMap} from './events'
 import type {RigidBodyType, ColliderShape} from './traits'
 import {
   Transform,
@@ -18,8 +17,6 @@ import {
   Object3DRef,
   ParentInverseMatrix,
   ChildOf,
-  InitialLinearVelocity,
-  InitialAngularVelocity,
 } from './traits'
 
 // Temporary objects for transforms
@@ -126,19 +123,36 @@ export function createPhysicsBodies(world: World, rapierWorld: RAPIER.World) {
       rigidBodyDesc.lockRotations()
     }
 
-    // Set initial velocities if present
-    if (entity.has(InitialLinearVelocity)) {
-      const vel = entity.get(InitialLinearVelocity)!
-      rigidBodyDesc.setLinvel(vel.x, vel.y, vel.z)
+    // Set initial velocities if non-zero
+    if (
+      config.linearVelocityX !== 0 ||
+      config.linearVelocityY !== 0 ||
+      config.linearVelocityZ !== 0
+    ) {
+      rigidBodyDesc.setLinvel(
+        config.linearVelocityX,
+        config.linearVelocityY,
+        config.linearVelocityZ,
+      )
     }
 
-    if (entity.has(InitialAngularVelocity)) {
-      const vel = entity.get(InitialAngularVelocity)!
-      rigidBodyDesc.setAngvel({x: vel.x, y: vel.y, z: vel.z})
+    if (
+      config.angularVelocityX !== 0 ||
+      config.angularVelocityY !== 0 ||
+      config.angularVelocityZ !== 0
+    ) {
+      rigidBodyDesc.setAngvel({
+        x: config.angularVelocityX,
+        y: config.angularVelocityY,
+        z: config.angularVelocityZ,
+      })
     }
 
     // Create the rigid body
     const body = rapierWorld.createRigidBody(rigidBodyDesc)
+
+    // Store entity reference on rigid body for O(1) lookup in collision events
+    body.userData = entity
 
     // Add runtime ref using set callback for proper mutation
     entity.add(RigidBodyRef)
@@ -172,11 +186,7 @@ function createRigidBodyDesc(type: RigidBodyType): RAPIER.RigidBodyDesc {
 // Collider Creation System
 // ============================================
 
-export function createColliders(
-  world: World,
-  rapierWorld: RAPIER.World,
-  handleToEntity: HandleToEntityMap,
-) {
+export function createColliders(world: World, rapierWorld: RAPIER.World) {
   // Query initialized rigid bodies
   const rigidBodies = world.query(RigidBodyRef, PhysicsInitialized)
 
@@ -198,8 +208,11 @@ export function createColliders(
       const config = entity.get(ColliderConfig)!
       if (!config.shape) continue
 
-      // Create collider description based on shape
-      const colliderDesc = createColliderDesc(config.shape)
+      // Read world scale from config (computed on mount by React component)
+      const scale = {x: config.scaleX, y: config.scaleY, z: config.scaleZ}
+
+      // Create collider description based on shape, applying world scale
+      const colliderDesc = createColliderDesc(config.shape, scale)
       if (!colliderDesc) continue
 
       colliderDesc
@@ -231,39 +244,76 @@ export function createColliders(
 
       // Mark as initialized
       entity.add(ColliderInitialized)
-
-      // Register handle -> entity mapping for collision events
-      handleToEntity.set(collider.handle, entity)
     }
   }
 }
 
 function createColliderDesc(
   shape: ColliderShape | null,
+  scale: {x: number; y: number; z: number},
 ): RAPIER.ColliderDesc | null {
   if (!shape) return null
 
+  // Use uniform scale for shapes that don't support non-uniform scaling
+  const uniformScale = Math.max(scale.x, scale.y, scale.z)
+
   switch (shape.type) {
     case 'ball':
-      return RAPIER.ColliderDesc.ball(shape.radius)
+      return RAPIER.ColliderDesc.ball(shape.radius * uniformScale)
     case 'cuboid':
-      return RAPIER.ColliderDesc.cuboid(shape.hx, shape.hy, shape.hz)
+      return RAPIER.ColliderDesc.cuboid(
+        shape.hx * scale.x,
+        shape.hy * scale.y,
+        shape.hz * scale.z,
+      )
     case 'capsule':
-      return RAPIER.ColliderDesc.capsule(shape.halfHeight, shape.radius)
+      // Capsule: height scales on Y, radius uses max of X/Z
+      return RAPIER.ColliderDesc.capsule(
+        shape.halfHeight * scale.y,
+        shape.radius * Math.max(scale.x, scale.z),
+      )
     case 'cylinder':
-      return RAPIER.ColliderDesc.cylinder(shape.halfHeight, shape.radius)
+      // Cylinder: height scales on Y, radius uses max of X/Z
+      return RAPIER.ColliderDesc.cylinder(
+        shape.halfHeight * scale.y,
+        shape.radius * Math.max(scale.x, scale.z),
+      )
     case 'cone':
-      return RAPIER.ColliderDesc.cone(shape.halfHeight, shape.radius)
-    case 'convexHull':
-      return RAPIER.ColliderDesc.convexHull(shape.points)
-    case 'trimesh':
-      return RAPIER.ColliderDesc.trimesh(shape.vertices, shape.indices)
+      // Cone: height scales on Y, radius uses max of X/Z
+      return RAPIER.ColliderDesc.cone(
+        shape.halfHeight * scale.y,
+        shape.radius * Math.max(scale.x, scale.z),
+      )
+    case 'convexHull': {
+      // Scale the vertices
+      const scaledPoints = new Float32Array(shape.points.length)
+      for (let i = 0; i < shape.points.length; i += 3) {
+        scaledPoints[i] = shape.points[i]! * scale.x
+        scaledPoints[i + 1] = shape.points[i + 1]! * scale.y
+        scaledPoints[i + 2] = shape.points[i + 2]! * scale.z
+      }
+      return RAPIER.ColliderDesc.convexHull(scaledPoints)
+    }
+    case 'trimesh': {
+      // Scale the vertices
+      const scaledVertices = new Float32Array(shape.vertices.length)
+      for (let i = 0; i < shape.vertices.length; i += 3) {
+        scaledVertices[i] = shape.vertices[i]! * scale.x
+        scaledVertices[i + 1] = shape.vertices[i + 1]! * scale.y
+        scaledVertices[i + 2] = shape.vertices[i + 2]! * scale.z
+      }
+      return RAPIER.ColliderDesc.trimesh(scaledVertices, shape.indices)
+    }
     case 'heightfield':
       return RAPIER.ColliderDesc.heightfield(
         shape.nrows,
         shape.ncols,
         shape.heights,
-        shape.scale,
+        {
+          x: shape.scale.x * scale.x,
+          y: shape.scale.y * scale.y,
+          z: shape.scale.z * scale.z,
+        },
       )
     default:
       return null
@@ -432,43 +482,3 @@ export function syncToObject3D(world: World) {
     object.quaternion.set(render.qx, render.qy, render.qz, render.qw)
   }
 }
-
-// ============================================
-// Cleanup System
-// ============================================
-
-export function cleanupPhysicsEntity(
-  entity: Entity,
-  rapierWorld: RAPIER.World,
-  handleToEntity: HandleToEntityMap,
-) {
-  // Remove collider first
-  if (entity.has(ColliderRef)) {
-    const colliderRef = entity.get(ColliderRef)!
-    if (colliderRef.collider != null && colliderRef.handle != null) {
-      try {
-        if (rapierWorld.getCollider(colliderRef.handle)) {
-          rapierWorld.removeCollider(colliderRef.collider, true)
-        }
-      } catch {
-        // Collider may already be removed
-      }
-      handleToEntity.delete(colliderRef.handle)
-    }
-  }
-
-  // Then remove rigid body
-  if (entity.has(RigidBodyRef)) {
-    const bodyRef = entity.get(RigidBodyRef)!
-    if (bodyRef.body != null && bodyRef.handle != null) {
-      try {
-        if (rapierWorld.getRigidBody(bodyRef.handle)) {
-          rapierWorld.removeRigidBody(bodyRef.body)
-        }
-      } catch {
-        // Body may already be removed
-      }
-    }
-  }
-}
-

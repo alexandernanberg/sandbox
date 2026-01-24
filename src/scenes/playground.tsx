@@ -1,44 +1,35 @@
-/* eslint-disable @typescript-eslint/no-unused-vars */
-
 import {Text, useTexture} from '@react-three/drei'
 import type {Color} from '@react-three/fiber'
-import {useFrame} from '@react-three/fiber'
+import type {Entity} from 'koota'
 import {useActions} from 'koota/react'
 import type {ComponentProps, RefObject} from 'react'
-import {Suspense, useImperativeHandle, useRef, useState} from 'react'
-import seedrandom from 'seedrandom'
-import type {Object3D} from 'three'
-import {RepeatWrapping} from 'three'
-import {CharacterController, Player} from '~/components/character-controller'
+import {Suspense, useRef, useState} from 'react'
+import {RepeatWrapping, Vector3} from 'three'
 import {useControls} from '~/components/debug-controls'
 import type {InputManagerRef} from '~/components/input-manager'
-import {InputManager} from '~/components/input-manager'
-import type {
-  CuboidColliderProps,
-  RigidBodyApi,
-  RigidBodyProps,
-} from '~/components/physics'
+import {actions} from '~/ecs'
+import {Balls} from '~/ecs/balls'
 import {
+  RigidBody,
+  CuboidCollider,
   BallCollider,
   ConeCollider,
-  CuboidCollider,
   CylinderCollider,
-  RigidBody,
   usePhysicsUpdate,
-  useSphericalJoint,
-} from '~/components/physics'
-import {actions} from '~/ecs'
-import {ECSBalls} from '~/ecs/balls'
-import {ECSRigidBody, ECSCuboidCollider} from '~/ecs/physics'
+  RigidBodyRef,
+  CharacterController,
+} from '~/ecs/physics'
+import type {CharacterControllerApi} from '~/ecs/physics'
 import Ramp from '~/models/ramp'
 import Slope from '~/models/slope'
 import Stone from '~/models/stone'
 
 interface PlaygroundProps {
   debugCamera: boolean
+  inputManagerRef: RefObject<InputManagerRef | null>
 }
 
-export function Playground({debugCamera}: PlaygroundProps) {
+export function Playground({debugCamera, inputManagerRef}: PlaygroundProps) {
   // useActions gives us ECS actions bound to the world in context
   const {spawnBalls, clearBalls} = useActions(actions)
 
@@ -58,28 +49,15 @@ export function Playground({debugCamera}: PlaygroundProps) {
     {expanded: true, index: 4},
   )
 
-  const inputManagerRef = useRef<InputManagerRef>(null)
-  const targetRef = useRef<Object3D>(null)
-
-  useFrame((_, delta) => {
-    // console.log(delta)
-  })
-
   return (
     <>
-      <InputManager ref={inputManagerRef} />
-
-      <Player
-        position={[0, 3, 0]}
-        inputManagerRef={inputManagerRef}
-        ref={targetRef}
-      />
+      <Player position={[0, 2, 0]} inputManagerRef={inputManagerRef} />
 
       <Floor />
       <Walls />
 
       {/* ECS-managed balls - queries the world for all IsBall entities */}
-      <ECSBalls />
+      <Balls />
 
       <Slopes position={[8, 0, 3]} />
 
@@ -171,206 +149,38 @@ export function Playground({debugCamera}: PlaygroundProps) {
   )
 }
 
-interface ChainSegmentProps extends RigidBodyProps {
-  target: RefObject<RigidBodyApi | null>
+// TODO: ChainSegment and Swing use physics joints which aren't in ECS yet
+// Uncomment and migrate when ECS joints are implemented
+
+interface BallProps {
+  position?: [number, number, number]
+  linearVelocity?: [number, number, number]
 }
 
-function ChainSegment({ref: forwardedRef, target}: ChainSegmentProps) {
-  const ref = useRef<RigidBodyApi>(null)
-
-  useImperativeHandle(forwardedRef, () => ref.current!)
-
-  useSphericalJoint(ref, target, [
-    {x: 0, y: 0.26, z: 0},
-    {x: 0, y: -0.26, z: 0},
-  ])
-
-  return (
-    <RigidBody ref={ref} position={[0, 0, 0]}>
-      <CylinderCollider args={[0.05, 0.5]}>
-        <mesh castShadow receiveShadow>
-          <cylinderGeometry args={[0.05, 0.05, 0.5, 6]} />
-          <meshPhongMaterial color={0xadadad} />
-        </mesh>
-      </CylinderCollider>
-    </RigidBody>
-  )
-}
-
-// interface ChainProps {
-//   target: MutableRefObject<RigidBodyApi | null>
-//   segments: number
-// }
-
-// const Chain = forwardRef<RigidBodyApi, ChainProps>(function Chain(
-//   { target, segments },
-//   forwardedRef,
-// ) {
-//   const segmentsArray = useMemo(() =>new Array(segments - 1), [segments])
-//   const segmentsRef = useRef(segmentsArray.map(() => createRef<RigidBodyApi>()))
-
-//   console.log(segmentsArray)
-
-//   return (<>
-
-// <ChainSegment key={index} ref={segmentsRef.current[index]} target={target} />
-//   {segmentsArray.map((_, index) => {
-//     return (
-//       <ChainSegment key={index} ref={segmentsRef.current[index]} target={} />
-//     )
-//   })}
-//   </>
-// })
-
-function Swing(props: ComponentProps<'group'>) {
-  const rackRef = useRef<RigidBodyApi>(null)
-  const chain1Ref = useRef<RigidBodyApi>(null)
-  const chain2Ref = useRef<RigidBodyApi>(null)
-  const chain3Ref = useRef<RigidBodyApi>(null)
-  const chain4Ref = useRef<RigidBodyApi>(null)
-
-  // useSphericalJoint(rackRef, chain1Ref, [
-  //   { x: 0, y: 1.7, z: 0 },
-  //   { x: 0, y: 1.4, z: 0 },
-  // ])
-
-  useSphericalJoint(chain2Ref, chain1Ref, [
-    {x: 0, y: 0.26, z: 0},
-    {x: 0, y: -0.26, z: 0},
-  ])
-
-  useSphericalJoint(chain3Ref, chain2Ref, [
-    {x: 0, y: 0.26, z: 0},
-    {x: 0, y: -0.26, z: 0},
-  ])
-  useSphericalJoint(chain4Ref, chain3Ref, [
-    {x: 0, y: 0.26, z: 0},
-    {x: 0, y: -0.26, z: 0},
-  ])
-
-  return (
-    <group {...props}>
-      <RigidBody position={[0, 1.7, 0]} type="fixed" ref={rackRef}>
-        <CylinderCollider
-          args={[0.1, 4]}
-          position={[1, 0, -1.9]}
-          rotation-z={0.52}
-        >
-          <mesh castShadow receiveShadow>
-            <cylinderGeometry args={[0.1, 0.1, 4, 10]} />
-            <meshPhongMaterial color={0x964b00} />
-          </mesh>
-        </CylinderCollider>
-        <CylinderCollider
-          args={[0.1, 4]}
-          position={[-1, 0, -1.9]}
-          rotation-z={-0.52}
-        >
-          <mesh castShadow receiveShadow>
-            <cylinderGeometry args={[0.1, 0.1, 4, 10]} />
-            <meshPhongMaterial color={0x964b00} />
-          </mesh>
-        </CylinderCollider>
-
-        <CylinderCollider
-          args={[0.1, 4]}
-          position={[1, 0, 1.9]}
-          rotation-z={0.52}
-        >
-          <mesh castShadow receiveShadow>
-            <cylinderGeometry args={[0.1, 0.1, 4, 10]} />
-            <meshPhongMaterial color={0x964b00} />
-          </mesh>
-        </CylinderCollider>
-        <CylinderCollider
-          args={[0.1, 4]}
-          position={[-1, 0, 1.9]}
-          rotation-z={-0.52}
-        >
-          <mesh castShadow receiveShadow>
-            <cylinderGeometry args={[0.1, 0.1, 4, 10]} />
-            <meshPhongMaterial color={0x964b00} />
-          </mesh>
-        </CylinderCollider>
-        <CylinderCollider
-          args={[0.1, 4]}
-          position={[0, 1.75, 0]}
-          rotation={[Math.PI / 2, 0, 0]}
-        >
-          <mesh castShadow receiveShadow>
-            <cylinderGeometry args={[0.1, 0.1, 4, 10]} />
-            <meshPhongMaterial color={0x964b00} />
-          </mesh>
-        </CylinderCollider>
-      </RigidBody>
-
-      <group position={[0, 1.75, 1]}>
-        <RigidBody ref={chain1Ref} position={[0, 1.5, 0]}>
-          <CylinderCollider args={[0.05, 0.5]}>
-            <mesh castShadow receiveShadow>
-              <cylinderGeometry args={[0.05, 0.05, 0.5, 6]} />
-              <meshPhongMaterial color={0xadadad} />
-            </mesh>
-          </CylinderCollider>
-        </RigidBody>
-        <RigidBody ref={chain2Ref} position={[0, 1, 0]}>
-          <CylinderCollider args={[0.05, 0.5]}>
-            <mesh castShadow receiveShadow>
-              <cylinderGeometry args={[0.05, 0.05, 0.5, 6]} />
-              <meshPhongMaterial color={0xadadad} />
-            </mesh>
-          </CylinderCollider>
-        </RigidBody>
-        <RigidBody ref={chain3Ref} position={[0, 0, 0]}>
-          <CylinderCollider args={[0.05, 0.5]}>
-            <mesh castShadow receiveShadow>
-              <cylinderGeometry args={[0.05, 0.05, 0.5, 6]} />
-              <meshPhongMaterial color={0xadadad} />
-            </mesh>
-          </CylinderCollider>
-        </RigidBody>
-
-        <ChainSegment ref={chain1Ref} target={chain1Ref} />
-        <ChainSegment ref={chain1Ref} target={chain2Ref} />
-        <ChainSegment ref={chain1Ref} target={chain3Ref} />
-        <ChainSegment ref={chain1Ref} target={chain4Ref} />
-      </group>
-    </group>
-  )
-}
-
-function Ball(props: RigidBodyProps) {
+function Ball({position, linearVelocity}: BallProps) {
   const colors = ['red', 'green', 'blue', 'yellow', 'purple']
-  const [color, setColor] = useState(
+  const [color] = useState(
     () => colors[Math.floor(Math.random() * colors.length)],
   )
-  const ref = useRef<RigidBodyApi>(null)
+  const entityRef = useRef<Entity | null>(null)
+
+  const handlePointerDown = () => {
+    const entity = entityRef.current
+    if (!entity) return
+    const bodyRef = entity.get(RigidBodyRef)
+    if (bodyRef?.body) {
+      bodyRef.body.applyImpulse({x: 0, y: 5, z: 0}, true)
+    }
+  }
 
   return (
     <RigidBody
-      {...props}
-      ref={ref}
-      onPointerDown={() => {
-        ref.current?.applyImpulse({x: 0, y: 5, z: 0}, true)
-      }}
-      // onCollision={() => {
-      // ref.current?.setLinvel({ x: 0, y: 5, z: 0 }, true)
-      // setColor((s) => {
-      // const currentIndex = colors.indexOf(s)
-      // const arr = [...colors]
-      // arr.splice(currentIndex, 1)
-      // return arr[Math.floor(Math.random() * arr.length)]
-      // })
-      // }}
-      // onCollisionEnter={() => {
-      //   setColor('green')
-      // }}
-      // onCollisionExit={() => {
-      //   setColor('red')
-      // }}
+      position={position}
+      linearVelocity={linearVelocity}
+      entityRef={entityRef}
     >
-      <BallCollider args={[0.5]} restitution={1} friction={0.9} density={1}>
-        <mesh castShadow receiveShadow>
+      <BallCollider radius={0.5} restitution={1} friction={0.9} density={1}>
+        <mesh castShadow receiveShadow onPointerDown={handlePointerDown}>
           <sphereGeometry args={[0.5]} />
           <meshPhongMaterial color={color} />
         </mesh>
@@ -413,11 +223,16 @@ function RockingBoard(props: ComponentProps<'group'>) {
   )
 }
 
-function Box({
-  args = [1, 1, 1],
-  color = 0xfffff0,
-  ...props
-}: CuboidColliderProps & {color?: Color}) {
+interface BoxProps {
+  args?: [number, number, number]
+  color?: Color
+  friction?: number
+  restitution?: number
+  density?: number
+  position?: [number, number, number]
+}
+
+function Box({args = [1, 1, 1], color = 0xfffff0, ...props}: BoxProps) {
   return (
     <CuboidCollider args={args} {...props}>
       <mesh castShadow receiveShadow>
@@ -438,7 +253,7 @@ function Slopes(props: ComponentProps<'group'>) {
     const run = runFromAngleAndRaise(angle, 2)
     return (
       <group key={angle}>
-        <ECSCuboidCollider args={[2, 4, 2]} position={[0, 2, 2 * index]}>
+        <CuboidCollider args={[2, 4, 2]} position={[0, 2, 2 * index]}>
           <Suspense fallback={null}>
             <Text
               position={[-1.01, 1, 0]}
@@ -458,7 +273,7 @@ function Slopes(props: ComponentProps<'group'>) {
             <boxGeometry args={[2, 4, 2]} />
             <meshPhongMaterial color={0xfffff0} />
           </mesh>
-        </ECSCuboidCollider>
+        </CuboidCollider>
         <Slope
           position={[-1.001 - run / 2, 1, 2 * index]}
           scale={[run, 2, 2]}
@@ -470,7 +285,7 @@ function Slopes(props: ComponentProps<'group'>) {
 
   return (
     <group {...props}>
-      <ECSRigidBody type="fixed">{slopes}</ECSRigidBody>
+      <RigidBody type="fixed">{slopes}</RigidBody>
     </group>
   )
 }
@@ -540,19 +355,29 @@ function clamp(value: number, min: number, max: number) {
   return Math.min(Math.max(value, min), max)
 }
 
-function Elevator(props: RigidBodyProps) {
-  const ref = useRef<RigidBodyApi>(null)
+interface ElevatorProps {
+  position?: [number, number, number]
+}
+
+function Elevator({position}: ElevatorProps) {
+  const entityRef = useRef<Entity | null>(null)
 
   usePhysicsUpdate(() => {
-    // const rigidBody = ref.current
-    // if (!rigidBody) return
-    // const vec = rigidBody.translation()
-    // vec.y = clamp(3.875 + Math.sin(performance.now() / 1000) * 5, 0.25, 7.75)
-    // rigidBody.setNextKinematicTranslation(vec)
+    const entity = entityRef.current
+    if (!entity) return
+    const bodyRef = entity.get(RigidBodyRef)
+    if (!bodyRef?.body) return
+    const vec = bodyRef.body.translation()
+    vec.y = clamp(3.875 + Math.sin(performance.now() / 1000) * 5, 0.25, 7.75)
+    bodyRef.body.setNextKinematicTranslation(vec)
   })
 
   return (
-    <RigidBody ref={ref} type="kinematic-position-based" {...props}>
+    <RigidBody
+      position={position}
+      entityRef={entityRef}
+      type="kinematic-position-based"
+    >
       <CuboidCollider args={[2, 0.5, 2]}>
         <mesh castShadow receiveShadow>
           <boxGeometry args={[2, 0.5, 2]} />
@@ -585,67 +410,77 @@ function Tower() {
   )
 }
 
-function generateHeightfield(nsubdivs: number): Float32Array {
-  const heights: Array<number> = []
+// ============================================
+// Player with keyboard controls
+// ============================================
 
-  const rng = seedrandom('heightfield')
-
-  let i: number
-  let j: number
-  for (i = 0; i <= nsubdivs; ++i) {
-    for (j = 0; j <= nsubdivs; ++j) {
-      heights.push(rng())
-    }
-  }
-
-  return new Float32Array(heights)
+interface PlayerProps {
+  position?: [number, number, number]
+  inputManagerRef: RefObject<InputManagerRef | null>
 }
 
-function generateConvexPolyhedron() {
-  const rng = seedrandom('convexPolyhedron')
-  const scale = 2.0
+function Player({position, inputManagerRef}: PlayerProps) {
+  const controllerRef = useRef<CharacterControllerApi | null>(null)
 
-  const vertices = []
-  for (let l = 0; l < 10; ++l) {
-    vertices.push(rng() * scale, rng() * scale, rng() * scale)
-  }
+  const velocity = useRef(new Vector3())
+  const walkSpeed = 5
+  const sprintSpeed = 8
+  const jumpHeight = 1
+  const gravity = -1
 
-  return {vertices: new Float32Array(vertices)}
-}
+  usePhysicsUpdate((delta) => {
+    const controller = controllerRef.current
+    const inputManager = inputManagerRef.current
+    if (!controller || !inputManager) return
 
-function generateTrimesh(nsubdivs: number, wx: number, wy: number, wz: number) {
-  const vertices = []
-  const indices = []
+    const input = inputManager.getInput()
+    const {grounded: isGrounded} = controller.getMovement()
 
-  const elementWidth = 1.0 / nsubdivs
-  const rng = seedrandom('trimesh')
+    // Get input from input manager
+    const inputMovement = input.movement.clone().normalize()
+    const sprint = input.keyboard.ShiftLeft
+    const jump = input.keyboard.Space
 
-  let i: number
-  let j: number
-  for (i = 0; i <= nsubdivs; ++i) {
-    for (j = 0; j <= nsubdivs; ++j) {
-      const x = (j * elementWidth - 0.5) * wx
-      const y = rng() * wy
-      const z = (i * elementWidth - 0.5) * wz
+    const speed = sprint ? sprintSpeed : walkSpeed
 
-      vertices.push(x, y, z)
+    // Horizontal movement (inputMovement.x = left/right, inputMovement.y = forward/back)
+    velocity.current.x = inputMovement.x * speed * delta
+    velocity.current.z = inputMovement.y * speed * delta
+
+    // Jumping
+    if (isGrounded && jump) {
+      velocity.current.y = Math.sqrt(jumpHeight * -0.05 * gravity)
     }
-  }
 
-  for (i = 0; i < nsubdivs; ++i) {
-    for (j = 0; j < nsubdivs; ++j) {
-      const i1 = (i + 0) * (nsubdivs + 1) + (j + 0)
-      const i2 = (i + 0) * (nsubdivs + 1) + (j + 1)
-      const i3 = (i + 1) * (nsubdivs + 1) + (j + 0)
-      const i4 = (i + 1) * (nsubdivs + 1) + (j + 1)
-
-      indices.push(i1, i3, i2)
-      indices.push(i3, i4, i2)
+    // Gravity
+    if (isGrounded && velocity.current.y < 0) {
+      velocity.current.y = 0
+    } else {
+      velocity.current.y += gravity * delta
     }
-  }
 
-  return {
-    vertices: new Float32Array(vertices),
-    indices: new Uint32Array(indices),
-  }
+    controller.setVelocity(
+      velocity.current.x,
+      velocity.current.y,
+      velocity.current.z,
+    )
+  })
+
+  return (
+    <CharacterController
+      ref={controllerRef}
+      position={position}
+      height={1.75}
+      radius={0.5}
+    >
+      <mesh castShadow receiveShadow>
+        <capsuleGeometry args={[0.5, 1.75, 4, 8]} />
+        <meshPhongMaterial color={0xf0f0f0} />
+      </mesh>
+      <mesh castShadow receiveShadow position={[0, 1.15, 0.3]}>
+        <boxGeometry args={[0.5, 0.25, 0.5]} />
+        <meshPhongMaterial color={0xf0f0f0} />
+      </mesh>
+    </CharacterController>
+  )
 }

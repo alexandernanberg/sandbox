@@ -5,21 +5,21 @@ import type {Mesh} from 'three'
 import {BallColor, IsBall, RenderTransform, Object3DRef} from './index'
 
 // This component queries for all ball entities and renders them
-export function ECSBalls() {
+export function Balls() {
   // useQuery reactively updates when entities with IsBall are added/removed
   const balls = useQuery(IsBall, RenderTransform, BallColor)
 
   return (
     <>
       {balls.map((entity) => (
-        <ECSBall key={entity.id()} entity={entity} />
+        <Ball key={entity.id()} entity={entity} />
       ))}
     </>
   )
 }
 
 // Individual ball component - physics system updates position directly
-function ECSBall({entity}: {entity: Entity}) {
+function Ball({entity}: {entity: Entity}) {
   const ballColor = useTrait(entity, BallColor)
   const meshRef = useRef<Mesh>(null)
 

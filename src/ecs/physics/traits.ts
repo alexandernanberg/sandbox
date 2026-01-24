@@ -1,6 +1,17 @@
 import type * as RAPIER from '@dimforge/rapier3d-simd-compat'
 import {trait, relation} from 'koota'
+import type {Entity} from 'koota'
 import type {Object3D} from 'three'
+
+// ============================================
+// Collision callback type
+// ============================================
+
+export interface CollisionEvent {
+  other: Entity
+}
+
+export type CollisionCallback = (event: CollisionEvent) => void
 
 // ============================================
 // Transform traits (for interpolation)
@@ -62,6 +73,13 @@ export const RigidBodyConfig = trait(() => ({
   lockRotation: false,
   restrictPosition: null as [boolean, boolean, boolean] | null,
   restrictRotation: null as [boolean, boolean, boolean] | null,
+  // Initial velocities (applied on body creation)
+  linearVelocityX: 0,
+  linearVelocityY: 0,
+  linearVelocityZ: 0,
+  angularVelocityX: 0,
+  angularVelocityY: 0,
+  angularVelocityZ: 0,
 }))
 
 export type ColliderShape =
@@ -95,6 +113,10 @@ export const ColliderConfig = trait(() => ({
   offsetQy: 0,
   offsetQz: 0,
   offsetQw: 1,
+  // World scale (computed from Object3D on mount)
+  scaleX: 1,
+  scaleY: 1,
+  scaleZ: 1,
 }))
 
 // ============================================
@@ -152,12 +174,12 @@ export const PhysicsInitialized = trait()
 // Marks a collider as initialized
 export const ColliderInitialized = trait()
 
-// Marks an entity as needing sync to Object3D
-export const NeedsSync = trait()
-
 // ============================================
-// Initial velocity traits
+// Collision callbacks
 // ============================================
 
-export const InitialLinearVelocity = trait({x: 0, y: 0, z: 0})
-export const InitialAngularVelocity = trait({x: 0, y: 0, z: 0})
+// Stores collision callbacks for an entity
+export const CollisionCallbacks = trait(() => ({
+  onEnter: null as CollisionCallback | null,
+  onExit: null as CollisionCallback | null,
+}))

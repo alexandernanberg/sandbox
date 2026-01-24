@@ -4,13 +4,10 @@ import {useEffect, useRef} from 'react'
 export function useConstant<T>(fn: () => T): T {
   const ref = useRef<{v: T}>(null)
 
-  // eslint-disable-next-line react-compiler/react-compiler
   if (!ref.current) {
-    // eslint-disable-next-line react-compiler/react-compiler
     ref.current = {v: fn()}
   }
 
-  // eslint-disable-next-line react-compiler/react-compiler
   return ref.current.v
 }
 

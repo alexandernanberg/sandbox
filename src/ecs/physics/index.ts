@@ -1,5 +1,5 @@
 // ============================================
-// Public API for ECS Physics
+// Public API for Physics
 // ============================================
 
 // Core traits
@@ -22,10 +22,6 @@ export {
   IsColliderEntity,
   PhysicsInitialized,
   ColliderInitialized,
-  NeedsSync,
-  // Initial state
-  InitialLinearVelocity,
-  InitialAngularVelocity,
   // Types
   type RigidBodyType,
   type ColliderShape,
@@ -48,33 +44,55 @@ export {
   IsCharacterController,
 } from './character'
 
-// Provider
-export {ECSPhysicsProvider, useECSPhysicsContext} from './provider'
-export type {ECSPhysicsProviderProps, ECSPhysicsContextValue} from './provider'
+// Physics world (ECS-centric, can be used outside React)
+export {
+  physicsWorld,
+  initPhysicsWorld,
+  destroyPhysicsWorld,
+  setGravity,
+  getRapierWorld,
+  getEventQueue,
+  onBeforeStep,
+  onAfterStep,
+  FIXED_TIMESTEP,
+  MAX_DELTA,
+} from './world'
+export type {PhysicsWorldState, PhysicsConfig} from './world'
 
-// Hooks
-export {useECSPhysicsUpdate, useRapierWorld} from './hooks'
+// Step function (runs all physics systems)
+export {stepPhysics, getInterpolationAlpha} from './step'
+export type {StepResult} from './step'
+
+// Provider (React integration, optional)
+export {PhysicsProvider, usePhysicsContext} from './provider'
+export type {PhysicsProviderProps, PhysicsContextValue} from './provider'
+
+// Hooks (React integration, optional)
+export {usePhysicsUpdate, useRapierWorld} from './hooks'
 export type {PhysicsStage} from './hooks'
 
 // React components
 export {
-  ECSRigidBody,
-  ECSBallCollider,
-  ECSCuboidCollider,
-  ECSBoxCollider,
-  ECSCapsuleCollider,
-  ECSCylinderCollider,
-  ECSConeCollider,
-  ECSConvexHullCollider,
+  RigidBody,
+  BallCollider,
+  CuboidCollider,
+  BoxCollider,
+  CapsuleCollider,
+  CylinderCollider,
+  ConeCollider,
+  ConvexHullCollider,
 } from './components'
 export type {
-  ECSRigidBodyProps,
-  ECSBallColliderProps,
-  ECSCuboidColliderProps,
-  ECSCapsuleColliderProps,
-  ECSCylinderColliderProps,
-  ECSConeColliderProps,
-  ECSConvexHullColliderProps,
+  RigidBodyProps,
+  RigidBodyApi,
+  CollisionEvent,
+  CollisionCallback,
+  BallColliderProps,
+  CuboidColliderProps,
+  CapsuleColliderProps,
+  CylinderColliderProps,
+  ConeColliderProps,
+  ConvexHullColliderProps,
 } from './components'
 
 // Systems (for advanced usage)
@@ -86,17 +104,19 @@ export {
   syncTransformFromPhysics,
   interpolateTransforms,
   syncToObject3D,
-  cleanupPhysicsEntity,
 } from './systems'
 
-export {
-  processCollisionEvents,
-  clearCollisionEvents,
-  createHandleToEntityMap,
-} from './events'
+export {processCollisionEvents, clearCollisionEvents} from './events'
 
 export {
   characterControllerSystem,
   createCharacterController,
   cleanupCharacterController,
 } from './character'
+
+// Character controller React component
+export {CharacterController} from './character-controller'
+export type {
+  CharacterControllerProps,
+  CharacterControllerApi,
+} from './character-controller'

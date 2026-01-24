@@ -1,12 +1,7 @@
 import type * as RAPIER from '@dimforge/rapier3d-simd-compat'
 import {trait} from 'koota'
-import type {World} from 'koota'
-import {
-  RigidBodyRef,
-  ColliderRef,
-  Transform,
-  PhysicsInitialized,
-} from './traits'
+import type {Entity, World} from 'koota'
+import {RigidBodyRef, Transform, PhysicsInitialized} from './traits'
 
 // ============================================
 // Character Controller Traits
@@ -52,13 +47,12 @@ export const IsCharacterController = trait()
 
 export function characterControllerSystem(
   world: World,
-  rapierWorld: RAPIER.World,
+  _rapierWorld: RAPIER.World,
 ) {
   const entities = world.query(
     CharacterControllerRef,
     CharacterMovement,
     RigidBodyRef,
-    ColliderRef,
     Transform,
     PhysicsInitialized,
   )
@@ -67,14 +61,17 @@ export function characterControllerSystem(
     const controllerRef = entity.get(CharacterControllerRef)!
     const movement = entity.get(CharacterMovement)!
     const bodyRef = entity.get(RigidBodyRef)!
-    const colliderRef = entity.get(ColliderRef)!
     const transform = entity.get(Transform)!
 
     const controller = controllerRef.controller
     const body = bodyRef.body
-    const collider = colliderRef.collider
 
-    if (!controller || !body || !collider) continue
+    if (!controller || !body) continue
+
+    // Get the first collider from the rigid body
+    const collider = body.collider(0)
+    // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
+    if (!collider) continue
 
     // Compute collider movement based on desired velocity
     controller.computeColliderMovement(collider, {
@@ -163,7 +160,7 @@ export function createCharacterController(
 // ============================================
 
 export function cleanupCharacterController(
-  entity: import('koota').Entity,
+  entity: Entity,
   rapierWorld: RAPIER.World,
 ) {
   if (!entity.has(CharacterControllerRef)) return

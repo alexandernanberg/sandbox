@@ -1,6 +1,5 @@
-import type {RefObject} from 'react'
 import {useLayoutEffect} from 'react'
-import {useECSPhysicsContext} from './provider'
+import {getRapierWorld, onBeforeStep, onAfterStep} from './world'
 
 export type PhysicsStage = 'early' | 'late'
 
@@ -9,30 +8,20 @@ export type PhysicsStage = 'early' | 'late'
  * 'early' runs before the physics step (for character controllers, applying forces)
  * 'late' runs after the physics step (for post-physics logic)
  */
-export function useECSPhysicsUpdate(
+export function usePhysicsUpdate(
   cb: (delta: number) => void,
   stage: PhysicsStage = 'early',
 ) {
-  const context = useECSPhysicsContext()
-
   useLayoutEffect(() => {
-    const ref = {current: cb}
-    const subscriptions =
-      stage === 'early'
-        ? context.beforeStepCallbacks
-        : context.afterStepCallbacks
-
-    subscriptions.add(ref as RefObject<(delta: number) => void>)
-    return () => {
-      subscriptions.delete(ref as RefObject<(delta: number) => void>)
-    }
-  }, [cb, stage, context])
+    const unsubscribe = stage === 'early' ? onBeforeStep(cb) : onAfterStep(cb)
+    return unsubscribe
+  }, [cb, stage])
 }
 
 /**
  * Get access to the Rapier world for direct physics operations.
+ * Returns a getter function that returns the world (or null if not initialized).
  */
 export function useRapierWorld() {
-  const context = useECSPhysicsContext()
-  return context.worldRef
+  return getRapierWorld
 }

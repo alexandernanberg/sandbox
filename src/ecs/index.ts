@@ -1,5 +1,4 @@
 import {createActions, createWorld, trait} from 'koota'
-import type {ColliderShape} from './physics'
 import {
   Transform,
   PreviousTransform,
@@ -22,11 +21,8 @@ export const world = createWorld()
 // TRAITS (like components in ECS)
 // ============================================
 
-// For Vector3, we use a schema-style trait with primitives
-// This is more ECS-idiomatic and works better with koota
-export const Position = trait({x: 0, y: 0, z: 0})
-
-// Velocity trait - for physics movement
+// Velocity trait - not synced from physics by default.
+// Add a sync system if you want to query entities by velocity.
 export const Velocity = trait({x: 0, y: 0, z: 0})
 
 // Tag traits - just markers, no data
@@ -35,6 +31,26 @@ export const IsBall = trait()
 
 // Visual appearance
 export const BallColor = trait({color: 'red'})
+
+// Helper for common collider configs
+const ballCollider = (radius: number, restitution = 0, friction = 0.5) =>
+  ColliderConfig({
+    shape: {type: 'ball', radius},
+    friction,
+    restitution,
+    density: 1,
+    sensor: false,
+    offsetX: 0,
+    offsetY: 0,
+    offsetZ: 0,
+    offsetQx: 0,
+    offsetQy: 0,
+    offsetQz: 0,
+    offsetQw: 1,
+    scaleX: 1,
+    scaleY: 1,
+    scaleZ: 1,
+  })
 
 // ============================================
 // ACTIONS
@@ -53,30 +69,14 @@ export const actions = createActions((world) => ({
       IsPhysicsEntity,
       Object3DRef,
       BallColor({color}),
-      [Transform, {x, y, z, qx: 0, qy: 0, qz: 0, qw: 1}],
-      [PreviousTransform, {x, y, z, qx: 0, qy: 0, qz: 0, qw: 1}],
-      [RenderTransform, {x, y, z, qx: 0, qy: 0, qz: 0, qw: 1}],
+      Transform({x, y, z}),
+      PreviousTransform({x, y, z}),
+      RenderTransform({x, y, z}),
       RigidBodyConfig,
     )
 
     // Spawn collider as child entity
-    world.spawn(IsColliderEntity, ChildOf(rbEntity), [
-      ColliderConfig,
-      {
-        shape: {type: 'ball', radius: 0.5} as const,
-        restitution: 1,
-        friction: 0.9,
-        density: 1,
-        sensor: false,
-        offsetX: 0,
-        offsetY: 0,
-        offsetZ: 0,
-        offsetQx: 0,
-        offsetQy: 0,
-        offsetQz: 0,
-        offsetQw: 1,
-      },
-    ])
+    world.spawn(IsColliderEntity, ChildOf(rbEntity), ballCollider(0.5, 1, 0.9))
 
     return rbEntity
   },
@@ -97,39 +97,28 @@ export const actions = createActions((world) => ({
         IsPhysicsEntity,
         Object3DRef,
         BallColor({color}),
-        [Transform, {x, y, z, qx: 0, qy: 0, qz: 0, qw: 1}],
-        [PreviousTransform, {x, y, z, qx: 0, qy: 0, qz: 0, qw: 1}],
-        [RenderTransform, {x, y, z, qx: 0, qy: 0, qz: 0, qw: 1}],
+        Transform({x, y, z}),
+        PreviousTransform({x, y, z}),
+        RenderTransform({x, y, z}),
         RigidBodyConfig,
       )
 
       // Spawn collider as child entity
-      world.spawn(IsColliderEntity, ChildOf(rbEntity), [
-        ColliderConfig,
-        {
-          shape: {type: 'ball', radius: 0.5} as const,
-          restitution: 1,
-          friction: 0.9,
-          density: 1,
-          sensor: false,
-          offsetX: 0,
-          offsetY: 0,
-          offsetZ: 0,
-          offsetQx: 0,
-          offsetQy: 0,
-          offsetQz: 0,
-          offsetQw: 1,
-        },
-      ])
+      world.spawn(
+        IsColliderEntity,
+        ChildOf(rbEntity),
+        ballCollider(0.5, 1, 0.9),
+      )
     }
   },
 
   // Remove all balls
   clearBalls: () => {
-    // Query all entities with the IsBall trait and destroy them
-    world.query(IsBall).forEach((entity) => {
+    // Collect entities first to avoid mutating during iteration
+    const balls = [...world.query(IsBall)]
+    for (const entity of balls) {
       entity.destroy()
-    })
+    }
   },
 }))
 

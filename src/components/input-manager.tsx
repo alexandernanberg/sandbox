@@ -1,6 +1,6 @@
 import {useThree} from '@react-three/fiber'
 import type {Ref} from 'react'
-import {useEffect, useImperativeHandle, useRef} from 'react'
+import {useEffect, useImperativeHandle} from 'react'
 import {Vector2} from 'three'
 import {useConstant} from '~/utils'
 
@@ -79,6 +79,7 @@ export function InputManager({
     }
 
     const handleKeyDown = (event: KeyboardEvent) => {
+      // eslint-disable-next-line react-compiler/react-compiler
       state.keyboard[event.code] = true
       updateMovementFromKeyboard()
     }
@@ -111,13 +112,13 @@ export function InputManager({
       state.lookAt.y = movementY
     }
 
-    const handlePointerLockChange = () => {
-      state.pointerLocked = document.pointerLockElement === domElement
-    }
+    // const handlePointerLockChange = () => {
+    //   state.pointerLocked = document.pointerLockElement === domElement
+    // }
 
-    const handlePointerLockError = (event: Event) => {
-      console.error(event)
-    }
+    // const handlePointerLockError = (event: Event) => {
+    //   console.error(event)
+    // }
 
     domElement.addEventListener('click', handleClick, {passive: true})
 
