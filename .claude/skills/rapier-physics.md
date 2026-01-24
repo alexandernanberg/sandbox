@@ -21,8 +21,10 @@ world.step()
 |------|-------------|
 | `dynamic` | Affected by forces and contacts (default) |
 | `fixed` | Immobile, infinite mass (ground, walls) |
-| `kinematicPositionBased` | User controls position, velocity computed |
-| `kinematicVelocityBased` | User controls velocity, position computed |
+| `kinematic-position-based` | User controls position, velocity computed |
+| `kinematic-velocity-based` | User controls velocity, position computed |
+
+> **Note**: This project uses hyphenated type names. Raw Rapier uses camelCase (`kinematicPositionBased`).
 
 ```javascript
 // Create rigid body
@@ -148,6 +150,51 @@ const correctedMovement = controller.computedMovement()
 | `enableAutostep(height, width, dynamic)` | Auto-climb small steps |
 | `enableSnapToGround(distance)` | Keep grounded on slopes |
 | `setApplyImpulsesToDynamicBodies(bool)` | Push dynamic objects |
+
+## Project-Specific Integration
+
+This project wraps Rapier with an ECS-based physics system. See `src/ecs/physics/`.
+
+### Physics Hooks
+
+```tsx
+import { usePhysicsUpdate, useRapierWorld } from '~/ecs/physics'
+
+// Run code during physics step
+usePhysicsUpdate((delta) => {
+  // Apply forces, control character, etc.
+}, 'early')  // 'early' = before step, 'late' = after step
+
+// Access Rapier world directly
+const getRapierWorld = useRapierWorld()
+const rapierWorld = getRapierWorld()  // may be null
+```
+
+### CharacterController Component
+
+```tsx
+import { CharacterController, type CharacterControllerApi } from '~/ecs/physics'
+
+const controllerRef = useRef<CharacterControllerApi>(null)
+
+<CharacterController
+  ref={controllerRef}
+  height={1.0}          // Capsule height
+  radius={0.5}          // Capsule radius
+  offset={0.01}         // Collision skin offset
+  autostepMaxHeight={0.5}
+  snapToGroundDistance={0.3}
+  mass={75}
+>
+  <mesh>...</mesh>
+</CharacterController>
+
+// In physics update
+usePhysicsUpdate((delta) => {
+  controllerRef.current?.setVelocity(vx, vy, vz)
+  const { grounded } = controllerRef.current?.getMovement() ?? {}
+})
+```
 
 ## Performance Tips
 

@@ -188,14 +188,17 @@ Common utilities and components:
 
 ```tsx
 import {
-  OrbitControls,   // Camera orbit controls
-  Sky,             // Procedural sky
-  Environment,     // HDR environment maps
-  Stats,           // FPS counter
-  Html,            // HTML overlays in 3D
-  useGLTF,         // GLTF loader hook
-  useTexture,      // Texture loader hook
-  useHelper,       // Visualize lights/cameras
+  OrbitControls,      // Camera orbit controls
+  PerspectiveCamera,  // Managed perspective camera
+  Sky,                // Procedural sky
+  Environment,        // HDR environment maps
+  Stats,              // FPS counter
+  Html,               // HTML overlays in 3D
+  Loader,             // Loading progress indicator
+  useGLTF,            // GLTF loader hook
+  useAnimations,      // Animation controls for GLTF
+  useTexture,         // Texture loader hook
+  useHelper,          // Visualize lights/cameras
 } from '@react-three/drei'
 
 // Usage
@@ -278,5 +281,5 @@ function MyComponent({ object3DRef }: Props) {
 ## Documentation
 
 - R3F Docs: https://r3f.docs.pmnd.rs/
-- Drei Helpers: https://drei.docs.pmnd.rs/
+- Drei GitHub: https://github.com/pmndrs/drei
 - Three.js Docs: https://threejs.org/docs/

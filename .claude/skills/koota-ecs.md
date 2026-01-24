@@ -152,6 +152,9 @@ import { relation } from 'koota'
 // Define a relation
 const ChildOf = relation()
 
+// Relation with auto-destroy (destroys children when parent is destroyed)
+const ChildOf = relation({ autoDestroy: 'orphan' })
+
 // Create parent-child relationship
 const parent = world.spawn(Position)
 const child = world.spawn(Position, ChildOf(parent))
@@ -162,6 +165,12 @@ world.query(ChildOf(parent))  // All children of parent
 // Wildcard query - all entities with any ChildOf relation
 world.query(ChildOf('*'))
 ```
+
+### Relation Options
+
+| Option | Value | Description |
+|--------|-------|-------------|
+| `autoDestroy` | `'orphan'` | Destroy child when parent is destroyed |
 
 ## React Integration
 
