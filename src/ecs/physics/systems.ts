@@ -2,7 +2,6 @@ import * as RAPIER from '@dimforge/rapier3d-simd-compat'
 import type {World} from 'koota'
 import {createQuery, Not} from 'koota'
 import {Matrix4, Object3D} from 'three'
-import type {RigidBodyType, ColliderShape} from './traits'
 import {
   copyFromObject3D,
   copyFromRapier,
@@ -13,7 +12,8 @@ import {
   _transform,
   _quat,
   _vec3,
-} from './math'
+} from '~/lib/math'
+import type {RigidBodyType, ColliderShape} from './traits'
 import {
   Transform,
   PreviousTransform,
@@ -121,11 +121,11 @@ export function initializeTransformFromObject3D(world: World) {
     if (object3d.parent && object3d.parent.type !== 'Scene') {
       // Reuse temp matrix to avoid allocation
       _parentInverseMatrix.copy(object3d.parent.matrixWorld).invert()
-      entity.add(ParentInverseMatrix)
-      entity.set(ParentInverseMatrix, (ref) => {
-        ref.elements = new Float32Array(_parentInverseMatrix.elements)
-        return ref
-      })
+      entity.add(
+        ParentInverseMatrix({
+          elements: new Float32Array(_parentInverseMatrix.elements),
+        }),
+      )
     }
   }
 }

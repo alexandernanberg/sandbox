@@ -1,7 +1,7 @@
 import type * as RAPIER from '@dimforge/rapier3d-simd-compat'
 import {trait, createQuery} from 'koota'
 import type {Entity, World} from 'koota'
-import {setVec3, addVec3, _vec3} from './math'
+import {setVec3, addVec3, _vec3} from '~/lib/math'
 import {RigidBodyRef, Transform, PhysicsInitialized} from './traits'
 
 // Scratch objects for character movement
@@ -170,14 +170,15 @@ export function createCharacterController(
     )
     controller.setSlideEnabled(config.slideEnabled)
 
-    // Add or update the ref using set callback
-    if (!entity.has(CharacterControllerRef)) {
-      entity.add(CharacterControllerRef)
+    // Add or update the controller ref
+    if (entity.has(CharacterControllerRef)) {
+      entity.set(CharacterControllerRef, (ref) => {
+        ref.controller = controller
+        return ref
+      })
+    } else {
+      entity.add(CharacterControllerRef({controller}))
     }
-    entity.set(CharacterControllerRef, (ref) => {
-      ref.controller = controller
-      return ref
-    })
   }
 }
 

@@ -1,9 +1,8 @@
 import {Loader, OrbitControls, Sky as SkyShader, Stats} from '@react-three/drei'
 import {Canvas} from '@react-three/fiber'
 import {WorldProvider} from 'koota/react'
-import {useReducer, useRef} from 'react'
+import {useReducer} from 'react'
 import {InputManager} from '~/components/input-manager'
-import type {InputManagerRef} from '~/components/input-manager'
 import {
   DirectionalLight,
   HemisphereLight,
@@ -32,7 +31,6 @@ export function Root() {
 
 function App() {
   const [physicsKey, updatePhysicsKey] = useReducer((num: number) => num + 1, 0)
-  const inputManagerRef = useRef<InputManagerRef>(null)
 
   const cameraControls = useControls(
     'Camera',
@@ -60,7 +58,6 @@ function App() {
   return (
     <LightProvider debug={lightsControl.debug}>
       <Stats />
-      <InputManager ref={inputManagerRef} />
       <OrbitControls target={[-2, 0, 6]} makeDefault={cameraControls.debug} />
       <fog attach="fog" args={[0xffffff, 10, 90]} />
       <Sky />
@@ -70,10 +67,8 @@ function App() {
         debug={physicsControls.debug}
         gravity={physicsControls.gravity}
       >
-        <Playground
-          debugCamera={cameraControls.debug}
-          inputManagerRef={inputManagerRef}
-        />
+        <InputManager />
+        <Playground debugCamera={cameraControls.debug} />
       </PhysicsProvider>
     </LightProvider>
   )

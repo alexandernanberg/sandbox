@@ -2,12 +2,11 @@ import {Text, useTexture} from '@react-three/drei'
 import type {Color} from '@react-three/fiber'
 import type {Entity} from 'koota'
 import {useActions} from 'koota/react'
-import type {ComponentProps, RefObject} from 'react'
-import {Suspense, useRef, useState} from 'react'
-import {RepeatWrapping, Vector3} from 'three'
+import type {ComponentProps} from 'react'
+import {Suspense, useLayoutEffect, useRef, useState} from 'react'
+import {RepeatWrapping} from 'three'
 import {useControls} from '~/components/debug-controls'
-import type {InputManagerRef} from '~/components/input-manager'
-import {actions} from '~/ecs'
+import {actions, IsPlayer, PlayerMovementConfig, PlayerVelocity} from '~/ecs'
 import {Balls} from '~/ecs/balls'
 import {
   RigidBody,
@@ -26,13 +25,9 @@ import Stone from '~/models/stone'
 
 interface PlaygroundProps {
   debugCamera: boolean
-  inputManagerRef: RefObject<InputManagerRef | null>
 }
 
-export function Playground({
-  debugCamera: _debugCamera,
-  inputManagerRef,
-}: PlaygroundProps) {
+export function Playground({debugCamera: _debugCamera}: PlaygroundProps) {
   // useActions gives us ECS actions bound to the world in context
   const {spawnBalls, clearBalls} = useActions(actions)
 
@@ -54,7 +49,7 @@ export function Playground({
 
   return (
     <>
-      <Player position={[0, 2, 0]} inputManagerRef={inputManagerRef} />
+      <Player position={[0, 2, 0]} />
 
       <Floor />
       <Walls />
@@ -415,60 +410,36 @@ function Tower() {
 }
 
 // ============================================
-// Player with keyboard controls
+// Player with ECS-driven movement
 // ============================================
 
 interface PlayerProps {
   position?: [number, number, number]
-  inputManagerRef: RefObject<InputManagerRef | null>
 }
 
-function Player({position, inputManagerRef}: PlayerProps) {
+function Player({position}: PlayerProps) {
   const controllerRef = useRef<CharacterControllerApi | null>(null)
 
-  const velocity = useRef(new Vector3())
-  const walkSpeed = 5
-  const sprintSpeed = 8
-  const jumpHeight = 1
-  const gravity = -1
-
-  usePhysicsUpdate((delta) => {
+  // Add player traits to the character controller entity
+  useLayoutEffect(() => {
     const controller = controllerRef.current
-    const inputManager = inputManagerRef.current
-    if (!controller || !inputManager) return
+    if (!controller) return
 
-    const input = inputManager.getInput()
-    const {grounded: isGrounded} = controller.getMovement()
+    const entity = controller.entity
 
-    // Get input from input manager
-    const inputMovement = input.movement.clone().normalize()
-    const sprint = input.keyboard.ShiftLeft
-    const jump = input.keyboard.Space
+    // Add player traits
+    entity.add(IsPlayer)
+    entity.add(PlayerMovementConfig)
+    entity.add(PlayerVelocity)
 
-    const speed = sprint ? sprintSpeed : walkSpeed
-
-    // Horizontal movement (inputMovement.x = left/right, inputMovement.y = forward/back)
-    velocity.current.x = inputMovement.x * speed * delta
-    velocity.current.z = inputMovement.y * speed * delta
-
-    // Jumping
-    if (isGrounded && jump) {
-      velocity.current.y = Math.sqrt(jumpHeight * -0.05 * gravity)
+    return () => {
+      if (entity.isAlive()) {
+        entity.remove(IsPlayer)
+        entity.remove(PlayerMovementConfig)
+        entity.remove(PlayerVelocity)
+      }
     }
-
-    // Gravity
-    if (isGrounded && velocity.current.y < 0) {
-      velocity.current.y = 0
-    } else {
-      velocity.current.y += gravity * delta
-    }
-
-    controller.setVelocity(
-      velocity.current.x,
-      velocity.current.y,
-      velocity.current.z,
-    )
-  })
+  }, [])
 
   return (
     <CharacterController

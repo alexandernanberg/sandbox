@@ -4,7 +4,13 @@ import type {Object3D} from 'three'
 // Types
 // ============================================
 
-/** Position component */
+/** 2D vector */
+export interface Vec2 {
+  x: number
+  y: number
+}
+
+/** 3D vector / position component */
 export interface Vec3 {
   x: number
   y: number

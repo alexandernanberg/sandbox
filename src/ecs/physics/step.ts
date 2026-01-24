@@ -1,4 +1,5 @@
 import type {World} from 'koota'
+import {playerMovementSystem} from '../player/systems'
 import {createCharacterController, characterControllerSystem} from './character'
 import {processCollisionEvents, clearCollisionEvents} from './events'
 import {
@@ -58,6 +59,9 @@ export function stepPhysics(ecsWorld: World, delta: number): StepResult {
 
     // Store previous transforms for interpolation
     storePreviousTransforms(ecsWorld)
+
+    // Run player movement system (reads input, sets character velocity)
+    playerMovementSystem(ecsWorld, FIXED_TIMESTEP)
 
     // Run character controller system (sets kinematic positions)
     characterControllerSystem(ecsWorld, rapier)

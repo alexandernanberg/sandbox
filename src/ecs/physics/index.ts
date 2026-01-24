@@ -109,8 +109,8 @@ export {
   _transform,
   _quat,
   _vec3,
-} from './math'
-export type {Vec3, Quat, TransformData} from './math'
+} from '~/lib/math'
+export type {Vec2, Vec3, Quat, TransformData} from '~/lib/math'
 
 // Systems (for advanced usage)
 export {

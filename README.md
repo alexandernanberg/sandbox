@@ -25,9 +25,9 @@
 
 ### ECS Migration
 
-- [ ] Player movement - move from `usePhysicsUpdate` to ECS system with `PlayerInput`, `PlayerMovement` traits
+- [x] Player movement - move from `usePhysicsUpdate` to ECS system with `PlayerInput`, `PlayerMovement` traits
 - [ ] Elevator/Oscillator - generic oscillation trait + system for kinematic bodies
-- [ ] Input state - singleton trait for input so ECS systems can read directly
+- [x] Input state - singleton trait for input so ECS systems can read directly
 
 ### Misc
 
