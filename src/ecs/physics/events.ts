@@ -1,5 +1,5 @@
 import type * as RAPIER from '@dimforge/rapier3d-simd-compat'
-import {trait} from 'koota'
+import {trait, createQuery} from 'koota'
 import type {Entity, World} from 'koota'
 import {CollisionCallbacks} from './traits'
 
@@ -7,14 +7,14 @@ import {CollisionCallbacks} from './traits'
 // Collision Event Traits
 // ============================================
 
-// Stores entities that started colliding this frame
+// Stores entities that started colliding this frame (Set for O(1) lookup)
 export const CollisionEntered = trait(() => ({
-  entities: [] as Entity[],
+  entities: new Set<Entity>(),
 }))
 
-// Stores entities that stopped colliding this frame
+// Stores entities that stopped colliding this frame (Set for O(1) lookup)
 export const CollisionExited = trait(() => ({
-  entities: [] as Entity[],
+  entities: new Set<Entity>(),
 }))
 
 // ============================================
@@ -53,8 +53,8 @@ function processCollisionPair(
 ) {
   if (started) {
     // Add collision entered event
-    ensureCollisionEntered(entity1).entities.push(entity2)
-    ensureCollisionEntered(entity2).entities.push(entity1)
+    ensureCollisionEntered(entity1).entities.add(entity2)
+    ensureCollisionEntered(entity2).entities.add(entity1)
 
     // Fire callbacks
     if (entity1.has(CollisionCallbacks)) {
@@ -65,8 +65,8 @@ function processCollisionPair(
     }
   } else {
     // Add collision exited event
-    ensureCollisionExited(entity1).entities.push(entity2)
-    ensureCollisionExited(entity2).entities.push(entity1)
+    ensureCollisionExited(entity1).entities.add(entity2)
+    ensureCollisionExited(entity2).entities.add(entity1)
 
     // Fire callbacks
     if (entity1.has(CollisionCallbacks)) {
@@ -96,17 +96,16 @@ function ensureCollisionExited(entity: Entity) {
 // Collision Event Cleanup
 // ============================================
 
+const collisionEnteredQuery = createQuery(CollisionEntered)
+const collisionExitedQuery = createQuery(CollisionExited)
+
 export function clearCollisionEvents(world: World) {
-  const enteredEntities = world.query(CollisionEntered)
-  for (const entity of enteredEntities) {
-    const entered = entity.get(CollisionEntered)!
-    entered.entities.length = 0
+  for (const entity of world.query(collisionEnteredQuery)) {
+    entity.get(CollisionEntered)!.entities.clear()
   }
 
-  const exitedEntities = world.query(CollisionExited)
-  for (const entity of exitedEntities) {
-    const exited = entity.get(CollisionExited)!
-    exited.entities.length = 0
+  for (const entity of world.query(collisionExitedQuery)) {
+    entity.get(CollisionExited)!.entities.clear()
   }
 }
 
@@ -114,17 +113,19 @@ export function clearCollisionEvents(world: World) {
 // Collision Query Helpers
 // ============================================
 
-export function getCollisionsEntered(entity: Entity): readonly Entity[] {
-  if (!entity.has(CollisionEntered)) return []
+const _emptySet = new Set<Entity>()
+
+export function getCollisionsEntered(entity: Entity): ReadonlySet<Entity> {
+  if (!entity.has(CollisionEntered)) return _emptySet
   return entity.get(CollisionEntered)!.entities
 }
 
-export function getCollisionsExited(entity: Entity): readonly Entity[] {
-  if (!entity.has(CollisionExited)) return []
+export function getCollisionsExited(entity: Entity): ReadonlySet<Entity> {
+  if (!entity.has(CollisionExited)) return _emptySet
   return entity.get(CollisionExited)!.entities
 }
 
 export function isCollidingWith(entity: Entity, other: Entity): boolean {
-  const entered = getCollisionsEntered(entity)
-  return entered.includes(other)
+  if (!entity.has(CollisionEntered)) return false
+  return entity.get(CollisionEntered)!.entities.has(other)
 }

@@ -1,5 +1,6 @@
 import * as RAPIER from '@dimforge/rapier3d-simd-compat'
 import type {World} from 'koota'
+import {createQuery} from 'koota'
 import {Matrix4, Object3D} from 'three'
 import type {RigidBodyType, ColliderShape} from './traits'
 import {
@@ -19,17 +20,62 @@ import {
   ChildOf,
 } from './traits'
 
+// ============================================
+// Cached Queries (created once, reused every frame)
+// ============================================
+
+const uninitializedTransformQuery = createQuery(
+  Object3DRef,
+  IsPhysicsEntity,
+  Transform,
+)
+const uninitializedBodiesQuery = createQuery(
+  RigidBodyConfig,
+  Transform,
+  IsPhysicsEntity,
+)
+const uninitializedCollidersQuery = createQuery(
+  IsColliderEntity,
+  ColliderConfig,
+  ChildOf('*'),
+)
+const previousTransformQuery = createQuery(
+  Transform,
+  PreviousTransform,
+  PhysicsInitialized,
+)
+const syncFromPhysicsQuery = createQuery(
+  Transform,
+  RigidBodyRef,
+  PhysicsInitialized,
+)
+const interpolateQuery = createQuery(
+  Transform,
+  PreviousTransform,
+  RenderTransform,
+  PhysicsInitialized,
+)
+const syncToObject3DQuery = createQuery(
+  RenderTransform,
+  Object3DRef,
+  PhysicsInitialized,
+)
+
 // Temporary objects for transforms
 const _tempObject3D = new Object3D()
 const _tempMatrix4 = new Matrix4()
+
+// Reusable scratch objects to avoid allocations in hot paths
+const _transform = {x: 0, y: 0, z: 0, qx: 0, qy: 0, qz: 0, qw: 1}
+const _rotation = {qx: 0, qy: 0, qz: 0, qw: 1}
 
 // ============================================
 // Transform Initialization System
 // ============================================
 
 export function initializeTransformFromObject3D(world: World) {
-  // Query entities that need transform initialization
-  const entities = world.query(Object3DRef, IsPhysicsEntity, Transform)
+  // Query entities that need transform initialization (using cached query)
+  const entities = world.query(uninitializedTransformQuery)
 
   for (const entity of entities) {
     // Skip if already initialized
@@ -79,8 +125,8 @@ export function initializeTransformFromObject3D(world: World) {
 // ============================================
 
 export function createPhysicsBodies(world: World, rapierWorld: RAPIER.World) {
-  // Query for entities that have config but haven't been initialized
-  const entities = world.query(RigidBodyConfig, Transform, IsPhysicsEntity)
+  // Query for entities that have config but haven't been initialized (using cached query)
+  const entities = world.query(uninitializedBodiesQuery)
 
   for (const entity of entities) {
     // Skip if already has a body
@@ -186,65 +232,70 @@ function createRigidBodyDesc(type: RigidBodyType): RAPIER.RigidBodyDesc {
 // Collider Creation System
 // ============================================
 
+// Reusable scale object to avoid allocations
+const _scale = {x: 1, y: 1, z: 1}
+
 export function createColliders(world: World, rapierWorld: RAPIER.World) {
-  // Query initialized rigid bodies
-  const rigidBodies = world.query(RigidBodyRef, PhysicsInitialized)
+  // Query all uninitialized collider entities in one pass (using cached query with wildcard)
+  const colliders = world.query(uninitializedCollidersQuery)
 
-  for (const parentEntity of rigidBodies) {
-    const bodyRef = parentEntity.get(RigidBodyRef)!
-    if (!bodyRef.body) continue
+  for (const entity of colliders) {
+    // Skip if already initialized
+    if (entity.has(ColliderInitialized)) continue
 
-    // Query collider entities that are children of this rigid body
-    const colliders = world.query(
-      IsColliderEntity,
-      ColliderConfig,
-      ChildOf(parentEntity),
-    )
+    // Get parent rigid body from relation
+    const parents = entity.targetsFor(ChildOf)
+    if (parents.length === 0) continue
 
-    for (const entity of colliders) {
-      // Skip if already initialized
-      if (entity.has(ColliderInitialized)) continue
+    const parentEntity = parents[0]!
 
-      const config = entity.get(ColliderConfig)!
-      if (!config.shape) continue
+    // Skip if parent isn't initialized yet
+    if (!parentEntity.has(PhysicsInitialized)) continue
 
-      // Read world scale from config (computed on mount by React component)
-      const scale = {x: config.scaleX, y: config.scaleY, z: config.scaleZ}
+    const bodyRef = parentEntity.get(RigidBodyRef)
+    if (!bodyRef?.body) continue
 
-      // Create collider description based on shape, applying world scale
-      const colliderDesc = createColliderDesc(config.shape, scale)
-      if (!colliderDesc) continue
+    const config = entity.get(ColliderConfig)!
+    if (!config.shape) continue
 
-      colliderDesc
-        .setFriction(config.friction)
-        .setRestitution(config.restitution)
-        .setDensity(config.density)
-        .setSensor(config.sensor)
-        .setTranslation(config.offsetX, config.offsetY, config.offsetZ)
-        .setRotation({
-          x: config.offsetQx,
-          y: config.offsetQy,
-          z: config.offsetQz,
-          w: config.offsetQw,
-        })
+    // Reuse scale object to avoid allocations
+    _scale.x = config.scaleX
+    _scale.y = config.scaleY
+    _scale.z = config.scaleZ
 
-      // Enable collision events
-      colliderDesc.setActiveEvents(RAPIER.ActiveEvents.COLLISION_EVENTS)
+    // Create collider description based on shape, applying world scale
+    const colliderDesc = createColliderDesc(config.shape, _scale)
+    if (!colliderDesc) continue
 
-      // Create the collider attached to parent rigid body
-      const collider = rapierWorld.createCollider(colliderDesc, bodyRef.body)
-
-      // Add runtime ref
-      entity.add(ColliderRef)
-      entity.set(ColliderRef, (ref) => {
-        ref.handle = collider.handle
-        ref.collider = collider
-        return ref
+    colliderDesc
+      .setFriction(config.friction)
+      .setRestitution(config.restitution)
+      .setDensity(config.density)
+      .setSensor(config.sensor)
+      .setTranslation(config.offsetX, config.offsetY, config.offsetZ)
+      .setRotation({
+        x: config.offsetQx,
+        y: config.offsetQy,
+        z: config.offsetQz,
+        w: config.offsetQw,
       })
 
-      // Mark as initialized
-      entity.add(ColliderInitialized)
-    }
+    // Enable collision events
+    colliderDesc.setActiveEvents(RAPIER.ActiveEvents.COLLISION_EVENTS)
+
+    // Create the collider attached to parent rigid body
+    const collider = rapierWorld.createCollider(colliderDesc, bodyRef.body)
+
+    // Add runtime ref
+    entity.add(ColliderRef)
+    entity.set(ColliderRef, (ref) => {
+      ref.handle = collider.handle
+      ref.collider = collider
+      return ref
+    })
+
+    // Mark as initialized
+    entity.add(ColliderInitialized)
   }
 }
 
@@ -325,25 +376,20 @@ function createColliderDesc(
 // ============================================
 
 export function storePreviousTransforms(world: World) {
-  const entities = world.query(Transform, PreviousTransform, PhysicsInitialized)
-
-  for (const entity of entities) {
-    const current = entity.get(Transform)!
-    // Use set with object for schema traits
-    entity.set(PreviousTransform, {
-      x: current.x,
-      y: current.y,
-      z: current.z,
-      qx: current.qx,
-      qy: current.qy,
-      qz: current.qz,
-      qw: current.qw,
-    })
-  }
+  // Use updateEach for direct trait mutation (no get/set overhead)
+  world.query(previousTransformQuery).updateEach(([current, previous]) => {
+    previous.x = current.x
+    previous.y = current.y
+    previous.z = current.z
+    previous.qx = current.qx
+    previous.qy = current.qy
+    previous.qz = current.qz
+    previous.qw = current.qw
+  })
 }
 
 export function syncTransformFromPhysics(world: World) {
-  const entities = world.query(Transform, RigidBodyRef, PhysicsInitialized)
+  const entities = world.query(syncFromPhysicsQuery)
 
   for (const entity of entities) {
     const bodyRef = entity.get(RigidBodyRef)!
@@ -352,35 +398,24 @@ export function syncTransformFromPhysics(world: World) {
     if (!body || body.isSleeping() || body.isFixed()) continue
 
     const translation = body.translation()
-    const rotation = body.rotation()
+    const rot = body.rotation()
 
-    // Use set with object for schema traits
-    entity.set(Transform, {
-      x: translation.x,
-      y: translation.y,
-      z: translation.z,
-      qx: rotation.x,
-      qy: rotation.y,
-      qz: rotation.z,
-      qw: rotation.w,
-    })
+    // Reuse scratch object to avoid allocations
+    _transform.x = translation.x
+    _transform.y = translation.y
+    _transform.z = translation.z
+    _transform.qx = rot.x
+    _transform.qy = rot.y
+    _transform.qz = rot.z
+    _transform.qw = rot.w
+    entity.set(Transform, _transform)
   }
 }
 
 export function interpolateTransforms(world: World, alpha: number) {
-  const entities = world.query(
-    Transform,
-    PreviousTransform,
-    RenderTransform,
-    PhysicsInitialized,
-  )
-
-  for (const entity of entities) {
-    const current = entity.get(Transform)!
-    const previous = entity.get(PreviousTransform)!
-
+  // Use updateEach for direct trait mutation (no get/set overhead)
+  world.query(interpolateQuery).updateEach(([current, previous, render]) => {
     // Compute interpolated rotation
-    const rotation = {qx: 0, qy: 0, qz: 0, qw: 1}
     slerp(
       previous.qx,
       previous.qy,
@@ -391,20 +426,18 @@ export function interpolateTransforms(world: World, alpha: number) {
       current.qz,
       current.qw,
       alpha,
-      rotation,
+      _rotation,
     )
 
-    // Use set with object for schema traits
-    entity.set(RenderTransform, {
-      x: previous.x + (current.x - previous.x) * alpha,
-      y: previous.y + (current.y - previous.y) * alpha,
-      z: previous.z + (current.z - previous.z) * alpha,
-      qx: rotation.qx,
-      qy: rotation.qy,
-      qz: rotation.qz,
-      qw: rotation.qw,
-    })
-  }
+    // Write interpolated values directly to render transform
+    render.x = previous.x + (current.x - previous.x) * alpha
+    render.y = previous.y + (current.y - previous.y) * alpha
+    render.z = previous.z + (current.z - previous.z) * alpha
+    render.qx = _rotation.qx
+    render.qy = _rotation.qy
+    render.qz = _rotation.qz
+    render.qw = _rotation.qw
+  })
 }
 
 // Quaternion slerp helper
@@ -452,7 +485,7 @@ function slerp(
 }
 
 export function syncToObject3D(world: World) {
-  const entities = world.query(RenderTransform, Object3DRef, PhysicsInitialized)
+  const entities = world.query(syncToObject3DQuery)
 
   for (const entity of entities) {
     const render = entity.get(RenderTransform)!

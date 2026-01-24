@@ -91,15 +91,34 @@ export function PhysicsProvider({
     if (debug && debugMeshRef.current) {
       const mesh = debugMeshRef.current
       const buffers = rapier.debugRender()
+      const geometry = mesh.geometry
 
-      mesh.geometry.setAttribute(
-        'position',
-        new BufferAttribute(buffers.vertices, 3),
-      )
-      mesh.geometry.setAttribute(
-        'color',
-        new BufferAttribute(buffers.colors, 4),
-      )
+      // Reuse existing BufferAttributes when possible to avoid allocations
+      const posAttr = geometry.getAttribute('position')
+      const colorAttr = geometry.getAttribute('color')
+
+      if (
+        posAttr instanceof BufferAttribute &&
+        posAttr.array.length === buffers.vertices.length
+      ) {
+        posAttr.set(buffers.vertices)
+        posAttr.needsUpdate = true
+      } else {
+        geometry.setAttribute(
+          'position',
+          new BufferAttribute(buffers.vertices, 3),
+        )
+      }
+
+      if (
+        colorAttr instanceof BufferAttribute &&
+        colorAttr.array.length === buffers.colors.length
+      ) {
+        colorAttr.set(buffers.colors)
+        colorAttr.needsUpdate = true
+      } else {
+        geometry.setAttribute('color', new BufferAttribute(buffers.colors, 4))
+      }
     }
   })
 

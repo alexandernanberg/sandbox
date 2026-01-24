@@ -1,7 +1,12 @@
 import type * as RAPIER from '@dimforge/rapier3d-simd-compat'
-import {trait} from 'koota'
+import {trait, createQuery} from 'koota'
 import type {Entity, World} from 'koota'
 import {RigidBodyRef, Transform, PhysicsInitialized} from './traits'
+
+// Reusable scratch objects to avoid allocations in hot paths
+const _velocity = {x: 0, y: 0, z: 0}
+const _nextPos = {x: 0, y: 0, z: 0}
+const _movement = {vx: 0, vy: 0, vz: 0, mx: 0, my: 0, mz: 0, grounded: false}
 
 // ============================================
 // Character Controller Traits
@@ -42,6 +47,24 @@ export const CharacterMovement = trait({
 export const IsCharacterController = trait()
 
 // ============================================
+// Cached Queries
+// ============================================
+
+const characterSystemQuery = createQuery(
+  CharacterControllerRef,
+  CharacterMovement,
+  RigidBodyRef,
+  Transform,
+  PhysicsInitialized,
+)
+
+const characterCreationQuery = createQuery(
+  CharacterControllerConfig,
+  IsCharacterController,
+  PhysicsInitialized,
+)
+
+// ============================================
 // Character Controller System
 // ============================================
 
@@ -49,13 +72,7 @@ export function characterControllerSystem(
   world: World,
   _rapierWorld: RAPIER.World,
 ) {
-  const entities = world.query(
-    CharacterControllerRef,
-    CharacterMovement,
-    RigidBodyRef,
-    Transform,
-    PhysicsInitialized,
-  )
+  const entities = world.query(characterSystemQuery)
 
   for (const entity of entities) {
     const controllerRef = entity.get(CharacterControllerRef)!
@@ -73,36 +90,31 @@ export function characterControllerSystem(
     // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
     if (!collider) continue
 
-    // Compute collider movement based on desired velocity
-    controller.computeColliderMovement(collider, {
-      x: movement.vx,
-      y: movement.vy,
-      z: movement.vz,
-    })
+    // Compute collider movement based on desired velocity (reuse scratch object)
+    _velocity.x = movement.vx
+    _velocity.y = movement.vy
+    _velocity.z = movement.vz
+    controller.computeColliderMovement(collider, _velocity)
 
     // Get computed movement and update state
     const computed = controller.computedMovement()
     const grounded = controller.computedGrounded()
 
-    // Use set with object for schema trait
-    entity.set(CharacterMovement, {
-      vx: movement.vx,
-      vy: movement.vy,
-      vz: movement.vz,
-      mx: computed.x,
-      my: computed.y,
-      mz: computed.z,
-      grounded,
-    })
+    // Reuse scratch object for CharacterMovement
+    _movement.vx = movement.vx
+    _movement.vy = movement.vy
+    _movement.vz = movement.vz
+    _movement.mx = computed.x
+    _movement.my = computed.y
+    _movement.mz = computed.z
+    _movement.grounded = grounded
+    entity.set(CharacterMovement, _movement)
 
-    // Apply movement to rigid body
-    const nextPos = {
-      x: transform.x + computed.x,
-      y: transform.y + computed.y,
-      z: transform.z + computed.z,
-    }
-
-    body.setNextKinematicTranslation(nextPos)
+    // Apply movement to rigid body (reuse scratch object)
+    _nextPos.x = transform.x + computed.x
+    _nextPos.y = transform.y + computed.y
+    _nextPos.z = transform.z + computed.z
+    body.setNextKinematicTranslation(_nextPos)
   }
 }
 
@@ -114,11 +126,7 @@ export function createCharacterController(
   world: World,
   rapierWorld: RAPIER.World,
 ) {
-  const entities = world.query(
-    CharacterControllerConfig,
-    IsCharacterController,
-    PhysicsInitialized,
-  )
+  const entities = world.query(characterCreationQuery)
 
   for (const entity of entities) {
     // Skip if already has controller

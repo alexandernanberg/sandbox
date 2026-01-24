@@ -150,3 +150,11 @@ usePhysicsUpdate((delta) => {
 - `src/ecs/physics/systems.ts` - Physics ECS systems
 - `src/ecs/physics/step.ts` - Main physics step function
 - `src/ecs/physics/components.tsx` - React components (RigidBody, colliders)
+
+## Documentation
+
+- [Koota ECS](https://github.com/pmndrs/koota/blob/main/README.md) - Entity Component System
+- [React Three Fiber](https://r3f.docs.pmnd.rs/) - React renderer for Three.js
+- [Drei](https://drei.docs.pmnd.rs/) - R3F helpers and abstractions
+- [Rapier](https://rapier.rs/docs/) - Physics engine
+- [Three.js](https://threejs.org/docs/) - 3D graphics library
