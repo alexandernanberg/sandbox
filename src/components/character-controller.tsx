@@ -1,18 +1,18 @@
+import type {KinematicCharacterController} from '@dimforge/rapier3d'
 import type {ReactNode, Ref, RefObject} from 'react'
 import {useLayoutEffect, useRef} from 'react'
-import type {KinematicCharacterController} from '@dimforge/rapier3d-compat'
 import type {Object3D} from 'three'
 import {Vector3} from 'three'
 import {useConstant} from '~/utils'
+import type {InputManagerRef} from './input-manager'
 import type {ColliderProps, RigidBodyApi, RigidBodyProps} from './physics'
+import {useControls} from './debug-controls'
 import {
   CapsuleCollider,
   RigidBody,
   usePhysics,
   usePhysicsUpdate,
 } from './physics'
-import {useControls} from './debug-controls'
-import type {InputManagerRef} from './input-manager'
 
 export interface CharacterControllerProps extends RigidBodyProps {
   children?: ReactNode

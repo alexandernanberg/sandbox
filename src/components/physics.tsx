@@ -1,6 +1,5 @@
-import * as RAPIER from '@dimforge/rapier3d-compat'
-import {useFrame} from '@react-three/fiber'
-import type {ComponentProps, ReactNode, Ref, RefObject} from 'react'
+import * as RAPIER from '@dimforge/rapier3d-simd-compat'
+import type {ComponentProps, Ref, RefObject} from 'react'
 import {
   createContext,
   use,
@@ -10,14 +9,15 @@ import {
   useMemo,
   useRef,
 } from 'react'
-import type {LineSegments, Matrix4} from 'three'
-import {BufferAttribute, Object3D, Quaternion, Vector3} from 'three'
+import {Object3D, Quaternion, Vector3} from 'three'
+import {
+  LegacyPhysicsContext,
+  type LegacyPhysicsContextValue,
+} from '~/ecs/physics/provider'
 import {useEffectEvent} from '~/lib/use-effect-event'
-import {useConstant} from '~/utils'
 
 const _object3d = new Object3D()
 const _position = new Vector3()
-// const _matrix = new Matrix4()
 const _scale = new Vector3()
 const _quaternion = new Quaternion()
 
@@ -52,26 +52,18 @@ type EventMap = Map<number, PhysicsEvents>
 // PhysicsContext
 ///////////////////////////////////////////////////////////////
 
-export interface PhysicsContextValue {
-  worldRef: RefObject<() => RAPIER.World>
-  debug: boolean
-  colliderMeshes: Map<number, Object3D>
-  colliderEvents: EventMap
-  rigidBodyMeshes: Map<number, Object3D>
-  rigidBodyEvents: EventMap
-  rigidBodyInvertedWorldMatrices: Map<number, Matrix4>
-  beforeStepCallbacks: Set<RefObject<(delta: number) => void>>
-  afterStepCallbacks: Set<RefObject<(delta: number) => void>>
-}
+// Re-export LegacyPhysicsContextValue as PhysicsContextValue for compatibility
+export type PhysicsContextValue = LegacyPhysicsContextValue
 
-const PhysicsContext = createContext<PhysicsContextValue | null>(null)
+// Use the legacy context from ECSPhysicsProvider
+const PhysicsContext = LegacyPhysicsContext
 
 function usePhysicsContext() {
   const context = use(PhysicsContext)
 
   if (context == null) {
     throw new Error(
-      'usePhysicsContext() may be used only in the context of a <Physics> component.',
+      'usePhysicsContext() may be used only in the context of a <ECSPhysicsProvider> component.',
     )
   }
 
@@ -83,273 +75,7 @@ export function usePhysics() {
   return {worldRef: context.worldRef}
 }
 
-///////////////////////////////////////////////////////////////
-// Physics
-///////////////////////////////////////////////////////////////
-
-const DEFAULT_GRAVITY = new Vector3(0, -9.81, 0)
-const fixedTimeStep = 1 / 60
-
-const init = RAPIER.init()
-
-export interface PhysicsProps {
-  children?: ReactNode
-  debug?: boolean
-  gravity?: Triplet | Vector3
-}
-
-export function Physics({
-  children,
-  debug = false,
-  gravity = DEFAULT_GRAVITY,
-}: PhysicsProps) {
-  use(init)
-  const worldRef = useRef<RAPIER.World>(null)
-  const eventQueueRef = useRef<RAPIER.EventQueue>(null)
-
-  const frameAccumulatorRef = useRef(0)
-  const afterStepCallbacks = useConstant(
-    () => new Set<RefObject<(delta: number) => void>>(),
-  )
-  const beforeStepCallbacks = useConstant(
-    () => new Set<RefObject<(delta: number) => void>>(),
-  )
-
-  const colliderMeshes = useConstant(() => new Map<number, Object3D>())
-  const colliderEvents = useConstant(() => new Map<number, PhysicsEvents>())
-
-  const rigidBodyMeshes = useConstant(() => new Map<number, Object3D>())
-  const rigidBodyEvents = useConstant(() => new Map<number, PhysicsEvents>())
-  const rigidBodyInvertedWorldMatrices = useConstant(
-    () => new Map<number, Matrix4>(),
-  )
-  const rigidBodyPrevPositions = useConstant(
-    () => new Map<number, RAPIER.Vector3>(),
-  )
-  const rigidBodyPrevRotations = useConstant(
-    () => new Map<number, RAPIER.Rotation>(),
-  )
-
-  const debugMeshRef = useRef<LineSegments>(null)
-
-  const worldGetter = useRef(() => {
-    if (worldRef.current === null) {
-      worldRef.current = new RAPIER.World(
-        Array.isArray(gravity) ? new Vector3().fromArray(gravity) : gravity,
-      )
-      worldRef.current.timestep = fixedTimeStep
-    }
-    return worldRef.current
-  })
-
-  const eventQueueGetter = useRef(() => {
-    if (eventQueueRef.current === null) {
-      eventQueueRef.current = new RAPIER.EventQueue(true)
-    }
-    return eventQueueRef.current
-  })
-
-  // Clean up
-  useEffect(() => {
-    return () => {
-      if (worldRef.current !== null) {
-        worldRef.current.free()
-        worldRef.current = null
-      }
-      if (eventQueueRef.current !== null) {
-        eventQueueRef.current.free()
-        eventQueueRef.current = null
-      }
-    }
-  }, [])
-
-  // Update gravity
-  useEffect(() => {
-    const world = worldGetter.current()
-    world.gravity = Array.isArray(gravity)
-      ? new Vector3().fromArray(gravity)
-      : gravity
-  }, [gravity])
-
-  useFrame((_state, delta) => {
-    const world = worldGetter.current()
-    const eventQueue = eventQueueGetter.current()
-
-    if (delta > 0.25) {
-      delta = 0.25
-    }
-
-    frameAccumulatorRef.current += delta
-
-    // Fixed update
-    while (frameAccumulatorRef.current >= fixedTimeStep) {
-      for (const cb of beforeStepCallbacks) {
-        cb.current(fixedTimeStep)
-      }
-
-      rigidBodyPrevPositions.clear()
-      rigidBodyPrevRotations.clear()
-      world.forEachRigidBody((body) => {
-        // TODO: body.nextTranslation?
-        rigidBodyPrevPositions.set(body.handle, body.translation())
-        rigidBodyPrevRotations.set(body.handle, body.rotation())
-      })
-
-      world.step(eventQueue)
-
-      for (const cb of afterStepCallbacks) {
-        cb.current(fixedTimeStep)
-      }
-
-      eventQueue.drainCollisionEvents((handle1, handle2, started) => {
-        // TODO: world.contactPair
-        handleCollisionEvent(
-          world,
-          handle1,
-          colliderEvents,
-          colliderMeshes,
-          rigidBodyEvents,
-          rigidBodyMeshes,
-          started,
-        )
-        handleCollisionEvent(
-          world,
-          handle2,
-          colliderEvents,
-          colliderMeshes,
-          rigidBodyEvents,
-          rigidBodyMeshes,
-          started,
-        )
-      })
-
-      eventQueue.drainContactForceEvents((event) => {
-        const source1 = getColliderSource(
-          world,
-          event.collider1(),
-          colliderEvents,
-          colliderMeshes,
-          rigidBodyEvents,
-          rigidBodyMeshes,
-        )
-        const source2 = getColliderSource(
-          world,
-          event.collider2(),
-          colliderEvents,
-          colliderMeshes,
-          rigidBodyEvents,
-          rigidBodyMeshes,
-        )
-
-        const collisionPayload = {
-          totalForce: () => event.totalForce(),
-          totalForceMagnitude: () => event.totalForceMagnitude(),
-          maxForceDirection: () => event.maxForceDirection(),
-          maxForceMagnitude: () => event.maxForceMagnitude(),
-        }
-
-        const collisionPayload1 = {...collisionPayload}
-        const collisionPayload2 = {...collisionPayload}
-
-        source1.collider.events?.onContactForce?.(collisionPayload1)
-        source1.rigidBody.events?.onContactForce?.(collisionPayload1)
-        source2.collider.events?.onContactForce?.(collisionPayload2)
-        source2.rigidBody.events?.onContactForce?.(collisionPayload2)
-      })
-
-      if (debug) {
-        const mesh = debugMeshRef.current
-        if (!mesh) return
-
-        const buffers = world.debugRender()
-
-        mesh.geometry.setAttribute(
-          'position',
-          new BufferAttribute(buffers.vertices, 3),
-        )
-        mesh.geometry.setAttribute(
-          'color',
-          new BufferAttribute(buffers.colors, 4),
-        )
-      }
-
-      frameAccumulatorRef.current -= fixedTimeStep
-    }
-
-    const alpha = frameAccumulatorRef.current / fixedTimeStep
-
-    world.forEachRigidBody((rigidBody) => {
-      if (rigidBody.isSleeping() || rigidBody.isFixed()) return
-
-      const mesh = rigidBodyMeshes.get(rigidBody.handle)
-      if (mesh == null) return
-
-      const t = rigidBody.translation()
-      const r = rigidBody.rotation()
-
-      const invertedWorldMatrix = rigidBodyInvertedWorldMatrices.get(
-        rigidBody.handle,
-      )
-      const prevPosition = rigidBodyPrevPositions.get(rigidBody.handle)
-      const prevRotation = rigidBodyPrevRotations.get(rigidBody.handle)
-
-      if (prevPosition && prevRotation) {
-        mesh.position.copy(prevPosition)
-        mesh.quaternion.copy(prevRotation)
-
-        if (invertedWorldMatrix) {
-          mesh.applyMatrix4(invertedWorldMatrix)
-        }
-      }
-
-      _object3d.position.copy(t)
-      _object3d.quaternion.copy(r)
-
-      if (invertedWorldMatrix) {
-        _object3d.applyMatrix4(invertedWorldMatrix)
-      }
-
-      mesh.position.lerp(_object3d.position, alpha)
-      mesh.quaternion.slerp(_object3d.quaternion, alpha)
-    })
-  })
-
-  const context = useMemo<PhysicsContextValue>(
-    () => ({
-      worldRef: worldGetter,
-      debug,
-      colliderMeshes,
-      colliderEvents,
-      rigidBodyMeshes,
-      rigidBodyEvents,
-      rigidBodyInvertedWorldMatrices,
-      afterStepCallbacks,
-      beforeStepCallbacks,
-    }),
-    [
-      debug,
-      colliderMeshes,
-      colliderEvents,
-      rigidBodyMeshes,
-      rigidBodyEvents,
-      rigidBodyInvertedWorldMatrices,
-      afterStepCallbacks,
-      beforeStepCallbacks,
-    ],
-  )
-
-  return (
-    <PhysicsContext.Provider value={context}>
-      {children}
-      {debug && (
-        <lineSegments ref={debugMeshRef}>
-          <lineBasicMaterial color={0xffffff} vertexColors />
-          <bufferGeometry />
-        </lineSegments>
-      )}
-    </PhysicsContext.Provider>
-  )
-}
+type Triplet = [number, number, number]
 
 interface CollisionSource {
   collider: {
@@ -459,8 +185,6 @@ type RigidBodyType =
   | 'kinematic-position-based'
 
 export interface RigidBodyApi extends RAPIER.RigidBody {}
-
-type Triplet = [number, number, number]
 
 export interface RigidBodyProps extends Omit<Object3DProps, 'ref'> {
   ref?: Ref<RigidBodyApi>

@@ -16,8 +16,9 @@ const TweakpaneContext = createContext<RefObject<
   () => Pane | FolderApi
 > | null>(null)
 
-interface DebugControlProps
-  extends NonNullable<ConstructorParameters<typeof Pane>[0]> {
+interface DebugControlProps extends NonNullable<
+  ConstructorParameters<typeof Pane>[0]
+> {
   children: ReactNode
 }
 

@@ -3,6 +3,7 @@
 import {Text, useTexture} from '@react-three/drei'
 import type {Color} from '@react-three/fiber'
 import {useFrame} from '@react-three/fiber'
+import {useActions} from 'koota/react'
 import type {ComponentProps, RefObject} from 'react'
 import {Suspense, useImperativeHandle, useRef, useState} from 'react'
 import seedrandom from 'seedrandom'
@@ -26,6 +27,9 @@ import {
   usePhysicsUpdate,
   useSphericalJoint,
 } from '~/components/physics'
+import {actions} from '~/ecs'
+import {ECSBalls} from '~/ecs/balls'
+import {ECSRigidBody, ECSCuboidCollider} from '~/ecs/physics'
 import Ramp from '~/models/ramp'
 import Slope from '~/models/slope'
 import Stone from '~/models/stone'
@@ -35,26 +39,20 @@ interface PlaygroundProps {
 }
 
 export function Playground({debugCamera}: PlaygroundProps) {
-  const [items, setItems] = useState<Array<number>>([])
-
-  const spawnItems = (num = 1) => {
-    setItems((state) => [
-      ...state,
-      ...new Array(num).fill(0).map((_, i) => i * 100_000 + performance.now()),
-    ])
-  }
+  // useActions gives us ECS actions bound to the world in context
+  const {spawnBalls, clearBalls} = useActions(actions)
 
   const objectControls = useControls(
     'Objects',
     {
       _spawn: {
         title: 'Spawn 10 balls',
-        action: () => spawnItems(10),
+        action: () => spawnBalls(10), // ECS action instead of setState
       },
       _reset: {
         title: 'Reset',
         index: 1,
-        action: () => setItems([]),
+        action: () => clearBalls(), // ECS action to destroy entities
       },
     },
     {expanded: true, index: 4},
@@ -80,9 +78,8 @@ export function Playground({debugCamera}: PlaygroundProps) {
       <Floor />
       <Walls />
 
-      {items.map((item) => (
-        <Ball key={item} position={[Math.random(), 6, Math.random()]} />
-      ))}
+      {/* ECS-managed balls - queries the world for all IsBall entities */}
+      <ECSBalls />
 
       <Slopes position={[8, 0, 3]} />
 
@@ -441,13 +438,7 @@ function Slopes(props: ComponentProps<'group'>) {
     const run = runFromAngleAndRaise(angle, 2)
     return (
       <group key={angle}>
-        <CuboidCollider
-          args={[2, 4, 2]}
-          position={[0, 2, 2 * index]}
-          onContactForce={(event) => {
-            console.log(event.totalForce())
-          }}
-        >
+        <ECSCuboidCollider args={[2, 4, 2]} position={[0, 2, 2 * index]}>
           <Suspense fallback={null}>
             <Text
               position={[-1.01, 1, 0]}
@@ -467,7 +458,7 @@ function Slopes(props: ComponentProps<'group'>) {
             <boxGeometry args={[2, 4, 2]} />
             <meshPhongMaterial color={0xfffff0} />
           </mesh>
-        </CuboidCollider>
+        </ECSCuboidCollider>
         <Slope
           position={[-1.001 - run / 2, 1, 2 * index]}
           scale={[run, 2, 2]}
@@ -479,7 +470,7 @@ function Slopes(props: ComponentProps<'group'>) {
 
   return (
     <group {...props}>
-      <RigidBody type="fixed">{slopes}</RigidBody>
+      <ECSRigidBody type="fixed">{slopes}</ECSRigidBody>
     </group>
   )
 }

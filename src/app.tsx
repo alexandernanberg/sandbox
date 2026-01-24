@@ -1,23 +1,28 @@
 import {Loader, OrbitControls, Sky as SkyShader, Stats} from '@react-three/drei'
 import {Canvas} from '@react-three/fiber'
+import {WorldProvider} from 'koota/react'
 import {useReducer} from 'react'
 import {
   DirectionalLight,
   HemisphereLight,
   LightProvider,
 } from '~/components/lights'
-import {Physics} from '~/components/physics'
+import {world} from '~/ecs'
+import {ECSPhysicsProvider} from '~/ecs/physics'
 import {Playground} from '~/scenes/playground'
 import {DebugControls, useControls} from './components/debug-controls'
 
 export function Root() {
   return (
     <>
-      <Canvas camera={{position: [6, 6, -4]}} shadows>
-        <DebugControls>
-          <App />
-        </DebugControls>
-      </Canvas>
+      {/* WorldProvider makes the ECS world available to all components */}
+      <WorldProvider world={world}>
+        <Canvas camera={{position: [6, 6, -4]}} shadows>
+          <DebugControls>
+            <App />
+          </DebugControls>
+        </Canvas>
+      </WorldProvider>
       <Loader />
     </>
   )
@@ -56,13 +61,13 @@ function App() {
       <fog attach="fog" args={[0xffffff, 10, 90]} />
       <Sky />
 
-      <Physics
+      <ECSPhysicsProvider
         key={physicsKey}
         debug={physicsControls.debug}
         gravity={physicsControls.gravity}
       >
         <Playground debugCamera={cameraControls.debug} />
-      </Physics>
+      </ECSPhysicsProvider>
     </LightProvider>
   )
 }
