@@ -13,6 +13,11 @@ import {
   CameraShake,
   IsCameraTarget,
 } from '~/ecs/camera'
+import {
+  noise2D,
+  computeCameraPosition,
+  exponentialSmoothing,
+} from '~/ecs/camera/math'
 import {CharacterMovement} from '~/ecs/physics'
 import {RenderTransform} from '~/ecs/physics'
 import {getRapierWorld} from '~/ecs/physics/world'
@@ -26,8 +31,7 @@ const _rayOrigin = {x: 0, y: 0, z: 0}
 const _rayDirection = {x: 0, y: 0, z: 0}
 let _cachedRay: RAPIER.Ray | null = null
 
-// Whisker offsets for multi-ray collision (normalized screen-space offsets)
-// Cast rays in a cross/plus pattern around the center
+// Whisker offsets for multi-ray collision (normalized offsets in camera space)
 const WHISKER_OFFSETS = [
   {x: 0, y: 0}, // Center
   {x: 0.4, y: 0}, // Right
@@ -37,15 +41,6 @@ const WHISKER_OFFSETS = [
   {x: 0.25, y: 0.2}, // Upper-right
   {x: -0.25, y: 0.2}, // Upper-left
 ]
-
-// Simple 2D noise function (hand-rolled to avoid dependencies)
-// Uses multiple sine waves for pseudo-random behavior
-function noise2D(x: number, y: number): number {
-  const n1 = Math.sin(x * 1.27 + y * 3.71) * 0.5
-  const n2 = Math.sin(x * 2.31 + y * 1.43) * 0.3
-  const n3 = Math.sin(x * 3.91 + y * 2.17) * 0.2
-  return n1 + n2 + n3
-}
 
 // ============================================
 // Camera Component
@@ -61,8 +56,9 @@ interface ThirdPersonCameraProps {
 
 /**
  * Professional third-person camera with:
+ * - INSTANT mouse response (no position smoothing on rotation)
  * - Whisker-based collision detection
- * - Asymmetric smoothing (fast pull-in, slow ease-out)
+ * - Asymmetric collision smoothing (fast pull-in, slow ease-out)
  * - Look-ahead framing based on player velocity
  * - Perlin noise for natural movement
  * - Trauma-based shake system
@@ -79,14 +75,9 @@ export function ThirdPersonCamera({
 
   useImperativeHandle(forwardedRef, () => ref.current!)
 
-  // Persistent vectors for smooth interpolation (reused to avoid allocations)
-  const currentPosition = useConstant(() => new Vector3())
-  const targetLookAt = useConstant(() => new Vector3())
-  const lerpTarget = useConstant(() => new Vector3())
+  // Persistent vectors (reused to avoid allocations)
   const noiseOffset = useConstant(() => new Vector3())
-
-  // Track previous collision distance for asymmetric smoothing
-  const prevCollisionDist = useRef<number | null>(null)
+  const targetLookAt = useConstant(() => new Vector3())
 
   // Create camera orbit entity on mount
   useLayoutEffect(() => {
@@ -120,7 +111,6 @@ export function ThirdPersonCamera({
       const transform = entity.get(RenderTransform)!
       targetPos = {x: transform.x, y: transform.y, z: transform.z}
 
-      // Get velocity for look-ahead (if character has movement component)
       if (entity.has(CharacterMovement)) {
         const movement = entity.get(CharacterMovement)!
         targetVelocity = {x: movement.mx, y: movement.my, z: movement.mz}
@@ -131,36 +121,32 @@ export function ThirdPersonCamera({
     if (!targetPos) return
 
     // ========================================
-    // 1. LOOK-AHEAD FRAMING
+    // 1. LOOK-AHEAD FRAMING (smoothed - intentionally gradual)
     // ========================================
     let lookAheadX = orbit.lookAheadX
     let lookAheadZ = orbit.lookAheadZ
 
     if (targetVelocity) {
-      // Calculate target look-ahead based on velocity
       const speed = Math.sqrt(
         targetVelocity.x * targetVelocity.x +
           targetVelocity.z * targetVelocity.z,
       )
 
       if (speed > 0.01) {
-        // Scale look-ahead by speed (capped)
         const lookAheadScale = Math.min(speed * 10, 1) * orbit.lookAheadDistance
         const targetLookAheadX = (targetVelocity.x / speed) * lookAheadScale
         const targetLookAheadZ = (targetVelocity.z / speed) * lookAheadScale
 
-        // Smooth the look-ahead offset
-        const lookAheadT = 1 - Math.exp(-orbit.lookAheadSmoothing * delta)
+        const lookAheadT = exponentialSmoothing(orbit.lookAheadSmoothing, delta)
         lookAheadX += (targetLookAheadX - lookAheadX) * lookAheadT
         lookAheadZ += (targetLookAheadZ - lookAheadZ) * lookAheadT
       } else {
-        // Decay look-ahead when stationary
-        const decayT = 1 - Math.exp(-orbit.lookAheadSmoothing * 0.5 * delta)
+        // Decay when stationary
+        const decayT = exponentialSmoothing(orbit.lookAheadSmoothing * 0.5, delta)
         lookAheadX *= 1 - decayT
         lookAheadZ *= 1 - decayT
       }
 
-      // Update orbit state
       cameraEntity.set(CameraOrbit, (o) => {
         o.lookAheadX = lookAheadX
         o.lookAheadZ = lookAheadZ
@@ -168,7 +154,7 @@ export function ThirdPersonCamera({
       })
     }
 
-    // Apply look-ahead to effective target position
+    // Effective target with look-ahead
     const effectiveTarget = {
       x: targetPos.x + lookAheadX,
       y: targetPos.y,
@@ -176,34 +162,28 @@ export function ThirdPersonCamera({
     }
 
     // ========================================
-    // 2. CALCULATE IDEAL CAMERA POSITION
+    // 2. CALCULATE CAMERA POSITION (INSTANT - no smoothing on yaw/pitch)
     // ========================================
     const {yaw, pitch, distance} = orbit
 
-    // Apply aim offset (shift target in camera space)
+    // Apply aim offset in camera space
     const aimOffsetWorld = {
       x: Math.cos(yaw) * orbit.aimOffsetX,
       z: -Math.sin(yaw) * orbit.aimOffsetX,
     }
 
-    const idealPosition = computeCameraPosition(
-      {
-        x: effectiveTarget.x + aimOffsetWorld.x,
-        y: effectiveTarget.y,
-        z: effectiveTarget.z + aimOffsetWorld.z,
-      },
-      yaw,
-      pitch,
-      distance,
-      heightOffset,
-    )
+    const orbitTarget = {
+      x: effectiveTarget.x + aimOffsetWorld.x,
+      y: effectiveTarget.y,
+      z: effectiveTarget.z + aimOffsetWorld.z,
+    }
 
     // ========================================
     // 3. WHISKER COLLISION DETECTION
     // ========================================
     const collisionDistance = castWhiskerRays(
       effectiveTarget,
-      idealPosition,
+      computeCameraPosition(orbitTarget, yaw, pitch, distance, heightOffset),
       yaw,
       pitch,
       distance,
@@ -211,39 +191,32 @@ export function ThirdPersonCamera({
       orbit.collisionPadding,
     )
 
-    // Clamp to minimum distance
     const clampedDistance = Math.max(collisionDistance, orbit.minDistance)
 
     // ========================================
-    // 4. ASYMMETRIC COLLISION SMOOTHING
+    // 4. COLLISION DISTANCE SMOOTHING (asymmetric)
     // ========================================
     let currentDist = orbit.currentDistance
 
-    // Determine if we're pulling in or easing out
+    // Fast pull-in, slow ease-out
     const isPullingIn = clampedDistance < currentDist
     const smoothing = isPullingIn
       ? orbit.pullInSmoothing
       : orbit.easeOutSmoothing
 
-    // Smooth the collision distance
-    const distT = 1 - Math.exp(-smoothing * delta)
+    const distT = exponentialSmoothing(smoothing, delta)
     currentDist += (clampedDistance - currentDist) * distT
 
-    // Update current distance in orbit state
     cameraEntity.set(CameraOrbit, (o) => {
       o.currentDistance = currentDist
       return o
     })
 
-    prevCollisionDist.current = currentDist
-
-    // Compute final camera position with smoothed distance
-    const finalIdealPosition = computeCameraPosition(
-      {
-        x: effectiveTarget.x + aimOffsetWorld.x,
-        y: effectiveTarget.y,
-        z: effectiveTarget.z + aimOffsetWorld.z,
-      },
+    // ========================================
+    // 5. FINAL CAMERA POSITION (instant rotation, smoothed distance only)
+    // ========================================
+    const finalPosition = computeCameraPosition(
+      orbitTarget,
       yaw,
       pitch,
       currentDist,
@@ -251,25 +224,12 @@ export function ThirdPersonCamera({
     )
 
     // ========================================
-    // 5. POSITION SMOOTHING
-    // ========================================
-    const posT = 1 - Math.exp(-orbit.positionSmoothing * delta)
-    lerpTarget.set(
-      finalIdealPosition.x,
-      finalIdealPosition.y,
-      finalIdealPosition.z,
-    )
-    currentPosition.lerp(lerpTarget, posT)
-
-    // ========================================
-    // 6. CAMERA NOISE
+    // 6. CAMERA NOISE (subtle)
     // ========================================
     noiseOffset.set(0, 0, 0)
 
     if (noise?.enabled) {
       const time = elapsedTime.current
-
-      // Position noise (different seeds for each axis)
       noiseOffset.x =
         noise2D(time * noise.positionFrequency, 0) * noise.positionAmplitude
       noiseOffset.y =
@@ -285,18 +245,15 @@ export function ThirdPersonCamera({
     let shakeRotation = {x: 0, y: 0, z: 0}
 
     if (shake && shake.trauma > 0) {
-      // Decay trauma
       const newTrauma = Math.max(0, shake.trauma - shake.traumaDecay * delta)
       cameraEntity.set(CameraShake, (s) => {
         s.trauma = newTrauma
         return s
       })
 
-      // Shake intensity = trauma^2 for snappier feel
       const intensity = shake.trauma * shake.trauma
       const time = elapsedTime.current * shake.frequency
 
-      // Random offsets using noise
       shakeOffset = {
         x: noise2D(time, 0) * shake.maxOffset * intensity,
         y: noise2D(time, 100) * shake.maxOffset * intensity,
@@ -311,15 +268,15 @@ export function ThirdPersonCamera({
     }
 
     // ========================================
-    // 8. APPLY FINAL CAMERA TRANSFORM
+    // 8. APPLY FINAL TRANSFORM
     // ========================================
     camera.position.set(
-      currentPosition.x + noiseOffset.x + shakeOffset.x,
-      currentPosition.y + noiseOffset.y + shakeOffset.y,
-      currentPosition.z + noiseOffset.z + shakeOffset.z,
+      finalPosition.x + noiseOffset.x + shakeOffset.x,
+      finalPosition.y + noiseOffset.y + shakeOffset.y,
+      finalPosition.z + noiseOffset.z + shakeOffset.z,
     )
 
-    // Look at target (slightly above player center, with look-ahead)
+    // Look at target
     targetLookAt.set(
       effectiveTarget.x,
       targetPos.y + heightOffset * 0.5,
@@ -348,35 +305,9 @@ export function ThirdPersonCamera({
 }
 
 // ============================================
-// Helper Functions
+// Whisker Collision
 // ============================================
 
-/**
- * Compute camera position in spherical coordinates around target.
- */
-function computeCameraPosition(
-  target: {x: number; y: number; z: number},
-  yaw: number,
-  pitch: number,
-  distance: number,
-  heightOffset: number,
-): {x: number; y: number; z: number} {
-  const cosPitch = Math.cos(pitch)
-  const sinPitch = Math.sin(pitch)
-  const cosYaw = Math.cos(yaw)
-  const sinYaw = Math.sin(yaw)
-
-  return {
-    x: target.x + distance * cosPitch * sinYaw,
-    y: target.y + heightOffset + distance * sinPitch,
-    z: target.z + distance * cosPitch * cosYaw,
-  }
-}
-
-/**
- * Cast multiple "whisker" rays from target to camera to detect collisions.
- * Returns the minimum safe distance across all whiskers.
- */
 function castWhiskerRays(
   target: {x: number; y: number; z: number},
   idealPos: {x: number; y: number; z: number},
@@ -389,47 +320,33 @@ function castWhiskerRays(
   const rapier = getRapierWorld()
   if (!rapier) return maxDistance
 
-  // Calculate camera's right and up vectors for whisker offsets
+  // Camera basis vectors
   const cosPitch = Math.cos(pitch)
   const sinPitch = Math.sin(pitch)
   const cosYaw = Math.cos(yaw)
   const sinYaw = Math.sin(yaw)
 
-  // Camera forward (from target to camera)
-  const forwardX = cosPitch * sinYaw
-  const forwardY = sinPitch
-  const forwardZ = cosPitch * cosYaw
-
-  // Camera right (perpendicular to forward in XZ plane)
   const rightX = cosYaw
   const rightZ = -sinYaw
-
-  // Camera up (cross product of forward and right)
   const upX = -sinPitch * sinYaw
   const upY = cosPitch
   const upZ = -sinPitch * cosYaw
 
-  // Origin for all rays (target + height offset)
   const originX = target.x
   const originY = target.y + heightOffset
   const originZ = target.z
 
   let minDistance = maxDistance
 
-  // Cast each whisker ray
   for (const whisker of WHISKER_OFFSETS) {
-    // Calculate whisker endpoint offset from ideal position
-    // Offset is in camera-space (right/up relative to camera direction)
     const offsetX = rightX * whisker.x + upX * whisker.y
     const offsetY = upY * whisker.y
     const offsetZ = rightZ * whisker.x + upZ * whisker.y
 
-    // Whisker target position
     const whiskerTargetX = idealPos.x + offsetX
     const whiskerTargetY = idealPos.y + offsetY
     const whiskerTargetZ = idealPos.z + offsetZ
 
-    // Ray direction
     const dx = whiskerTargetX - originX
     const dy = whiskerTargetY - originY
     const dz = whiskerTargetZ - originZ
@@ -437,7 +354,6 @@ function castWhiskerRays(
 
     if (len < 0.001) continue
 
-    // Set ray origin and direction
     _rayOrigin.x = originX
     _rayOrigin.y = originY
     _rayOrigin.z = originZ
@@ -445,7 +361,6 @@ function castWhiskerRays(
     _rayDirection.y = dy / len
     _rayDirection.z = dz / len
 
-    // Create or reuse Ray
     if (!_cachedRay) {
       _cachedRay = new RAPIER.Ray(_rayOrigin, _rayDirection)
     } else {
@@ -453,12 +368,9 @@ function castWhiskerRays(
       _cachedRay.dir = _rayDirection
     }
 
-    // Cast ray
     const hit = rapier.castRay(_cachedRay, maxDistance + 1, true)
 
     if (hit) {
-      // Convert hit distance to camera distance (accounting for whisker spread)
-      // Use conservative estimate - if any whisker hits, pull camera in
       const hitDistance = hit.timeOfImpact - padding
       if (hitDistance < minDistance) {
         minDistance = hitDistance
@@ -475,16 +387,14 @@ function castWhiskerRays(
 
 /**
  * Add trauma to the camera shake system.
- * Call this from game code when impacts occur.
- *
  * @example
- * // On player hit
- * addCameraTrauma(world, 0.3)
- *
- * // On explosion
- * addCameraTrauma(world, 0.6)
+ * addCameraTrauma(world, 0.3) // player hit
+ * addCameraTrauma(world, 0.6) // explosion
  */
-export function addCameraTrauma(world: ReturnType<typeof useWorld>, amount: number) {
+export function addCameraTrauma(
+  world: ReturnType<typeof useWorld>,
+  amount: number,
+) {
   for (const entity of world.query(CameraShake)) {
     entity.set(CameraShake, (s) => {
       s.trauma = Math.min(1, s.trauma + amount)

@@ -31,13 +31,11 @@ export const CameraOrbit = trait({
   /** Padding from collision surface */
   collisionPadding: 0.2,
 
-  // Asymmetric smoothing
+  // Asymmetric collision smoothing (rotation is instant, only distance is smoothed)
   /** Smoothing when pulling camera in (collision) - higher = faster */
-  pullInSmoothing: 20.0,
+  pullInSmoothing: 25.0,
   /** Smoothing when easing camera out (recovery) - higher = faster */
-  easeOutSmoothing: 4.0,
-  /** General position smoothing */
-  positionSmoothing: 8.0,
+  easeOutSmoothing: 5.0,
 
   // Look-ahead framing
   /** How far ahead to offset based on velocity */
