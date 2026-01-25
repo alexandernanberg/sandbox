@@ -33,6 +33,21 @@ const _rayOrigin = {x: 0, y: 0, z: 0}
 const _rayDirection = {x: 0, y: 0, z: 0}
 let _cachedRay: RAPIER.Ray | null = null
 
+// Camera frame scratch objects
+const _targetPos = {x: 0, y: 0, z: 0}
+const _targetVelocity = {x: 0, y: 0, z: 0}
+const _effectiveTarget = {x: 0, y: 0, z: 0}
+const _aimOffsetWorld = {x: 0, z: 0}
+const _orbitTarget = {x: 0, y: 0, z: 0}
+const _finalPosition = {x: 0, y: 0, z: 0}
+const _shakeOffset = {x: 0, y: 0, z: 0}
+const _shakeRotation = {x: 0, y: 0, z: 0}
+
+// Reusable orbit rig objects
+const _topRig = {distance: 0, height: 0}
+const _middleRig = {distance: 0, height: 0}
+const _bottomRig = {distance: 0, height: 0}
+
 // Whisker offsets for multi-ray collision (normalized offsets in camera space)
 const WHISKER_OFFSETS = [
   {x: 0, y: 0}, // Center
@@ -52,8 +67,6 @@ interface ThirdPersonCameraProps {
   ref?: Ref<PerspectiveCameraImpl>
   targetRef?: RefObject<Object3D | null>
   makeDefault?: boolean
-  /** Height offset from target position */
-  heightOffset?: number
 }
 
 /**
@@ -68,7 +81,6 @@ interface ThirdPersonCameraProps {
 export function ThirdPersonCamera({
   ref: forwardedRef,
   makeDefault = true,
-  heightOffset = 1.5,
 }: ThirdPersonCameraProps) {
   const ref = useRef<PerspectiveCameraImpl>(null)
   const world = useWorld()
@@ -179,21 +191,27 @@ export function ThirdPersonCamera({
     if (!orbit) return
 
     // Find target entity (player with IsCameraTarget)
-    let targetPos: {x: number; y: number; z: number} | null = null
-    let targetVelocity: {x: number; y: number; z: number} | null = null
+    let hasTarget = false
+    let hasVelocity = false
 
     for (const entity of world.query(IsCameraTarget, RenderTransform)) {
       const transform = entity.get(RenderTransform)!
-      targetPos = {x: transform.x, y: transform.y, z: transform.z}
+      _targetPos.x = transform.x
+      _targetPos.y = transform.y
+      _targetPos.z = transform.z
+      hasTarget = true
 
       if (entity.has(CharacterMovement)) {
         const movement = entity.get(CharacterMovement)!
-        targetVelocity = {x: movement.mx, y: movement.my, z: movement.mz}
+        _targetVelocity.x = movement.mx
+        _targetVelocity.y = movement.my
+        _targetVelocity.z = movement.mz
+        hasVelocity = true
       }
       break
     }
 
-    if (!targetPos) return
+    if (!hasTarget) return
 
     // ========================================
     // 1. LOOK-AHEAD FRAMING (smoothed - intentionally gradual)
@@ -201,16 +219,16 @@ export function ThirdPersonCamera({
     let lookAheadX = orbit.lookAheadX
     let lookAheadZ = orbit.lookAheadZ
 
-    if (targetVelocity) {
+    if (hasVelocity) {
       const speed = Math.sqrt(
-        targetVelocity.x * targetVelocity.x +
-          targetVelocity.z * targetVelocity.z,
+        _targetVelocity.x * _targetVelocity.x +
+          _targetVelocity.z * _targetVelocity.z,
       )
 
       if (speed > 0.01) {
         const lookAheadScale = Math.min(speed * 10, 1) * orbit.lookAheadDistance
-        const targetLookAheadX = (targetVelocity.x / speed) * lookAheadScale
-        const targetLookAheadZ = (targetVelocity.z / speed) * lookAheadScale
+        const targetLookAheadX = (_targetVelocity.x / speed) * lookAheadScale
+        const targetLookAheadZ = (_targetVelocity.z / speed) * lookAheadScale
 
         const lookAheadT = exponentialSmoothing(orbit.lookAheadSmoothing, delta)
         lookAheadX += (targetLookAheadX - lookAheadX) * lookAheadT
@@ -230,48 +248,50 @@ export function ThirdPersonCamera({
     }
 
     // Effective target with look-ahead
-    const effectiveTarget = {
-      x: targetPos.x + lookAheadX,
-      y: targetPos.y,
-      z: targetPos.z + lookAheadZ,
-    }
+    _effectiveTarget.x = _targetPos.x + lookAheadX
+    _effectiveTarget.y = _targetPos.y
+    _effectiveTarget.z = _targetPos.z + lookAheadZ
 
     // ========================================
     // 2. INTERPOLATE ORBIT RIGS (Cinemachine-style 3-rig system)
     // ========================================
     const {yaw, pitch} = orbit
 
+    // Update scratch rig objects
+    _topRig.distance = orbit.topDistance
+    _topRig.height = orbit.topHeight
+    _middleRig.distance = orbit.middleDistance
+    _middleRig.height = orbit.middleHeight
+    _bottomRig.distance = orbit.bottomDistance
+    _bottomRig.height = orbit.bottomHeight
+
     // Interpolate between top/middle/bottom orbits based on pitch
     const interpolatedOrbit = interpolateOrbitRigsSmooth(
       pitch,
       orbit.minPitch,
       orbit.maxPitch,
-      {distance: orbit.topDistance, height: orbit.topHeight},
-      {distance: orbit.middleDistance, height: orbit.middleHeight},
-      {distance: orbit.bottomDistance, height: orbit.bottomHeight},
+      _topRig,
+      _middleRig,
+      _bottomRig,
     )
 
     const targetDistance = interpolatedOrbit.distance
     const effectiveHeightOffset = interpolatedOrbit.height
 
     // Apply aim offset in camera space
-    const aimOffsetWorld = {
-      x: Math.cos(yaw) * orbit.aimOffsetX,
-      z: -Math.sin(yaw) * orbit.aimOffsetX,
-    }
+    _aimOffsetWorld.x = Math.cos(yaw) * orbit.aimOffsetX
+    _aimOffsetWorld.z = -Math.sin(yaw) * orbit.aimOffsetX
 
-    const orbitTarget = {
-      x: effectiveTarget.x + aimOffsetWorld.x,
-      y: effectiveTarget.y,
-      z: effectiveTarget.z + aimOffsetWorld.z,
-    }
+    _orbitTarget.x = _effectiveTarget.x + _aimOffsetWorld.x
+    _orbitTarget.y = _effectiveTarget.y
+    _orbitTarget.z = _effectiveTarget.z + _aimOffsetWorld.z
 
     // ========================================
     // 3. WHISKER COLLISION DETECTION
     // ========================================
     const collisionDistance = castWhiskerRays(
-      effectiveTarget,
-      computeCameraPosition(orbitTarget, yaw, pitch, targetDistance, effectiveHeightOffset),
+      _effectiveTarget,
+      computeCameraPosition(_orbitTarget, yaw, pitch, targetDistance, effectiveHeightOffset),
       yaw,
       pitch,
       targetDistance,
@@ -303,13 +323,16 @@ export function ThirdPersonCamera({
     // ========================================
     // 5. FINAL CAMERA POSITION (instant rotation, smoothed distance only)
     // ========================================
-    const finalPosition = computeCameraPosition(
-      orbitTarget,
+    const computedPos = computeCameraPosition(
+      _orbitTarget,
       yaw,
       pitch,
       currentDist,
       effectiveHeightOffset,
     )
+    _finalPosition.x = computedPos.x
+    _finalPosition.y = computedPos.y
+    _finalPosition.z = computedPos.z
 
     // ========================================
     // 6. CAMERA NOISE (subtle)
@@ -329,8 +352,12 @@ export function ThirdPersonCamera({
     // ========================================
     // 7. CAMERA SHAKE
     // ========================================
-    let shakeOffset = {x: 0, y: 0, z: 0}
-    let shakeRotation = {x: 0, y: 0, z: 0}
+    _shakeOffset.x = 0
+    _shakeOffset.y = 0
+    _shakeOffset.z = 0
+    _shakeRotation.x = 0
+    _shakeRotation.y = 0
+    _shakeRotation.z = 0
 
     if (shake && shake.trauma > 0) {
       const newTrauma = Math.max(0, shake.trauma - shake.traumaDecay * delta)
@@ -342,41 +369,37 @@ export function ThirdPersonCamera({
       const intensity = shake.trauma * shake.trauma
       const time = elapsedTime.current * shake.frequency
 
-      shakeOffset = {
-        x: noise2D(time, 0) * shake.maxOffset * intensity,
-        y: noise2D(time, 100) * shake.maxOffset * intensity,
-        z: noise2D(time, 200) * shake.maxOffset * intensity,
-      }
+      _shakeOffset.x = noise2D(time, 0) * shake.maxOffset * intensity
+      _shakeOffset.y = noise2D(time, 100) * shake.maxOffset * intensity
+      _shakeOffset.z = noise2D(time, 200) * shake.maxOffset * intensity
 
-      shakeRotation = {
-        x: noise2D(time, 300) * shake.maxRotation * intensity,
-        y: noise2D(time, 400) * shake.maxRotation * intensity,
-        z: noise2D(time, 500) * shake.maxRotation * intensity,
-      }
+      _shakeRotation.x = noise2D(time, 300) * shake.maxRotation * intensity
+      _shakeRotation.y = noise2D(time, 400) * shake.maxRotation * intensity
+      _shakeRotation.z = noise2D(time, 500) * shake.maxRotation * intensity
     }
 
     // ========================================
     // 8. APPLY FINAL TRANSFORM
     // ========================================
     camera.position.set(
-      finalPosition.x + noiseOffset.x + shakeOffset.x,
-      finalPosition.y + noiseOffset.y + shakeOffset.y,
-      finalPosition.z + noiseOffset.z + shakeOffset.z,
+      _finalPosition.x + noiseOffset.x + _shakeOffset.x,
+      _finalPosition.y + noiseOffset.y + _shakeOffset.y,
+      _finalPosition.z + noiseOffset.z + _shakeOffset.z,
     )
 
-    // Look at target
+    // Look at target (use orbit center height for consistent framing)
     targetLookAt.set(
-      effectiveTarget.x,
-      targetPos.y + effectiveHeightOffset * 0.5,
-      effectiveTarget.z,
+      _effectiveTarget.x,
+      _targetPos.y + effectiveHeightOffset * 0.5,
+      _effectiveTarget.z,
     )
     camera.lookAt(targetLookAt)
 
     // Apply shake rotation after lookAt
     if (shake && shake.trauma > 0) {
-      camera.rotation.x += shakeRotation.x
-      camera.rotation.y += shakeRotation.y
-      camera.rotation.z += shakeRotation.z
+      camera.rotation.x += _shakeRotation.x
+      camera.rotation.y += _shakeRotation.y
+      camera.rotation.z += _shakeRotation.z
     }
 
     // ========================================

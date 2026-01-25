@@ -208,8 +208,15 @@ export function interpolateOrbitRigs(
 }
 
 /**
- * Attempt to blend between 3 rigs by treating them as a smooth curve.
- * Variant: simple 3-point Catmull-Rom spline might give even nicer results in future.
+ * Blend between 3 rigs using cosine interpolation for a smooth cylindrical path.
+ *
+ * Uses piecewise cosine interpolation:
+ * - From minPitch to 0: smooth transition from bottom to middle
+ * - From 0 to maxPitch: smooth transition from middle to top
+ *
+ * This creates a more uniform "cylindrical" camera path where distance
+ * changes gradually across the entire pitch range, rather than staying
+ * at middle for most of the range then jumping at the edges.
  */
 export function interpolateOrbitRigsSmooth(
   pitch: number,
@@ -219,48 +226,39 @@ export function interpolateOrbitRigsSmooth(
   middle: OrbitRig,
   bottom: OrbitRig,
 ): OrbitRig {
-  // Map pitch to -1 to 1 range where:
-  // -1 = minPitch (looking up, bottom rig)
-  //  0 = 0 pitch (horizontal, middle rig)
-  //  1 = maxPitch (looking down, top rig)
+  // Clamp pitch to valid range
+  const clampedPitch = clamp(pitch, minPitch, maxPitch)
 
-  let t: number
-  if (pitch >= 0) {
-    // Looking down: 0 to 1
-    t = maxPitch > 0 ? pitch / maxPitch : 0
+  let distance: number
+  let height: number
+
+  if (clampedPitch >= 0) {
+    // Looking down: interpolate from middle to top
+    // t goes from 0 (horizontal) to 1 (max pitch looking down)
+    const t = maxPitch > 0 ? clampedPitch / maxPitch : 0
+    // Cosine interpolation for smooth S-curve
+    const smooth = cosineInterpolation(t)
+    distance = middle.distance + (top.distance - middle.distance) * smooth
+    height = middle.height + (top.height - middle.height) * smooth
   } else {
-    // Looking up: -1 to 0
-    t = minPitch < 0 ? pitch / -minPitch : 0
+    // Looking up: interpolate from middle to bottom
+    // t goes from 0 (horizontal) to 1 (min pitch looking up)
+    const t = minPitch < 0 ? clampedPitch / minPitch : 0
+    const smooth = cosineInterpolation(t)
+    distance = middle.distance + (bottom.distance - middle.distance) * smooth
+    height = middle.height + (bottom.height - middle.height) * smooth
   }
-  t = clamp(t, -1, 1)
-
-  // Use quadratic blending for smooth transitions
-  // At t=0, we want 100% middle
-  // At t=1, we want 100% top
-  // At t=-1, we want 100% bottom
-
-  // Calculate blend weights using smooth curves
-  const absT = Math.abs(t)
-  const middleWeight = 1 - absT * absT // Peaks at t=0
-  const topWeight = t > 0 ? t * t : 0 // Only positive t
-  const bottomWeight = t < 0 ? absT * absT : 0 // Only negative t
-
-  // Normalize weights (should already sum to ~1, but be safe)
-  const totalWeight = middleWeight + topWeight + bottomWeight
-
-  const distance =
-    (middle.distance * middleWeight +
-      top.distance * topWeight +
-      bottom.distance * bottomWeight) /
-    totalWeight
-
-  const height =
-    (middle.height * middleWeight +
-      top.height * topWeight +
-      bottom.height * bottomWeight) /
-    totalWeight
 
   return {distance, height}
+}
+
+/**
+ * Cosine interpolation - creates smooth S-curve transitions.
+ * Unlike smoothstep, has zero derivative at both ends for seamless blending.
+ * t: 0 to 1 input, returns 0 to 1 with smooth acceleration/deceleration.
+ */
+function cosineInterpolation(t: number): number {
+  return (1 - Math.cos(t * Math.PI)) * 0.5
 }
 
 /**

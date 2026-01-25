@@ -1319,12 +1319,10 @@ export function characterControllerSystem(
       const groundBody = groundInfo.collider.parent()
       if (groundBody?.isDynamic()) {
         const gravity = 9.81
-        const impulse = {
-          x: 0,
-          y: (-config.mass * gravity) / 60,
-          z: 0,
-        }
-        groundBody.applyImpulseAtPoint(impulse, groundInfo.hitPoint, true)
+        _impulse.x = 0
+        _impulse.y = (-config.mass * gravity) / 60
+        _impulse.z = 0
+        groundBody.applyImpulseAtPoint(_impulse, groundInfo.hitPoint, true)
       }
     }
 
