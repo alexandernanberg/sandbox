@@ -35,6 +35,16 @@ const EPSILON = 0.001
 const MAX_SNAP_DOWN_SPEED = 5.0
 /** Maximum speed for push out corrections (units/second) */
 const MAX_PUSH_OUT_SPEED = 100.0
+/**
+ * Rapier: Small push along contact normal to prevent getting stuck in perpetual penetration.
+ * Helps shape-casting not getting stuck during sliding calculation.
+ */
+const NORMAL_NUDGE_FACTOR = 0.0001
+/**
+ * Rapier: Scale factor for surface correction to prevent floating-point accumulation
+ * from leaving a tiny velocity component into the surface.
+ */
+const CORRECTION_SCALE = 1.0 + 1e-5
 
 // ============================================
 // Character Controller Traits
@@ -65,7 +75,7 @@ export const CharacterControllerConfig = trait({
   stepMinWidth: 0.1,
 
   // Movement
-  maxBounces: 5,
+  maxBounces: 12,
   anglePower: 2.0, // Angular damping power (higher = more damping on angled hits)
 
   // Jump
@@ -953,10 +963,17 @@ function moveAndSlide(
     )
 
     // Project onto plane (OpenKCC: GetBouncedMomentumSafe)
+    // Rapier: Scale correction by (1 + 1e-5) to prevent floating-point accumulation
     const dot = _slideVel.x * nx + _slideVel.y * ny + _slideVel.z * nz
-    _slideVel.x = _slideVel.x - nx * dot
-    _slideVel.y = _slideVel.y - ny * dot
-    _slideVel.z = _slideVel.z - nz * dot
+    const scaledDot = dot * CORRECTION_SCALE
+    _slideVel.x = _slideVel.x - nx * scaledDot
+    _slideVel.y = _slideVel.y - ny * scaledDot
+    _slideVel.z = _slideVel.z - nz * scaledDot
+
+    // Rapier: Apply normal nudge to prevent getting stuck in perpetual penetration
+    _slideVel.x += nx * NORMAL_NUDGE_FACTOR
+    _slideVel.y += ny * NORMAL_NUDGE_FACTOR
+    _slideVel.z += nz * NORMAL_NUDGE_FACTOR
 
     // Restore magnitude after projection (OpenKCC momentum preservation)
     // OpenKCC: projected.normalized * originalMagnitude
