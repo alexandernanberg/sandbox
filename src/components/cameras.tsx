@@ -6,11 +6,16 @@ import {useWorld} from 'koota/react'
 import type {Ref, RefObject} from 'react'
 import {useImperativeHandle, useLayoutEffect, useRef} from 'react'
 import type {Object3D, PerspectiveCamera as PerspectiveCameraImpl} from 'three'
-import {Vector3} from 'three'
 import {CameraOrbit, IsCameraTarget} from '~/ecs/camera'
 import {RenderTransform} from '~/ecs/physics'
 import {getRapierWorld} from '~/ecs/physics/world'
 import {useConstant} from '~/utils'
+import {Vector3} from 'three'
+
+// Scratch objects for ray casting (reused to avoid allocations)
+const _rayOrigin = {x: 0, y: 0, z: 0}
+const _rayDirection = {x: 0, y: 0, z: 0}
+let _cachedRay: RAPIER.Ray | null = null
 
 interface ThirdPersonCameraProps {
   ref?: Ref<PerspectiveCameraImpl>
@@ -40,9 +45,10 @@ export function ThirdPersonCamera({
 
   useImperativeHandle(forwardedRef, () => ref.current!)
 
-  // Persistent vectors for smooth interpolation
+  // Persistent vectors for smooth interpolation (reused to avoid allocations)
   const currentPosition = useConstant(() => new Vector3())
   const targetLookAt = useConstant(() => new Vector3())
+  const lerpTarget = useConstant(() => new Vector3())
 
   // Create camera orbit entity on mount
   useLayoutEffect(() => {
@@ -108,10 +114,8 @@ export function ThirdPersonCamera({
 
     // Smooth camera position
     const t = 1 - Math.exp(-smoothness * delta)
-    currentPosition.lerp(
-      new Vector3(idealPosition.x, idealPosition.y, idealPosition.z),
-      t,
-    )
+    lerpTarget.set(idealPosition.x, idealPosition.y, idealPosition.z)
+    currentPosition.lerp(lerpTarget, t)
 
     // Update look at target (slightly above player center)
     targetLookAt.set(targetPos.x, targetPos.y + heightOffset * 0.5, targetPos.z)
@@ -170,26 +174,33 @@ function castCameraRay(
   const rapier = getRapierWorld()
   if (!rapier) return maxDistance
 
-  // Ray origin slightly above target
-  const origin = {
-    x: target.x,
-    y: target.y + heightOffset,
-    z: target.z,
-  }
+  // Ray origin slightly above target (reuse scratch object)
+  _rayOrigin.x = target.x
+  _rayOrigin.y = target.y + heightOffset
+  _rayOrigin.z = target.z
 
   // Direction from origin to ideal camera position
-  const dx = idealPos.x - origin.x
-  const dy = idealPos.y - origin.y
-  const dz = idealPos.z - origin.z
+  const dx = idealPos.x - _rayOrigin.x
+  const dy = idealPos.y - _rayOrigin.y
+  const dz = idealPos.z - _rayOrigin.z
   const len = Math.sqrt(dx * dx + dy * dy + dz * dz)
 
   if (len < 0.001) return maxDistance
 
-  const direction = {x: dx / len, y: dy / len, z: dz / len}
+  // Reuse direction scratch object
+  _rayDirection.x = dx / len
+  _rayDirection.y = dy / len
+  _rayDirection.z = dz / len
 
-  // Cast ray
-  const ray = new RAPIER.Ray(origin, direction)
-  const hit = rapier.castRay(ray, maxDistance, true)
+  // Create or reuse Ray (Rapier Ray is mutable)
+  if (!_cachedRay) {
+    _cachedRay = new RAPIER.Ray(_rayOrigin, _rayDirection)
+  } else {
+    _cachedRay.origin = _rayOrigin
+    _cachedRay.dir = _rayDirection
+  }
+
+  const hit = rapier.castRay(_cachedRay, maxDistance, true)
 
   if (hit) {
     return hit.timeOfImpact
