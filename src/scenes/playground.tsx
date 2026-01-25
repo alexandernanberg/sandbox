@@ -656,7 +656,7 @@ function Player({position}: PlayerProps) {
   // Update debug values each physics frame
   usePhysicsUpdate(() => {
     const controller = controllerRef.current
-    if (!controller?.entity?.isAlive()) return
+    if (!controller?.entity.isAlive()) return
 
     const movement = controller.entity.get(CharacterMovement)
     if (!movement) return
@@ -667,6 +667,7 @@ function Player({position}: PlayerProps) {
       : movement.sliding
         ? 'Sliding'
         : 'Airborne'
+    // eslint-disable-next-line react-compiler/react-compiler
     kccDebug.current.state = state
     kccDebug.current.groundY = movement.groundNormalY
     kccDebug.current.groundDist = movement.groundDistance
