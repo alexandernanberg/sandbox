@@ -15,11 +15,12 @@ interface InputManagerState {
   pointerLocked: boolean
 }
 
-// TODO: support QWERTY and AZERTY
-
 interface InputManagerProps {
+  /** When true, disables pointer lock (for debug camera mode) */
   disablePointerLock?: boolean
 }
+
+// TODO: support QWERTY and AZERTY
 
 export function InputManager({disablePointerLock = false}: InputManagerProps) {
   const gl = useThree((state) => state.gl)
@@ -161,7 +162,8 @@ export function InputManager({disablePointerLock = false}: InputManagerProps) {
     const domElement = gl.domElement
 
     const handleClick = () => {
-      if (!state.pointerLocked && !disablePointerLock) {
+      if (disablePointerLock) return
+      if (!state.pointerLocked) {
         void domElement.requestPointerLock()
       }
     }

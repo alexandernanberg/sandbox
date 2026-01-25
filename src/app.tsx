@@ -34,7 +34,10 @@ function App() {
 
   const cameraControls = useControls(
     'Camera',
-    {debug: {value: false}},
+    {
+      debug: {value: false},
+      showOrbitRings: {value: false},
+    },
     {expanded: false, index: 0},
   )
   const lightsControl = useControls(
@@ -68,7 +71,10 @@ function App() {
         gravity={physicsControls.gravity}
       >
         <InputManager disablePointerLock={cameraControls.debug} />
-        <Playground debugCamera={cameraControls.debug} />
+        <Playground
+          debugCamera={cameraControls.debug}
+          showOrbitRings={cameraControls.showOrbitRings}
+        />
       </PhysicsProvider>
     </LightProvider>
   )

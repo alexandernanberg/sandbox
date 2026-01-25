@@ -206,6 +206,11 @@ function createStaticFilter(selfCollider: RAPIER.Collider) {
 
 // Scratch objects for edge verification
 const _edgeVerifyPos = {x: 0, y: 0, z: 0}
+const _verifiedNormal = {x: 0, y: 0, z: 0}
+
+// Scratch objects for impulse application (reused to avoid allocations)
+const _impulse = {x: 0, y: 0, z: 0}
+const _contactPoint = {x: 0, y: 0, z: 0}
 
 /**
  * Detects if a normal is an "edge normal" - interpolated between two faces.
@@ -321,7 +326,10 @@ function detectGround(
     // interpolated between the two face normals. This causes incorrect slope angle
     // calculation and unexpected sliding. Use a secondary shapecast to verify.
     if (isEdgeNormalForGround(hit.normal1.x, hit.normal1.y, hit.normal1.z)) {
-      const verifiedNormal = {x: 0, y: 0, z: 0}
+      // Reuse scratch object to avoid allocation
+      _verifiedNormal.x = 0
+      _verifiedNormal.y = 0
+      _verifiedNormal.z = 0
       const verified = verifyGroundNormalWithShapecast(
         rapierWorld,
         position,
@@ -329,12 +337,12 @@ function detectGround(
         shape,
         config.groundCheckDistance * 1.5,
         selfCollider,
-        verifiedNormal,
+        _verifiedNormal,
       )
       if (verified) {
-        _groundInfo.normalX = verifiedNormal.x
-        _groundInfo.normalY = verifiedNormal.y
-        _groundInfo.normalZ = verifiedNormal.z
+        _groundInfo.normalX = _verifiedNormal.x
+        _groundInfo.normalY = _verifiedNormal.y
+        _groundInfo.normalZ = _verifiedNormal.z
       }
     }
 
@@ -528,12 +536,11 @@ function depenetrate(
               if (body) {
                 // Scale impulse by penetration depth for proportional response
                 const pushScale = Math.min(totalDepth * 2, 1) * mass * 0.01
-                const impulse = {
-                  x: -nx * pushScale,
-                  y: -ny * pushScale * 0.5, // Less vertical push
-                  z: -nz * pushScale,
-                }
-                body.applyImpulse(impulse, true)
+                // Reuse scratch impulse object
+                _impulse.x = -nx * pushScale
+                _impulse.y = -ny * pushScale * 0.5 // Less vertical push
+                _impulse.z = -nz * pushScale
+                body.applyImpulse(_impulse, true)
               }
               // Don't accumulate push for KCC - dynamic bodies can't push us
             } else {
@@ -597,12 +604,11 @@ function depenetrate(
             const body = overlap.collider.parent()
             if (body) {
               const pushScale = mass * 0.01
-              const impulse = {
-                x: -pushX * pushScale,
-                y: 0,
-                z: -pushZ * pushScale,
-              }
-              body.applyImpulse(impulse, true)
+              // Reuse scratch impulse object
+              _impulse.x = -pushX * pushScale
+              _impulse.y = 0
+              _impulse.z = -pushZ * pushScale
+              body.applyImpulse(_impulse, true)
             }
           } else {
             staticHitCount++
@@ -809,17 +815,14 @@ function moveAndSlide(
         )
         if (horizSpeed > 0.001) {
           const pushStrength = config.mass * speed * PUSH_FORCE_MULTIPLIER
-          const impulse = {
-            x: (_moveDir.x / horizSpeed) * pushStrength * horizSpeed,
-            y: 0,
-            z: (_moveDir.z / horizSpeed) * pushStrength * horizSpeed,
-          }
-          const contactPoint = {
-            x: _castPos.x + _moveDir.x * dynamicHit.time_of_impact,
-            y: _castPos.y + _moveDir.y * dynamicHit.time_of_impact,
-            z: _castPos.z + _moveDir.z * dynamicHit.time_of_impact,
-          }
-          dynamicBody.applyImpulseAtPoint(impulse, contactPoint, true)
+          // Reuse scratch objects to avoid allocations
+          _impulse.x = (_moveDir.x / horizSpeed) * pushStrength * horizSpeed
+          _impulse.y = 0
+          _impulse.z = (_moveDir.z / horizSpeed) * pushStrength * horizSpeed
+          _contactPoint.x = _castPos.x + _moveDir.x * dynamicHit.time_of_impact
+          _contactPoint.y = _castPos.y + _moveDir.y * dynamicHit.time_of_impact
+          _contactPoint.z = _castPos.z + _moveDir.z * dynamicHit.time_of_impact
+          dynamicBody.applyImpulseAtPoint(_impulse, _contactPoint, true)
         }
       }
     }
@@ -1323,12 +1326,10 @@ export function characterControllerSystem(
       const groundBody = groundInfo.collider.parent()
       if (groundBody?.isDynamic()) {
         const gravity = 9.81
-        const impulse = {
-          x: 0,
-          y: (-config.mass * gravity) / 60,
-          z: 0,
-        }
-        groundBody.applyImpulseAtPoint(impulse, groundInfo.hitPoint, true)
+        _impulse.x = 0
+        _impulse.y = (-config.mass * gravity) / 60
+        _impulse.z = 0
+        groundBody.applyImpulseAtPoint(_impulse, groundInfo.hitPoint, true)
       }
     }
 
