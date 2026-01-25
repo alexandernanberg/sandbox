@@ -7,15 +7,14 @@ import type {Vec2} from '~/lib/math'
 
 /**
  * Camera orbit state - controls the third person camera position.
- * Yaw/pitch define spherical coordinates around the target.
+ * Uses a 3-rig orbit system (like Cinemachine FreeLook) that interpolates
+ * between top/middle/bottom orbits based on pitch angle.
  */
 export const CameraOrbit = trait({
   /** Horizontal rotation (radians) */
   yaw: 0,
   /** Vertical rotation (radians), clamped between minPitch and maxPitch */
   pitch: 0.3,
-  /** Base distance from target */
-  distance: 5,
   /** Current effective distance after collision */
   currentDistance: 5,
   /** Looking up limit (~-30 degrees) */
@@ -24,6 +23,28 @@ export const CameraOrbit = trait({
   maxPitch: 1.2,
   /** Mouse sensitivity (radians per pixel) */
   sensitivity: 0.003,
+
+  // ========================================
+  // 3-Rig Orbit System (Cinemachine-style)
+  // ========================================
+  // Top rig: when looking down at player (high pitch)
+  // Middle rig: horizontal view (pitch ~0)
+  // Bottom rig: when looking up (low/negative pitch)
+
+  /** Top orbit distance (looking down) */
+  topDistance: 4.5,
+  /** Top orbit height offset */
+  topHeight: 2.5,
+
+  /** Middle orbit distance (horizontal) - typically largest */
+  middleDistance: 5.5,
+  /** Middle orbit height offset */
+  middleHeight: 1.5,
+
+  /** Bottom orbit distance (looking up) - typically smallest */
+  bottomDistance: 3.0,
+  /** Bottom orbit height offset */
+  bottomHeight: 0.5,
 
   // Collision settings
   /** Minimum distance camera can be from target */

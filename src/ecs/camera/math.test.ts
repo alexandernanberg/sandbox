@@ -8,6 +8,9 @@ import {
   getCameraUp,
   distance3D,
   clamp,
+  interpolateOrbitRigs,
+  interpolateOrbitRigsSmooth,
+  type OrbitRig,
 } from './math'
 
 // ============================================
@@ -338,5 +341,126 @@ describe('Camera behavior invariants', () => {
       expect(movement).toBeLessThan(1)
       prevPos = pos
     }
+  })
+})
+
+// ============================================
+// 3-Rig Orbit Interpolation Tests
+// ============================================
+
+describe('interpolateOrbitRigs', () => {
+  const minPitch = -0.5 // Looking up limit
+  const maxPitch = 1.2 // Looking down limit
+
+  const top: OrbitRig = {distance: 4.5, height: 2.5}
+  const middle: OrbitRig = {distance: 5.5, height: 1.5}
+  const bottom: OrbitRig = {distance: 3.0, height: 0.5}
+
+  test('returns middle rig at pitch=0', () => {
+    const result = interpolateOrbitRigs(0, minPitch, maxPitch, top, middle, bottom)
+
+    expect(result.distance).toBeCloseTo(middle.distance, 4)
+    expect(result.height).toBeCloseTo(middle.height, 4)
+  })
+
+  test('returns top rig at maxPitch', () => {
+    const result = interpolateOrbitRigs(maxPitch, minPitch, maxPitch, top, middle, bottom)
+
+    expect(result.distance).toBeCloseTo(top.distance, 4)
+    expect(result.height).toBeCloseTo(top.height, 4)
+  })
+
+  test('returns bottom rig at minPitch', () => {
+    const result = interpolateOrbitRigs(minPitch, minPitch, maxPitch, top, middle, bottom)
+
+    expect(result.distance).toBeCloseTo(bottom.distance, 4)
+    expect(result.height).toBeCloseTo(bottom.height, 4)
+  })
+
+  test('interpolates between middle and top for positive pitch', () => {
+    const pitch = maxPitch / 2 // Halfway between 0 and maxPitch
+    const result = interpolateOrbitRigs(pitch, minPitch, maxPitch, top, middle, bottom)
+
+    // Should be between middle and top
+    expect(result.distance).toBeGreaterThanOrEqual(Math.min(middle.distance, top.distance))
+    expect(result.distance).toBeLessThanOrEqual(Math.max(middle.distance, top.distance))
+  })
+
+  test('interpolates between bottom and middle for negative pitch', () => {
+    const pitch = minPitch / 2 // Halfway between minPitch and 0
+    const result = interpolateOrbitRigs(pitch, minPitch, maxPitch, top, middle, bottom)
+
+    // Should be between bottom and middle
+    expect(result.distance).toBeGreaterThanOrEqual(Math.min(bottom.distance, middle.distance))
+    expect(result.distance).toBeLessThanOrEqual(Math.max(bottom.distance, middle.distance))
+  })
+})
+
+describe('interpolateOrbitRigsSmooth', () => {
+  const minPitch = -0.5
+  const maxPitch = 1.2
+
+  const top: OrbitRig = {distance: 4.5, height: 2.5}
+  const middle: OrbitRig = {distance: 5.5, height: 1.5}
+  const bottom: OrbitRig = {distance: 3.0, height: 0.5}
+
+  test('returns middle rig at pitch=0', () => {
+    const result = interpolateOrbitRigsSmooth(0, minPitch, maxPitch, top, middle, bottom)
+
+    expect(result.distance).toBeCloseTo(middle.distance, 4)
+    expect(result.height).toBeCloseTo(middle.height, 4)
+  })
+
+  test('returns top rig at maxPitch', () => {
+    const result = interpolateOrbitRigsSmooth(maxPitch, minPitch, maxPitch, top, middle, bottom)
+
+    expect(result.distance).toBeCloseTo(top.distance, 4)
+    expect(result.height).toBeCloseTo(top.height, 4)
+  })
+
+  test('returns bottom rig at minPitch', () => {
+    const result = interpolateOrbitRigsSmooth(minPitch, minPitch, maxPitch, top, middle, bottom)
+
+    expect(result.distance).toBeCloseTo(bottom.distance, 4)
+    expect(result.height).toBeCloseTo(bottom.height, 4)
+  })
+
+  test('produces continuous output (no discontinuities)', () => {
+    let prevResult = interpolateOrbitRigsSmooth(minPitch, minPitch, maxPitch, top, middle, bottom)
+
+    // Sweep through full pitch range
+    for (let pitch = minPitch + 0.05; pitch <= maxPitch; pitch += 0.05) {
+      const result = interpolateOrbitRigsSmooth(pitch, minPitch, maxPitch, top, middle, bottom)
+
+      // Change should be small and continuous
+      const distDelta = Math.abs(result.distance - prevResult.distance)
+      const heightDelta = Math.abs(result.height - prevResult.height)
+
+      expect(distDelta).toBeLessThan(0.5)
+      expect(heightDelta).toBeLessThan(0.3)
+
+      prevResult = result
+    }
+  })
+
+  test('distance follows expected pattern: bottom < top < middle', () => {
+    // At bottom (looking up) - closest distance
+    const atBottom = interpolateOrbitRigsSmooth(minPitch, minPitch, maxPitch, top, middle, bottom)
+    // At middle (horizontal) - largest distance
+    const atMiddle = interpolateOrbitRigsSmooth(0, minPitch, maxPitch, top, middle, bottom)
+    // At top (looking down) - medium distance
+    const atTop = interpolateOrbitRigsSmooth(maxPitch, minPitch, maxPitch, top, middle, bottom)
+
+    expect(atBottom.distance).toBeLessThan(atTop.distance)
+    expect(atTop.distance).toBeLessThan(atMiddle.distance)
+  })
+
+  test('height follows expected pattern: bottom < middle < top', () => {
+    const atBottom = interpolateOrbitRigsSmooth(minPitch, minPitch, maxPitch, top, middle, bottom)
+    const atMiddle = interpolateOrbitRigsSmooth(0, minPitch, maxPitch, top, middle, bottom)
+    const atTop = interpolateOrbitRigsSmooth(maxPitch, minPitch, maxPitch, top, middle, bottom)
+
+    expect(atBottom.height).toBeLessThan(atMiddle.height)
+    expect(atMiddle.height).toBeLessThan(atTop.height)
   })
 })

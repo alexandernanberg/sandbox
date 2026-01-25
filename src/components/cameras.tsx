@@ -18,6 +18,7 @@ import {
   noise2D,
   computeCameraPosition,
   exponentialSmoothing,
+  interpolateOrbitRigsSmooth,
 } from '~/ecs/camera/math'
 import {CharacterMovement} from '~/ecs/physics'
 import {RenderTransform} from '~/ecs/physics'
@@ -98,9 +99,14 @@ export function ThirdPersonCamera({
   const cameraSettings = useControls(
     'Camera',
     {
-      distance: {value: 5, min: 1, max: 15, step: 0.5},
-      heightOffset: {value: heightOffset, min: 0, max: 4, step: 0.1},
       sensitivity: {value: 0.003, min: 0.001, max: 0.01, step: 0.001},
+      // 3-Rig Orbit System
+      topDist: {value: 4.5, min: 1, max: 10, step: 0.5},
+      topHeight: {value: 2.5, min: 0, max: 5, step: 0.1},
+      middleDist: {value: 5.5, min: 1, max: 12, step: 0.5},
+      middleHeight: {value: 1.5, min: 0, max: 4, step: 0.1},
+      bottomDist: {value: 3.0, min: 1, max: 8, step: 0.5},
+      bottomHeight: {value: 0.5, min: -1, max: 3, step: 0.1},
       // Collision
       minDistance: {value: 1.5, min: 0.5, max: 3, step: 0.1},
       pullInSpeed: {value: 25, min: 5, max: 50, step: 1},
@@ -134,8 +140,15 @@ export function ThirdPersonCamera({
     if (!entity?.isAlive()) return
 
     entity.set(CameraOrbit, (o) => {
-      o.distance = cameraSettings.distance
       o.sensitivity = cameraSettings.sensitivity
+      // 3-Rig orbit system
+      o.topDistance = cameraSettings.topDist
+      o.topHeight = cameraSettings.topHeight
+      o.middleDistance = cameraSettings.middleDist
+      o.middleHeight = cameraSettings.middleHeight
+      o.bottomDistance = cameraSettings.bottomDist
+      o.bottomHeight = cameraSettings.bottomHeight
+      // Collision & smoothing
       o.minDistance = cameraSettings.minDistance
       o.pullInSmoothing = cameraSettings.pullInSpeed
       o.easeOutSmoothing = cameraSettings.easeOutSpeed
@@ -151,9 +164,6 @@ export function ThirdPersonCamera({
       return n
     })
   }, [cameraSettings])
-
-  // Effective height offset from controls
-  const effectiveHeightOffset = cameraSettings.heightOffset
 
   useFrame((_, delta) => {
     const camera = ref.current
@@ -227,9 +237,22 @@ export function ThirdPersonCamera({
     }
 
     // ========================================
-    // 2. CALCULATE CAMERA POSITION (INSTANT - no smoothing on yaw/pitch)
+    // 2. INTERPOLATE ORBIT RIGS (Cinemachine-style 3-rig system)
     // ========================================
-    const {yaw, pitch, distance} = orbit
+    const {yaw, pitch} = orbit
+
+    // Interpolate between top/middle/bottom orbits based on pitch
+    const interpolatedOrbit = interpolateOrbitRigsSmooth(
+      pitch,
+      orbit.minPitch,
+      orbit.maxPitch,
+      {distance: orbit.topDistance, height: orbit.topHeight},
+      {distance: orbit.middleDistance, height: orbit.middleHeight},
+      {distance: orbit.bottomDistance, height: orbit.bottomHeight},
+    )
+
+    const targetDistance = interpolatedOrbit.distance
+    const effectiveHeightOffset = interpolatedOrbit.height
 
     // Apply aim offset in camera space
     const aimOffsetWorld = {
@@ -248,10 +271,10 @@ export function ThirdPersonCamera({
     // ========================================
     const collisionDistance = castWhiskerRays(
       effectiveTarget,
-      computeCameraPosition(orbitTarget, yaw, pitch, distance, effectiveHeightOffset),
+      computeCameraPosition(orbitTarget, yaw, pitch, targetDistance, effectiveHeightOffset),
       yaw,
       pitch,
-      distance,
+      targetDistance,
       effectiveHeightOffset,
       orbit.collisionPadding,
     )
@@ -361,7 +384,7 @@ export function ThirdPersonCamera({
     // ========================================
     cameraMonitor.current.distance = currentDist
     cameraMonitor.current.collision =
-      currentDist < distance - 0.1 ? 'Active' : 'Clear'
+      currentDist < targetDistance - 0.1 ? 'Active' : 'Clear'
     cameraMonitor.current.yaw = (yaw * 180) / Math.PI
     cameraMonitor.current.pitch = (pitch * 180) / Math.PI
   })

@@ -137,3 +137,137 @@ export function distance3D(a: Vec3, b: Vec3): number {
 export function clamp(value: number, min: number, max: number): number {
   return Math.min(Math.max(value, min), max)
 }
+
+// ============================================
+// 3-Rig Orbit System (Cinemachine-style)
+// ============================================
+
+export interface OrbitRig {
+  distance: number
+  height: number
+}
+
+/**
+ * Interpolate between 3 orbit rigs based on pitch angle.
+ *
+ * The system works like Cinemachine's FreeLook camera:
+ * - Top rig: when looking down (pitch > 0)
+ * - Middle rig: horizontal view (pitch = 0)
+ * - Bottom rig: when looking up (pitch < 0)
+ *
+ * @param pitch - Current pitch in radians
+ * @param minPitch - Minimum pitch (looking up limit, negative)
+ * @param maxPitch - Maximum pitch (looking down limit, positive)
+ * @param top - Top orbit rig (high pitch, looking down)
+ * @param middle - Middle orbit rig (horizontal)
+ * @param bottom - Bottom orbit rig (low pitch, looking up)
+ * @returns Interpolated distance and height
+ */
+export function interpolateOrbitRigs(
+  pitch: number,
+  minPitch: number,
+  maxPitch: number,
+  top: OrbitRig,
+  middle: OrbitRig,
+  bottom: OrbitRig,
+): OrbitRig {
+  // Normalize pitch to 0-1 range where:
+  // 0 = minPitch (looking up, bottom rig)
+  // 0.5 = 0 pitch (horizontal, middle rig)
+  // 1 = maxPitch (looking down, top rig)
+
+  // Calculate the "zero point" in the normalized range
+  // This is where pitch = 0 falls between minPitch and maxPitch
+  const range = maxPitch - minPitch
+  const zeroPoint = -minPitch / range // Where pitch=0 is in 0-1 range
+
+  // Normalize current pitch
+  const normalizedPitch = (pitch - minPitch) / range
+
+  let distance: number
+  let height: number
+
+  if (normalizedPitch <= zeroPoint) {
+    // Between bottom and middle (looking up to horizontal)
+    // t=0 at minPitch (bottom), t=1 at pitch=0 (middle)
+    const t = normalizedPitch / zeroPoint
+    // Use smoothstep for smoother blending
+    const smooth = smoothstep(t)
+    distance = bottom.distance + (middle.distance - bottom.distance) * smooth
+    height = bottom.height + (middle.height - bottom.height) * smooth
+  } else {
+    // Between middle and top (horizontal to looking down)
+    // t=0 at pitch=0 (middle), t=1 at maxPitch (top)
+    const t = (normalizedPitch - zeroPoint) / (1 - zeroPoint)
+    const smooth = smoothstep(t)
+    distance = middle.distance + (top.distance - middle.distance) * smooth
+    height = middle.height + (top.height - middle.height) * smooth
+  }
+
+  return {distance, height}
+}
+
+/**
+ * Attempt to blend between 3 rigs by treating them as a smooth curve.
+ * Variant: simple 3-point Catmull-Rom spline might give even nicer results in future.
+ */
+export function interpolateOrbitRigsSmooth(
+  pitch: number,
+  minPitch: number,
+  maxPitch: number,
+  top: OrbitRig,
+  middle: OrbitRig,
+  bottom: OrbitRig,
+): OrbitRig {
+  // Map pitch to -1 to 1 range where:
+  // -1 = minPitch (looking up, bottom rig)
+  //  0 = 0 pitch (horizontal, middle rig)
+  //  1 = maxPitch (looking down, top rig)
+
+  let t: number
+  if (pitch >= 0) {
+    // Looking down: 0 to 1
+    t = maxPitch > 0 ? pitch / maxPitch : 0
+  } else {
+    // Looking up: -1 to 0
+    t = minPitch < 0 ? pitch / -minPitch : 0
+  }
+  t = clamp(t, -1, 1)
+
+  // Use quadratic blending for smooth transitions
+  // At t=0, we want 100% middle
+  // At t=1, we want 100% top
+  // At t=-1, we want 100% bottom
+
+  // Calculate blend weights using smooth curves
+  const absT = Math.abs(t)
+  const middleWeight = 1 - absT * absT // Peaks at t=0
+  const topWeight = t > 0 ? t * t : 0 // Only positive t
+  const bottomWeight = t < 0 ? absT * absT : 0 // Only negative t
+
+  // Normalize weights (should already sum to ~1, but be safe)
+  const totalWeight = middleWeight + topWeight + bottomWeight
+
+  const distance =
+    (middle.distance * middleWeight +
+      top.distance * topWeight +
+      bottom.distance * bottomWeight) /
+    totalWeight
+
+  const height =
+    (middle.height * middleWeight +
+      top.height * topWeight +
+      bottom.height * bottomWeight) /
+    totalWeight
+
+  return {distance, height}
+}
+
+/**
+ * Attempt to blend smoothly for cosine-like smoothstep, to ease in/out of the extremes.
+ */
+function smoothstep(t: number): number {
+  // Hermite interpolation: 3t² - 2t³
+  const clamped = clamp(t, 0, 1)
+  return clamped * clamped * (3 - 2 * clamped)
+}
