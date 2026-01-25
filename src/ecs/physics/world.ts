@@ -1,31 +1,74 @@
-import * as RAPIER from '@dimforge/rapier3d-simd-compat'
-import type {World} from 'koota'
-import {RigidBodyRef, ColliderRef, IsPhysicsEntity} from './traits'
+import type {World, Entity} from 'koota'
+import type {
+  JoltModule,
+  JoltPhysicsSystem,
+  JoltTempAllocator,
+  JoltJobSystem,
+  JoltBodyInterface,
+  JoltBodyID,
+  JoltBody,
+} from './jolt-types'
+import {
+  LAYER_NON_MOVING,
+  LAYER_MOVING,
+  NUM_OBJECT_LAYERS,
+  BP_LAYER_NON_MOVING,
+  BP_LAYER_MOVING,
+  NUM_BROAD_PHASE_LAYERS,
+} from './jolt-types'
+import {RigidBodyRef, IsPhysicsEntity} from './traits'
+
+// ============================================
+// Jolt Module Singleton
+// ============================================
+
+let joltModule: JoltModule | null = null
+
+export function getJolt(): JoltModule {
+  if (!joltModule) {
+    throw new Error('Jolt not initialized. Call initJolt() first.')
+  }
+  return joltModule
+}
+
+export function setJoltModule(module: JoltModule): void {
+  joltModule = module
+}
 
 // ============================================
 // Physics World Singleton
 // ============================================
 
 export interface PhysicsWorldState {
-  rapier: RAPIER.World | null
-  eventQueue: RAPIER.EventQueue | null
+  physicsSystem: JoltPhysicsSystem | null
+  bodyInterface: JoltBodyInterface | null
+  tempAllocator: JoltTempAllocator | null
+  jobSystem: JoltJobSystem | null
   accumulator: number
   initialized: boolean
+  // Body ID to Entity mapping for collision events
+  bodyIdToEntity: Map<number, Entity>
   // Cleanup subscriptions
   cleanupSubscriptions: (() => void)[]
   // Callbacks
   beforeStepCallbacks: Set<(delta: number) => void>
   afterStepCallbacks: Set<(delta: number) => void>
+  // Contact listener
+  contactListener: unknown
 }
 
 export const physicsWorld: PhysicsWorldState = {
-  rapier: null,
-  eventQueue: null,
+  physicsSystem: null,
+  bodyInterface: null,
+  tempAllocator: null,
+  jobSystem: null,
   accumulator: 0,
   initialized: false,
+  bodyIdToEntity: new Map(),
   cleanupSubscriptions: [],
   beforeStepCallbacks: new Set(),
   afterStepCallbacks: new Set(),
+  contactListener: null,
 }
 
 export const FIXED_TIMESTEP = 1 / 60
@@ -33,11 +76,17 @@ export const MAX_DELTA = 0.25
 
 export interface PhysicsConfig {
   gravity?: {x: number; y: number; z: number}
+  maxBodies?: number
+  maxBodyPairs?: number
+  maxContactConstraints?: number
 }
 
 const DEFAULT_GRAVITY = {x: 0, y: -9.81, z: 0}
+const DEFAULT_MAX_BODIES = 10240
+const DEFAULT_MAX_BODY_PAIRS = 65536
+const DEFAULT_MAX_CONTACT_CONSTRAINTS = 10240
 
-// Must be called after RAPIER.init() completes
+// Must be called after Jolt module is loaded
 export function initPhysicsWorld(
   ecsWorld: World,
   config: PhysicsConfig = {},
@@ -46,42 +95,90 @@ export function initPhysicsWorld(
     return
   }
 
+  const Jolt = getJolt()
   const gravity = config.gravity ?? DEFAULT_GRAVITY
+  const maxBodies = config.maxBodies ?? DEFAULT_MAX_BODIES
+  const maxBodyPairs = config.maxBodyPairs ?? DEFAULT_MAX_BODY_PAIRS
+  const maxContactConstraints =
+    config.maxContactConstraints ?? DEFAULT_MAX_CONTACT_CONSTRAINTS
 
-  physicsWorld.rapier = new RAPIER.World(gravity)
-  physicsWorld.rapier.timestep = FIXED_TIMESTEP
-  physicsWorld.eventQueue = new RAPIER.EventQueue(true)
+  // Create temp allocator (10MB)
+  physicsWorld.tempAllocator = new Jolt.TempAllocatorImpl(10 * 1024 * 1024)
+
+  // Create job system (use max threads)
+  physicsWorld.jobSystem = new Jolt.JobSystemThreadPool(
+    Jolt.cMaxPhysicsJobs,
+    Jolt.cMaxPhysicsBarriers,
+    -1, // auto detect threads
+  )
+
+  // Create object layer pair filter
+  const objectLayerPairFilter = new Jolt.ObjectLayerPairFilterTable(
+    NUM_OBJECT_LAYERS,
+  )
+  objectLayerPairFilter.EnableCollision(LAYER_NON_MOVING, LAYER_MOVING)
+  objectLayerPairFilter.EnableCollision(LAYER_MOVING, LAYER_MOVING)
+
+  // Create broad phase layer interface
+  const bpLayerInterface = new Jolt.BroadPhaseLayerInterfaceTable(
+    NUM_OBJECT_LAYERS,
+    NUM_BROAD_PHASE_LAYERS,
+  )
+  bpLayerInterface.MapObjectToBroadPhaseLayer(
+    LAYER_NON_MOVING,
+    BP_LAYER_NON_MOVING,
+  )
+  bpLayerInterface.MapObjectToBroadPhaseLayer(LAYER_MOVING, BP_LAYER_MOVING)
+
+  // Create object vs broad phase layer filter
+  const objectVsBroadPhaseLayerFilter =
+    new Jolt.ObjectVsBroadPhaseLayerFilterTable(
+      bpLayerInterface,
+      NUM_BROAD_PHASE_LAYERS,
+      objectLayerPairFilter,
+      NUM_OBJECT_LAYERS,
+    )
+
+  // Create physics system
+  const physicsSystem = new Jolt.PhysicsSystem()
+  physicsSystem.Init(
+    maxBodies,
+    0, // numBodyMutexes (0 = auto)
+    maxBodyPairs,
+    maxContactConstraints,
+    bpLayerInterface,
+    objectVsBroadPhaseLayerFilter,
+    objectLayerPairFilter,
+  )
+  physicsWorld.physicsSystem = physicsSystem
+
+  // Set gravity
+  const gravityVec = new Jolt.Vec3(gravity.x, gravity.y, gravity.z)
+  physicsSystem.SetGravity(gravityVec)
+  Jolt.destroy(gravityVec)
+
+  // Get body interface
+  physicsWorld.bodyInterface = physicsSystem.GetBodyInterface()
+
   physicsWorld.accumulator = 0
   physicsWorld.initialized = true
 
   // Set up automatic cleanup when physics traits are removed
-  const unsubCollider = ecsWorld.onRemove(ColliderRef, (entity) => {
-    const rapier = physicsWorld.rapier
-    if (!rapier) return
-
-    const colliderRef = entity.get(ColliderRef)
-    if (colliderRef?.collider != null && colliderRef.handle != null) {
-      try {
-        // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
-        if (rapier.getCollider(colliderRef.handle)) {
-          rapier.removeCollider(colliderRef.collider, true)
-        }
-      } catch {
-        // Collider may already be removed
-      }
-    }
-  })
-
   const unsubRigidBody = ecsWorld.onRemove(RigidBodyRef, (entity) => {
-    const rapier = physicsWorld.rapier
-    if (!rapier) return
+    const Jolt = joltModule
+    const bodyInterface = physicsWorld.bodyInterface
+    if (!Jolt || !bodyInterface) return
 
     const bodyRef = entity.get(RigidBodyRef)
-    if (bodyRef?.body != null && bodyRef.handle != null) {
+    if (bodyRef?.bodyId != null) {
       try {
-        // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
-        if (rapier.getRigidBody(bodyRef.handle)) {
-          rapier.removeRigidBody(bodyRef.body)
+        const bodyId = bodyRef.bodyId as JoltBodyID
+        if (!bodyId.IsInvalid()) {
+          // Remove from mapping
+          physicsWorld.bodyIdToEntity.delete(bodyId.GetIndexAndSequenceNumber())
+          // Remove and destroy body
+          bodyInterface.RemoveBody(bodyId)
+          bodyInterface.DestroyBody(bodyId)
         }
       } catch {
         // Body may already be removed
@@ -89,10 +186,13 @@ export function initPhysicsWorld(
     }
   })
 
-  physicsWorld.cleanupSubscriptions.push(unsubCollider, unsubRigidBody)
+  physicsWorld.cleanupSubscriptions.push(unsubRigidBody)
 }
 
 export function destroyPhysicsWorld(ecsWorld: World): void {
+  const Jolt = joltModule
+  if (!Jolt) return
+
   // Unsubscribe cleanup callbacks first to avoid triggering them during entity destruction
   for (const unsub of physicsWorld.cleanupSubscriptions) {
     unsub()
@@ -107,17 +207,30 @@ export function destroyPhysicsWorld(ecsWorld: World): void {
     }
   }
 
-  // Free Rapier resources
-  if (physicsWorld.eventQueue) {
-    physicsWorld.eventQueue.free()
-    physicsWorld.eventQueue = null
+  // Clean up contact listener
+  if (physicsWorld.contactListener) {
+    Jolt.destroy(physicsWorld.contactListener)
+    physicsWorld.contactListener = null
   }
 
-  if (physicsWorld.rapier) {
-    physicsWorld.rapier.free()
-    physicsWorld.rapier = null
+  // Clean up Jolt resources
+  if (physicsWorld.physicsSystem) {
+    Jolt.destroy(physicsWorld.physicsSystem)
+    physicsWorld.physicsSystem = null
   }
 
+  if (physicsWorld.jobSystem) {
+    Jolt.destroy(physicsWorld.jobSystem)
+    physicsWorld.jobSystem = null
+  }
+
+  if (physicsWorld.tempAllocator) {
+    Jolt.destroy(physicsWorld.tempAllocator)
+    physicsWorld.tempAllocator = null
+  }
+
+  physicsWorld.bodyInterface = null
+  physicsWorld.bodyIdToEntity.clear()
   physicsWorld.accumulator = 0
   physicsWorld.initialized = false
   physicsWorld.beforeStepCallbacks.clear()
@@ -125,17 +238,52 @@ export function destroyPhysicsWorld(ecsWorld: World): void {
 }
 
 export function setGravity(gravity: {x: number; y: number; z: number}): void {
-  if (physicsWorld.rapier) {
-    physicsWorld.rapier.gravity = gravity
+  const Jolt = joltModule
+  if (!Jolt || !physicsWorld.physicsSystem) return
+
+  const gravityVec = new Jolt.Vec3(gravity.x, gravity.y, gravity.z)
+  physicsWorld.physicsSystem.SetGravity(gravityVec)
+  Jolt.destroy(gravityVec)
+}
+
+export function getPhysicsSystem(): JoltPhysicsSystem | null {
+  return physicsWorld.physicsSystem
+}
+
+export function getBodyInterface(): JoltBodyInterface | null {
+  return physicsWorld.bodyInterface
+}
+
+export function getTempAllocator(): JoltTempAllocator | null {
+  return physicsWorld.tempAllocator
+}
+
+export function getJobSystem(): JoltJobSystem | null {
+  return physicsWorld.jobSystem
+}
+
+// Map body ID to entity for collision lookups
+export function registerBodyEntity(bodyId: JoltBodyID, entity: Entity): void {
+  physicsWorld.bodyIdToEntity.set(bodyId.GetIndexAndSequenceNumber(), entity)
+}
+
+export function getEntityForBodyId(bodyId: JoltBodyID): Entity | undefined {
+  return physicsWorld.bodyIdToEntity.get(bodyId.GetIndexAndSequenceNumber())
+}
+
+export function getBodyById(bodyId: JoltBodyID): JoltBody | null {
+  const Jolt = joltModule
+  if (!Jolt || !physicsWorld.physicsSystem) return null
+
+  const bodyLockInterface = physicsWorld.physicsSystem.GetBodyLockInterface()
+  const lock = new Jolt.BodyLockRead(bodyLockInterface, bodyId)
+  if (lock.Succeeded()) {
+    const body = lock.GetBody()
+    lock.ReleaseLock()
+    return body
   }
-}
-
-export function getRapierWorld(): RAPIER.World | null {
-  return physicsWorld.rapier
-}
-
-export function getEventQueue(): RAPIER.EventQueue | null {
-  return physicsWorld.eventQueue
+  lock.ReleaseLock()
+  return null
 }
 
 // Register callbacks
@@ -147,4 +295,20 @@ export function onBeforeStep(callback: (delta: number) => void): () => void {
 export function onAfterStep(callback: (delta: number) => void): () => void {
   physicsWorld.afterStepCallbacks.add(callback)
   return () => physicsWorld.afterStepCallbacks.delete(callback)
+}
+
+// Legacy compatibility - renamed from getRapierWorld
+export function getJoltWorld(): JoltPhysicsSystem | null {
+  return physicsWorld.physicsSystem
+}
+
+// Kept for backwards compatibility during migration
+export function getRapierWorld(): JoltPhysicsSystem | null {
+  return physicsWorld.physicsSystem
+}
+
+export function getEventQueue(): null {
+  // Jolt doesn't use an event queue like Rapier
+  // Events are handled via contact listener
+  return null
 }

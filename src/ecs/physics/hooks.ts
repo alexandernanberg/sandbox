@@ -1,5 +1,5 @@
 import {useLayoutEffect} from 'react'
-import {getRapierWorld, onBeforeStep, onAfterStep} from './world'
+import {getPhysicsSystem, onBeforeStep, onAfterStep} from './world'
 
 export type PhysicsStage = 'early' | 'late'
 
@@ -19,9 +19,16 @@ export function usePhysicsUpdate(
 }
 
 /**
- * Get access to the Rapier world for direct physics operations.
- * Returns a getter function that returns the world (or null if not initialized).
+ * Get access to the Jolt physics system for direct physics operations.
+ * Returns a getter function that returns the physics system (or null if not initialized).
+ */
+export function useJoltWorld() {
+  return getPhysicsSystem
+}
+
+/**
+ * @deprecated Use useJoltWorld instead
  */
 export function useRapierWorld() {
-  return getRapierWorld
+  return getPhysicsSystem
 }

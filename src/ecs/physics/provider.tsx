@@ -1,18 +1,18 @@
-import * as RAPIER from '@dimforge/rapier3d-simd-compat'
 import {useFrame} from '@react-three/fiber'
+import initJolt from 'jolt-physics/wasm-compat'
 import {useWorld} from 'koota/react'
 import type {ReactNode} from 'react'
-import {createContext, use, useLayoutEffect, useMemo, useRef} from 'react'
+import {createContext, use, useLayoutEffect, useMemo} from 'react'
 import type {Vector3} from 'three'
-import {BufferAttribute} from 'three'
-import type {LineSegments} from 'three'
+import {setupContactListener} from './events'
 import {stepPhysics} from './step'
 import {
   physicsWorld,
   initPhysicsWorld,
   destroyPhysicsWorld,
   setGravity,
-  getRapierWorld,
+  getPhysicsSystem,
+  setJoltModule,
 } from './world'
 
 // ============================================
@@ -39,7 +39,11 @@ export function usePhysicsContext() {
 
 type Triplet = [number, number, number]
 
-const init = RAPIER.init()
+// Initialize Jolt module
+const joltPromise = initJolt().then((Jolt) => {
+  setJoltModule(Jolt)
+  return Jolt
+})
 
 export interface PhysicsProviderProps {
   children?: ReactNode
@@ -52,16 +56,21 @@ export function PhysicsProvider({
   debug = false,
   gravity,
 }: PhysicsProviderProps) {
-  // Wait for RAPIER to initialize
-  use(init)
+  // Wait for Jolt to initialize
+  use(joltPromise)
 
   const ecsWorld = useWorld()
-  const debugMeshRef = useRef<LineSegments>(null)
 
   // Initialize physics world in effect, cleanup on unmount
   useLayoutEffect(() => {
     if (!physicsWorld.initialized) {
       initPhysicsWorld(ecsWorld)
+
+      // Set up contact listener for collision events
+      const physicsSystem = getPhysicsSystem()
+      if (physicsSystem) {
+        setupContactListener(physicsSystem)
+      }
     }
     return () => {
       destroyPhysicsWorld(ecsWorld)
@@ -81,45 +90,14 @@ export function PhysicsProvider({
 
   // Main physics loop
   useFrame((_state, delta) => {
-    const rapier = getRapierWorld()
-    if (!rapier) return
+    const physicsSystem = getPhysicsSystem()
+    if (!physicsSystem) return
 
     // Step physics
     stepPhysics(ecsWorld, delta)
 
-    // Debug rendering
-    if (debug && debugMeshRef.current) {
-      const mesh = debugMeshRef.current
-      const buffers = rapier.debugRender()
-      const geometry = mesh.geometry
-
-      // Reuse existing BufferAttributes when possible to avoid allocations
-      const posAttr = geometry.getAttribute('position')
-      const colorAttr = geometry.getAttribute('color')
-
-      if (
-        posAttr instanceof BufferAttribute &&
-        posAttr.array.length === buffers.vertices.length
-      ) {
-        posAttr.set(buffers.vertices)
-        posAttr.needsUpdate = true
-      } else {
-        geometry.setAttribute(
-          'position',
-          new BufferAttribute(buffers.vertices, 3),
-        )
-      }
-
-      if (
-        colorAttr instanceof BufferAttribute &&
-        colorAttr.array.length === buffers.colors.length
-      ) {
-        colorAttr.set(buffers.colors)
-        colorAttr.needsUpdate = true
-      } else {
-        geometry.setAttribute('color', new BufferAttribute(buffers.colors, 4))
-      }
-    }
+    // Note: Jolt doesn't have built-in debug rendering like Rapier
+    // Debug visualization would require custom implementation
   })
 
   const ecsContext = useMemo<PhysicsContextValue>(() => ({debug}), [debug])
@@ -127,12 +105,6 @@ export function PhysicsProvider({
   return (
     <PhysicsContext.Provider value={ecsContext}>
       {children}
-      {debug && (
-        <lineSegments ref={debugMeshRef}>
-          <lineBasicMaterial color={0xffffff} vertexColors />
-          <bufferGeometry />
-        </lineSegments>
-      )}
     </PhysicsContext.Provider>
   )
 }

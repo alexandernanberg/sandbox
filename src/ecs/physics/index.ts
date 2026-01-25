@@ -52,12 +52,21 @@ export {
   initPhysicsWorld,
   destroyPhysicsWorld,
   setGravity,
-  getRapierWorld,
-  getEventQueue,
+  getPhysicsSystem,
+  getJoltWorld,
+  getJolt,
+  getBodyInterface,
+  getTempAllocator,
+  getJobSystem,
+  registerBodyEntity,
+  getEntityForBodyId,
   onBeforeStep,
   onAfterStep,
   FIXED_TIMESTEP,
   MAX_DELTA,
+  // Legacy compatibility
+  getRapierWorld,
+  getEventQueue,
 } from './world'
 export type {PhysicsWorldState, PhysicsConfig} from './world'
 
@@ -70,8 +79,28 @@ export {PhysicsProvider, usePhysicsContext} from './provider'
 export type {PhysicsProviderProps, PhysicsContextValue} from './provider'
 
 // Hooks (React integration, optional)
-export {usePhysicsUpdate, useRapierWorld} from './hooks'
+export {usePhysicsUpdate, useJoltWorld, useRapierWorld} from './hooks'
 export type {PhysicsStage} from './hooks'
+
+// Jolt types
+export type {
+  JoltModule,
+  JoltPhysicsSystem,
+  JoltBody,
+  JoltBodyID,
+  JoltShape,
+  JoltCharacterVirtual,
+} from './jolt-types'
+export {
+  LAYER_NON_MOVING,
+  LAYER_MOVING,
+  MOTION_TYPE_STATIC,
+  MOTION_TYPE_KINEMATIC,
+  MOTION_TYPE_DYNAMIC,
+  GROUND_STATE_ON_GROUND,
+  GROUND_STATE_ON_STEEP_GROUND,
+  GROUND_STATE_IN_AIR,
+} from './jolt-types'
 
 // React components
 export {

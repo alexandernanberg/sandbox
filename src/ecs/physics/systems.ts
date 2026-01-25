@@ -1,20 +1,32 @@
-import * as RAPIER from '@dimforge/rapier3d-simd-compat'
 import type {World} from 'koota'
 import {createQuery, Not} from 'koota'
 import {Matrix4, Object3D} from 'three'
 import {
   copyFromObject3D,
-  copyFromRapier,
   copyQuat,
   copyTransform,
   lerpVec3,
   slerpQuat,
   _transform,
   _quat,
-  _vec3,
 } from '~/lib/math'
+import type {
+  JoltBodyInterface,
+  JoltPhysicsSystem,
+  JoltShape,
+} from './jolt-types'
 import type {RigidBodyType, ColliderShape} from './traits'
 import {CharacterMovement, IsCharacterController} from './character'
+import {
+  LAYER_NON_MOVING,
+  LAYER_MOVING,
+  MOTION_TYPE_STATIC,
+  MOTION_TYPE_KINEMATIC,
+  MOTION_TYPE_DYNAMIC,
+  MOTION_QUALITY_DISCRETE,
+  MOTION_QUALITY_LINEAR_CAST,
+  ACTIVATION_ACTIVATE,
+} from './jolt-types'
 import {
   Transform,
   PreviousTransform,
@@ -31,6 +43,7 @@ import {
   ParentInverseMatrix,
   ChildOf,
 } from './traits'
+import {getJolt, registerBodyEntity} from './world'
 
 // ============================================
 // Cached Queries (created once, reused every frame)
@@ -136,61 +149,166 @@ export function initializeTransformFromObject3D(world: World): void {
 // Body Creation System
 // ============================================
 
+// Store pending collider configs until body is ready
+interface ColliderConfigData {
+  shape: ColliderShape | null
+  friction: number
+  restitution: number
+  density: number
+  sensor: boolean
+  offsetX: number
+  offsetY: number
+  offsetZ: number
+  offsetQx: number
+  offsetQy: number
+  offsetQz: number
+  offsetQw: number
+  scaleX: number
+  scaleY: number
+  scaleZ: number
+}
+
+const pendingColliders = new Map<
+  unknown,
+  {shape: ColliderShape; config: ColliderConfigData}[]
+>()
+
 export function createPhysicsBodies(
   world: World,
-  rapierWorld: RAPIER.World,
-): void {
+  physicsSystem: JoltPhysicsSystem,
+) {
+  const Jolt = getJolt()
+  const bodyInterface = physicsSystem.GetBodyInterface()
+
+  // Query filters uninitialized entities via Not(PhysicsInitialized)
   const entities = world.query(uninitializedBodiesQuery)
 
   for (const entity of entities) {
     const config = entity.get(RigidBodyConfig)!
     const transform = entity.get(Transform)!
 
-    // Create rigid body description
-    const rigidBodyDesc = createRigidBodyDesc(config.type)
-      .setGravityScale(config.gravityScale)
-      .setLinearDamping(config.linearDamping)
-      .setAngularDamping(config.angularDamping)
-      .setCcdEnabled(config.ccd)
-      .setCanSleep(config.canSleep)
-      .setDominanceGroup(config.dominanceGroup)
-      .setTranslation(transform.x, transform.y, transform.z)
-      .setRotation({
-        x: transform.qx,
-        y: transform.qy,
-        z: transform.qz,
-        w: transform.qw,
-      })
+    // Get collider configs from child entities
+    const colliderConfigs: {
+      shape: ColliderShape
+      config: ColliderConfigData
+    }[] = []
 
-    if (config.restrictPosition) {
-      const [x, y, z] = config.restrictPosition
-      rigidBodyDesc.enabledTranslations(!x, !y, !z)
+    // Find child collider entities
+    for (const colliderEntity of world.query(uninitializedCollidersQuery)) {
+      const parents = colliderEntity.targetsFor(ChildOf)
+      if (parents.length > 0 && parents[0] === entity) {
+        const colliderConfig = colliderEntity.get(ColliderConfig)
+        if (colliderConfig && colliderConfig.shape) {
+          colliderConfigs.push({
+            shape: colliderConfig.shape,
+            config: colliderConfig as ColliderConfigData,
+          })
+        }
+      }
     }
 
-    if (config.restrictRotation) {
-      const [x, y, z] = config.restrictRotation
-      rigidBodyDesc.enabledRotations(!x, !y, !z)
+    // If no colliders yet, store as pending
+    if (colliderConfigs.length === 0) {
+      continue
     }
 
-    if (config.lockPosition) {
-      rigidBodyDesc.lockTranslations()
+    // Create shape(s)
+    let shape: JoltShape
+    if (colliderConfigs.length === 1) {
+      // Single collider - use directly
+      const colliderData = colliderConfigs[0]!
+      shape = createJoltShape(
+        Jolt,
+        colliderData.shape,
+        colliderData.config.scaleX,
+        colliderData.config.scaleY,
+        colliderData.config.scaleZ,
+      )
+    } else {
+      // Multiple colliders - create compound shape
+      const compoundSettings = new Jolt.StaticCompoundShapeSettings()
+
+      for (const colliderData of colliderConfigs) {
+        const subShape = createJoltShape(
+          Jolt,
+          colliderData.shape,
+          colliderData.config.scaleX,
+          colliderData.config.scaleY,
+          colliderData.config.scaleZ,
+        )
+
+        const offset = new Jolt.Vec3(
+          colliderData.config.offsetX,
+          colliderData.config.offsetY,
+          colliderData.config.offsetZ,
+        )
+        const rotation = new Jolt.Quat(
+          colliderData.config.offsetQx,
+          colliderData.config.offsetQy,
+          colliderData.config.offsetQz,
+          colliderData.config.offsetQw,
+        )
+
+        compoundSettings.AddShape(offset, rotation, subShape, 0)
+        Jolt.destroy(offset)
+        Jolt.destroy(rotation)
+      }
+
+      shape = compoundSettings.Create().Get()
+      shape.AddRef()
+      Jolt.destroy(compoundSettings)
     }
 
-    if (config.lockRotation) {
-      rigidBodyDesc.lockRotations()
+    // Determine motion type
+    const motionType = getMotionType(config.type)
+    const layer =
+      motionType === MOTION_TYPE_STATIC ? LAYER_NON_MOVING : LAYER_MOVING
+
+    // Create body settings
+    const position = new Jolt.RVec3(transform.x, transform.y, transform.z)
+    const rotation = new Jolt.Quat(
+      transform.qx,
+      transform.qy,
+      transform.qz,
+      transform.qw,
+    )
+
+    const bodySettings = new Jolt.BodyCreationSettings(
+      shape,
+      position,
+      rotation,
+      motionType,
+      layer,
+    )
+
+    // Configure body properties
+    bodySettings.mGravityFactor = config.gravityScale
+    bodySettings.mLinearDamping = config.linearDamping
+    bodySettings.mAngularDamping = config.angularDamping
+    bodySettings.mAllowSleeping = config.canSleep
+    bodySettings.mMotionQuality = config.ccd
+      ? MOTION_QUALITY_LINEAR_CAST
+      : MOTION_QUALITY_DISCRETE
+
+    // Set friction/restitution from first collider
+    if (colliderConfigs.length > 0) {
+      bodySettings.mFriction = colliderConfigs[0]!.config.friction
+      bodySettings.mRestitution = colliderConfigs[0]!.config.restitution
     }
 
-    // Set initial velocities if non-zero
+    // Set initial velocities
     if (
       config.linearVelocityX !== 0 ||
       config.linearVelocityY !== 0 ||
       config.linearVelocityZ !== 0
     ) {
-      rigidBodyDesc.setLinvel(
+      const linVel = new Jolt.Vec3(
         config.linearVelocityX,
         config.linearVelocityY,
         config.linearVelocityZ,
       )
+      bodySettings.mLinearVelocity = linVel
+      Jolt.destroy(linVel)
     }
 
     if (
@@ -198,44 +316,224 @@ export function createPhysicsBodies(
       config.angularVelocityY !== 0 ||
       config.angularVelocityZ !== 0
     ) {
-      rigidBodyDesc.setAngvel({
-        x: config.angularVelocityX,
-        y: config.angularVelocityY,
-        z: config.angularVelocityZ,
-      })
+      const angVel = new Jolt.Vec3(
+        config.angularVelocityX,
+        config.angularVelocityY,
+        config.angularVelocityZ,
+      )
+      bodySettings.mAngularVelocity = angVel
+      Jolt.destroy(angVel)
     }
 
-    // Create the rigid body
-    const body = rapierWorld.createRigidBody(rigidBodyDesc)
+    // Create the body
+    const body = bodyInterface.CreateBody(bodySettings)
+    const bodyId = body.GetID()
 
-    // Store entity reference on rigid body for O(1) lookup in collision events
-    body.userData = entity
+    // Register entity mapping for collision events
+    registerBodyEntity(bodyId, entity)
 
-    // Add runtime ref using set callback for proper mutation
+    // Add to physics world
+    bodyInterface.AddBody(bodyId, ACTIVATION_ACTIVATE)
+
+    // Cleanup temporary objects
+    Jolt.destroy(position)
+    Jolt.destroy(rotation)
+    Jolt.destroy(bodySettings)
+
+    // Add runtime ref
     entity.add(RigidBodyRef)
     entity.set(RigidBodyRef, (ref) => {
-      ref.handle = body.handle
+      ref.bodyId = bodyId
       ref.body = body
+      ref.shape = shape
       return ref
     })
 
     // Mark as initialized
     entity.add(PhysicsInitialized)
+
+    // Mark child colliders as initialized
+    for (const colliderEntity of world.query(uninitializedCollidersQuery)) {
+      const parents = colliderEntity.targetsFor(ChildOf)
+      if (parents.length > 0 && parents[0] === entity) {
+        colliderEntity.add(ColliderInitialized)
+      }
+    }
   }
 }
 
-function createRigidBodyDesc(type: RigidBodyType): RAPIER.RigidBodyDesc {
+function getMotionType(type: RigidBodyType): number {
   switch (type) {
     case 'dynamic':
-      return RAPIER.RigidBodyDesc.dynamic()
+      return MOTION_TYPE_DYNAMIC
     case 'fixed':
-      return RAPIER.RigidBodyDesc.fixed()
+      return MOTION_TYPE_STATIC
     case 'kinematic-velocity-based':
-      return RAPIER.RigidBodyDesc.kinematicVelocityBased()
     case 'kinematic-position-based':
-      return RAPIER.RigidBodyDesc.kinematicPositionBased()
+      return MOTION_TYPE_KINEMATIC
     default:
-      throw new Error(`Unsupported RigidBody type: "${type as string}"`)
+      return MOTION_TYPE_DYNAMIC
+  }
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function createJoltShape(
+  Jolt: any,
+  shape: ColliderShape,
+  scaleX: number,
+  scaleY: number,
+  scaleZ: number,
+): JoltShape {
+  const uniformScale = Math.max(scaleX, scaleY, scaleZ)
+
+  switch (shape.type) {
+    case 'ball': {
+      const settings = new Jolt.SphereShapeSettings(shape.radius * uniformScale)
+      const result = settings.Create().Get()
+      result.AddRef()
+      Jolt.destroy(settings)
+      return result
+    }
+    case 'cuboid': {
+      const halfExtent = new Jolt.Vec3(
+        shape.hx * scaleX,
+        shape.hy * scaleY,
+        shape.hz * scaleZ,
+      )
+      const settings = new Jolt.BoxShapeSettings(halfExtent)
+      const result = settings.Create().Get()
+      result.AddRef()
+      Jolt.destroy(halfExtent)
+      Jolt.destroy(settings)
+      return result
+    }
+    case 'capsule': {
+      const settings = new Jolt.CapsuleShapeSettings(
+        shape.halfHeight * scaleY,
+        shape.radius * Math.max(scaleX, scaleZ),
+      )
+      const result = settings.Create().Get()
+      result.AddRef()
+      Jolt.destroy(settings)
+      return result
+    }
+    case 'cylinder': {
+      const settings = new Jolt.CylinderShapeSettings(
+        shape.halfHeight * scaleY,
+        shape.radius * Math.max(scaleX, scaleZ),
+      )
+      const result = settings.Create().Get()
+      result.AddRef()
+      Jolt.destroy(settings)
+      return result
+    }
+    case 'cone': {
+      // Jolt uses tapered capsule or we can approximate with convex hull
+      // For now, use cylinder as approximation
+      const settings = new Jolt.CylinderShapeSettings(
+        shape.halfHeight * scaleY,
+        shape.radius * Math.max(scaleX, scaleZ),
+      )
+      const result = settings.Create().Get()
+      result.AddRef()
+      Jolt.destroy(settings)
+      return result
+    }
+    case 'convexHull': {
+      // Scale the vertices
+      const scaledPoints = new Float32Array(shape.points.length)
+      for (let i = 0; i < shape.points.length; i += 3) {
+        scaledPoints[i] = shape.points[i]! * scaleX
+        scaledPoints[i + 1] = shape.points[i + 1]! * scaleY
+        scaledPoints[i + 2] = shape.points[i + 2]! * scaleZ
+      }
+      const settings = new Jolt.ConvexHullShapeSettings()
+      for (let i = 0; i < scaledPoints.length; i += 3) {
+        const point = new Jolt.Vec3(
+          scaledPoints[i]!,
+          scaledPoints[i + 1]!,
+          scaledPoints[i + 2]!,
+        )
+        settings.mPoints.push_back(point)
+        Jolt.destroy(point)
+      }
+      const result = settings.Create().Get()
+      result.AddRef()
+      Jolt.destroy(settings)
+      return result
+    }
+    case 'trimesh': {
+      // Scale the vertices
+      const scaledVertices = new Float32Array(shape.vertices.length)
+      for (let i = 0; i < shape.vertices.length; i += 3) {
+        scaledVertices[i] = shape.vertices[i]! * scaleX
+        scaledVertices[i + 1] = shape.vertices[i + 1]! * scaleY
+        scaledVertices[i + 2] = shape.vertices[i + 2]! * scaleZ
+      }
+      const settings = new Jolt.MeshShapeSettings()
+      // Add triangles
+      const triList = new Jolt.TriangleList()
+      for (let i = 0; i < shape.indices.length; i += 3) {
+        const i0 = shape.indices[i]! * 3
+        const i1 = shape.indices[i + 1]! * 3
+        const i2 = shape.indices[i + 2]! * 3
+        const v0 = new Jolt.Float3(
+          scaledVertices[i0]!,
+          scaledVertices[i0 + 1]!,
+          scaledVertices[i0 + 2]!,
+        )
+        const v1 = new Jolt.Float3(
+          scaledVertices[i1]!,
+          scaledVertices[i1 + 1]!,
+          scaledVertices[i1 + 2]!,
+        )
+        const v2 = new Jolt.Float3(
+          scaledVertices[i2]!,
+          scaledVertices[i2 + 1]!,
+          scaledVertices[i2 + 2]!,
+        )
+        const tri = new Jolt.Triangle(v0, v1, v2, 0)
+        triList.push_back(tri)
+        Jolt.destroy(v0)
+        Jolt.destroy(v1)
+        Jolt.destroy(v2)
+        Jolt.destroy(tri)
+      }
+      settings.mTriangleVertices = triList
+      const result = settings.Create().Get()
+      result.AddRef()
+      Jolt.destroy(triList)
+      Jolt.destroy(settings)
+      return result
+    }
+    case 'heightfield': {
+      // Create heightfield shape
+      const settings = new Jolt.HeightFieldShapeSettings()
+      settings.mSampleCount = shape.ncols
+      settings.mBlockSize = 2
+      settings.mOffset = new Jolt.Vec3(0, 0, 0)
+      settings.mScale = new Jolt.Vec3(
+        shape.scale.x * scaleX,
+        shape.scale.y * scaleY,
+        shape.scale.z * scaleZ,
+      )
+      // Copy height data
+      for (let i = 0; i < shape.heights.length; i++) {
+        settings.mHeightSamples.push_back(shape.heights[i]!)
+      }
+      const result = settings.Create().Get()
+      result.AddRef()
+      Jolt.destroy(settings)
+      return result
+    }
+    default: {
+      // Fallback to unit sphere
+      const settings = new Jolt.SphereShapeSettings(1)
+      const result = settings.Create().Get()
+      result.AddRef()
+      Jolt.destroy(settings)
+      return result
+    }
   }
 }
 
@@ -243,142 +541,15 @@ function createRigidBodyDesc(type: RigidBodyType): RAPIER.RigidBodyDesc {
 // Collider Creation System
 // ============================================
 
-// Reusable scale object to avoid allocations
-const _scale = {x: 1, y: 1, z: 1}
-
+// In Jolt, colliders (shapes) are created as part of the body
+// This function is kept for compatibility but colliders are created in createPhysicsBodies
 export function createColliders(
   world: World,
-  rapierWorld: RAPIER.World,
-): void {
-  const colliders = world.query(uninitializedCollidersQuery)
-
-  for (const entity of colliders) {
-    // Get parent rigid body from relation
-    const parents = entity.targetsFor(ChildOf)
-    if (parents.length === 0) continue
-
-    const parentEntity = parents[0]!
-
-    // Skip if parent isn't initialized yet
-    if (!parentEntity.has(PhysicsInitialized)) continue
-
-    const bodyRef = parentEntity.get(RigidBodyRef)
-    if (!bodyRef?.body) continue
-
-    const config = entity.get(ColliderConfig)!
-    if (!config.shape) continue
-
-    // Reuse scale object to avoid allocations
-    _scale.x = config.scaleX
-    _scale.y = config.scaleY
-    _scale.z = config.scaleZ
-
-    // Create collider description based on shape, applying world scale
-    const colliderDesc = createColliderDesc(config.shape, _scale)
-    if (!colliderDesc) continue
-
-    colliderDesc
-      .setFriction(config.friction)
-      .setRestitution(config.restitution)
-      .setDensity(config.density)
-      .setSensor(config.sensor)
-      .setTranslation(config.offsetX, config.offsetY, config.offsetZ)
-      .setRotation({
-        x: config.offsetQx,
-        y: config.offsetQy,
-        z: config.offsetQz,
-        w: config.offsetQw,
-      })
-
-    // Enable collision events
-    colliderDesc.setActiveEvents(RAPIER.ActiveEvents.COLLISION_EVENTS)
-
-    // Create the collider attached to parent rigid body
-    const collider = rapierWorld.createCollider(colliderDesc, bodyRef.body)
-
-    // Add runtime ref
-    entity.add(ColliderRef)
-    entity.set(ColliderRef, (ref) => {
-      ref.handle = collider.handle
-      ref.collider = collider
-      return ref
-    })
-
-    // Mark as initialized
-    entity.add(ColliderInitialized)
-  }
-}
-
-function createColliderDesc(
-  shape: ColliderShape | null,
-  scale: {x: number; y: number; z: number},
-): RAPIER.ColliderDesc | null {
-  if (!shape) return null
-
-  // Use uniform scale for shapes that don't support non-uniform scaling
-  const uniformScale = Math.max(scale.x, scale.y, scale.z)
-
-  switch (shape.type) {
-    case 'ball':
-      return RAPIER.ColliderDesc.ball(shape.radius * uniformScale)
-    case 'cuboid':
-      return RAPIER.ColliderDesc.cuboid(
-        shape.hx * scale.x,
-        shape.hy * scale.y,
-        shape.hz * scale.z,
-      )
-    case 'capsule':
-      // Capsule: height scales on Y, radius uses max of X/Z
-      return RAPIER.ColliderDesc.capsule(
-        shape.halfHeight * scale.y,
-        shape.radius * Math.max(scale.x, scale.z),
-      )
-    case 'cylinder':
-      // Cylinder: height scales on Y, radius uses max of X/Z
-      return RAPIER.ColliderDesc.cylinder(
-        shape.halfHeight * scale.y,
-        shape.radius * Math.max(scale.x, scale.z),
-      )
-    case 'cone':
-      // Cone: height scales on Y, radius uses max of X/Z
-      return RAPIER.ColliderDesc.cone(
-        shape.halfHeight * scale.y,
-        shape.radius * Math.max(scale.x, scale.z),
-      )
-    case 'convexHull': {
-      // Scale the vertices
-      const scaledPoints = new Float32Array(shape.points.length)
-      for (let i = 0; i < shape.points.length; i += 3) {
-        scaledPoints[i] = shape.points[i]! * scale.x
-        scaledPoints[i + 1] = shape.points[i + 1]! * scale.y
-        scaledPoints[i + 2] = shape.points[i + 2]! * scale.z
-      }
-      return RAPIER.ColliderDesc.convexHull(scaledPoints)
-    }
-    case 'trimesh': {
-      // Scale the vertices
-      const scaledVertices = new Float32Array(shape.vertices.length)
-      for (let i = 0; i < shape.vertices.length; i += 3) {
-        scaledVertices[i] = shape.vertices[i]! * scale.x
-        scaledVertices[i + 1] = shape.vertices[i + 1]! * scale.y
-        scaledVertices[i + 2] = shape.vertices[i + 2]! * scale.z
-      }
-      return RAPIER.ColliderDesc.trimesh(scaledVertices, shape.indices)
-    }
-    case 'heightfield':
-      return RAPIER.ColliderDesc.heightfield(
-        shape.nrows,
-        shape.ncols,
-        shape.heights,
-        {
-          x: shape.scale.x * scale.x,
-          y: shape.scale.y * scale.y,
-          z: shape.scale.z * scale.z,
-        },
-      )
-    default:
-      return null
-  }
+  _physicsSystem: JoltPhysicsSystem,
+) {
+  // Colliders are now handled in createPhysicsBodies since Jolt
+  // attaches shapes directly to bodies
+  // This function exists for API compatibility
 }
 
 // ============================================
@@ -391,12 +562,36 @@ export function storePreviousTransforms(world: World): void {
   })
 }
 
-export function syncTransformFromPhysics(world: World): void {
-  for (const entity of world.query(syncFromPhysicsQuery)) {
-    const body = entity.get(RigidBodyRef)!.body
-    if (!body || body.isSleeping() || body.isFixed()) continue
+export function syncTransformFromPhysics(
+  world: World,
+  physicsSystem: JoltPhysicsSystem,
+) {
+  const Jolt = getJolt()
+  const bodyInterface = physicsSystem.GetBodyInterface()
+  const entities = world.query(syncFromPhysicsQuery)
 
-    copyFromRapier(_transform, body.translation(), body.rotation())
+  for (const entity of entities) {
+    const bodyRef = entity.get(RigidBodyRef)!
+    const bodyId = bodyRef.bodyId
+
+    if (!bodyId || bodyId.IsInvalid()) continue
+
+    // Skip if body is not active (sleeping) or static
+    if (!bodyInterface.IsActive(bodyId)) continue
+
+    // Get position and rotation from Jolt
+    const pos = bodyInterface.GetPosition(bodyId)
+    const rot = bodyInterface.GetRotation(bodyId)
+
+    // Copy to scratch transform
+    _transform.x = pos.GetX()
+    _transform.y = pos.GetY()
+    _transform.z = pos.GetZ()
+    _transform.qx = rot.GetX()
+    _transform.qy = rot.GetY()
+    _transform.qz = rot.GetZ()
+    _transform.qw = rot.GetW()
+
     entity.set(Transform, _transform)
   }
 }

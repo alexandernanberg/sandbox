@@ -1,4 +1,3 @@
-import type * as RAPIER from '@dimforge/rapier3d-simd-compat'
 import type {Entity} from 'koota'
 import {useWorld} from 'koota/react'
 import type {ComponentProps, ReactNode} from 'react'
@@ -12,6 +11,7 @@ import {
 } from 'react'
 import {Vector3} from 'three'
 import type {Object3D} from 'three'
+import type {JoltBody} from './jolt-types'
 
 // Scratch vector for getWorldScale (avoids allocation per collider setup)
 const _scaleVec3 = new Vector3()
@@ -53,8 +53,8 @@ type Triplet = [number, number, number]
 export interface RigidBodyApi {
   /** The ECS entity */
   readonly entity: Entity
-  /** The Rapier rigid body (null if not yet initialized) */
-  readonly body: RAPIER.RigidBody | null
+  /** The Jolt body (null if not yet initialized) */
+  readonly body: JoltBody | null
 }
 
 export interface RigidBodyProps extends Omit<

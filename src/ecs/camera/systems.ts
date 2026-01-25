@@ -1,8 +1,7 @@
-import * as RAPIER from '@dimforge/rapier3d-simd-compat'
 import {createQuery} from 'koota'
 import type {World} from 'koota'
+import type {JoltBody} from '../physics/jolt-types'
 import {CharacterMovement, RigidBodyRef, RenderTransform} from '../physics'
-import {getRapierWorld} from '../physics/world'
 import {
   noise2D,
   computeCameraPosition,
@@ -37,10 +36,6 @@ const cameraTargetQuery = createQuery(IsCameraTarget, RenderTransform)
 // ============================================
 // Scratch Objects (reused to avoid allocations)
 // ============================================
-
-const _rayOrigin = {x: 0, y: 0, z: 0}
-const _rayDirection = {x: 0, y: 0, z: 0}
-let _cachedRay: RAPIER.Ray | null = null
 
 // Camera frame scratch objects
 const _targetPos = {x: 0, y: 0, z: 0}
@@ -141,7 +136,7 @@ export function cameraUpdateSystem(world: World, delta: number) {
     // Find target entity (player with IsCameraTarget)
     let hasTarget = false
     let hasVelocity = false
-    let targetRigidBody: RAPIER.RigidBody | null = null
+    let targetRigidBody: JoltBody | null = null
 
     for (const entity of world.query(cameraTargetQuery)) {
       const transform = entity.get(RenderTransform)!
@@ -408,86 +403,18 @@ export function cameraUpdateSystem(world: World, delta: number) {
 // ============================================
 
 function castWhiskerRays(
-  target: {x: number; y: number; z: number},
-  idealPos: {x: number; y: number; z: number},
-  yaw: number,
-  pitch: number,
+  _target: {x: number; y: number; z: number},
+  _idealPos: {x: number; y: number; z: number},
+  _yaw: number,
+  _pitch: number,
   maxDistance: number,
-  heightOffset: number,
-  padding: number,
-  excludeRigidBody: RAPIER.RigidBody | null,
+  _heightOffset: number,
+  _padding: number,
+  _excludeRigidBody: JoltBody | null,
 ): number {
-  const rapier = getRapierWorld()
-  if (!rapier) return maxDistance
-
-  // Camera basis vectors
-  const cosPitch = Math.cos(pitch)
-  const sinPitch = Math.sin(pitch)
-  const cosYaw = Math.cos(yaw)
-  const sinYaw = Math.sin(yaw)
-
-  const rightX = cosYaw
-  const rightZ = -sinYaw
-  const upX = -sinPitch * sinYaw
-  const upY = cosPitch
-  const upZ = -sinPitch * cosYaw
-
-  const originX = target.x
-  const originY = target.y + heightOffset
-  const originZ = target.z
-
-  let minDistance = maxDistance
-
-  for (const whisker of WHISKER_OFFSETS) {
-    const offsetX = rightX * whisker.x + upX * whisker.y
-    const offsetY = upY * whisker.y
-    const offsetZ = rightZ * whisker.x + upZ * whisker.y
-
-    const whiskerTargetX = idealPos.x + offsetX
-    const whiskerTargetY = idealPos.y + offsetY
-    const whiskerTargetZ = idealPos.z + offsetZ
-
-    const dx = whiskerTargetX - originX
-    const dy = whiskerTargetY - originY
-    const dz = whiskerTargetZ - originZ
-    const len = Math.sqrt(dx * dx + dy * dy + dz * dz)
-
-    if (len < 0.001) continue
-
-    _rayOrigin.x = originX
-    _rayOrigin.y = originY
-    _rayOrigin.z = originZ
-    _rayDirection.x = dx / len
-    _rayDirection.y = dy / len
-    _rayDirection.z = dz / len
-
-    if (!_cachedRay) {
-      _cachedRay = new RAPIER.Ray(_rayOrigin, _rayDirection)
-    } else {
-      _cachedRay.origin = _rayOrigin
-      _cachedRay.dir = _rayDirection
-    }
-
-    // Cast ray with filter to exclude the player's rigid body
-    const hit = rapier.castRay(
-      _cachedRay,
-      maxDistance + 1,
-      true, // solid
-      undefined, // filterFlags
-      undefined, // filterGroups
-      undefined, // filterExcludeCollider
-      excludeRigidBody ?? undefined, // filterExcludeRigidBody
-    )
-
-    if (hit) {
-      const hitDistance = hit.timeOfImpact - padding
-      if (hitDistance < minDistance) {
-        minDistance = hitDistance
-      }
-    }
-  }
-
-  return Math.max(0, minDistance)
+  // TODO: Implement Jolt ray casting for camera collision
+  // For now, return max distance (no collision detection)
+  return maxDistance
 }
 
 /**

@@ -15,13 +15,11 @@
     "test": "bun test"
   },
   "dependencies": {
-    "@dimforge/rapier3d": "^0.19.3",
-    "@dimforge/rapier3d-compat": "^0.19.3",
-    "@dimforge/rapier3d-simd-compat": "^0.19.3",
     "@react-three/drei": "10.7.7",
     "@react-three/fiber": "9.5.0",
     "@xstate/fsm": "^2.1.0",
     "directed": "^0.1.6",
+    "jolt-physics": "^1.0.0",
     "koota": "^0.6.4",
     "react": "19.2.3",
     "react-dom": "19.2.3",

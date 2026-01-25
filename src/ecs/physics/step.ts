@@ -1,4 +1,3 @@
-import * as RAPIER from '@dimforge/rapier3d-simd-compat'
 import {createQuery} from 'koota'
 import type {World} from 'koota'
 import {cameraInputSystem, cameraUpdateSystem} from '../camera/systems'
@@ -25,7 +24,7 @@ import {
   smoothCharacterVisuals,
   syncToObject3D,
 } from './systems'
-import {physicsWorld, FIXED_TIMESTEP, MAX_DELTA} from './world'
+import {physicsWorld, FIXED_TIMESTEP, MAX_DELTA, getJolt} from './world'
 
 // Cached query for input singleton
 const inputQuery = createQuery(Input)
@@ -44,12 +43,19 @@ export interface StepResult {
  * Returns the interpolation alpha for rendering.
  */
 export function stepPhysics(ecsWorld: World, delta: number): StepResult {
-  const {rapier, eventQueue, beforeStepCallbacks, afterStepCallbacks} =
-    physicsWorld
+  const {
+    physicsSystem,
+    tempAllocator,
+    jobSystem,
+    beforeStepCallbacks,
+    afterStepCallbacks,
+  } = physicsWorld
 
-  if (!rapier || !eventQueue) {
+  if (!physicsSystem || !tempAllocator || !jobSystem) {
     return {stepped: false, alpha: 0}
   }
+
+  const Jolt = getJolt()
 
   // Check if game is paused - still update camera but skip physics
   const paused = isPaused(ecsWorld)
@@ -73,9 +79,9 @@ export function stepPhysics(ecsWorld: World, delta: number): StepResult {
   initializeTransformFromObject3D(ecsWorld)
 
   // Create any new physics bodies/colliders
-  createPhysicsBodies(ecsWorld, rapier)
-  createColliders(ecsWorld, rapier)
-  createCharacterController(ecsWorld, rapier, RAPIER)
+  createPhysicsBodies(ecsWorld, physicsSystem)
+  createColliders(ecsWorld, physicsSystem)
+  createCharacterController(ecsWorld, physicsSystem, Jolt)
 
   physicsWorld.accumulator += delta
 
@@ -105,19 +111,20 @@ export function stepPhysics(ecsWorld: World, delta: number): StepResult {
     playerMovementSystem(ecsWorld, FIXED_TIMESTEP)
 
     // Run character controller system (sets kinematic positions)
-    characterControllerSystem(ecsWorld, rapier, FIXED_TIMESTEP)
+    characterControllerSystem(ecsWorld, physicsSystem, FIXED_TIMESTEP)
 
     // Step the physics simulation
-    rapier.step(eventQueue)
+    // Jolt uses collision steps (1 is typical) and allocator/job system
+    physicsSystem.Update(FIXED_TIMESTEP, 1, tempAllocator, jobSystem)
 
     // Sync physics state back to ECS
-    syncTransformFromPhysics(ecsWorld)
+    syncTransformFromPhysics(ecsWorld, physicsSystem)
 
     // Post-step: push characters out of kinematic bodies that moved into them
-    characterPostStepSystem(ecsWorld, rapier, FIXED_TIMESTEP)
+    characterPostStepSystem(ecsWorld, physicsSystem, FIXED_TIMESTEP)
 
     // Process collision events
-    processCollisionEvents(rapier, eventQueue)
+    processCollisionEvents(physicsSystem)
 
     // Run after-step callbacks
     for (const cb of afterStepCallbacks) {

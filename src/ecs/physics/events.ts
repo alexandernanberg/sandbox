@@ -1,7 +1,8 @@
-import type * as RAPIER from '@dimforge/rapier3d-simd-compat'
 import {trait, createQuery} from 'koota'
 import type {Entity, World} from 'koota'
+import type {JoltPhysicsSystem, JoltBodyID} from './jolt-types'
 import {CollisionCallbacks} from './traits'
+import {getEntityForBodyId, physicsWorld, getJolt} from './world'
 
 // ============================================
 // Collision Event Traits
@@ -18,32 +19,79 @@ export const CollisionExited = trait(() => ({
 }))
 
 // ============================================
+// Contact Listener Storage
+// ============================================
+
+// Pending collision events to process (filled by contact listener)
+interface PendingCollision {
+  bodyId1: JoltBodyID
+  bodyId2: JoltBodyID
+  started: boolean
+}
+
+const pendingCollisions: PendingCollision[] = []
+
+// Set up contact listener for Jolt
+export function setupContactListener(physicsSystem: JoltPhysicsSystem): void {
+  const Jolt = getJolt()
+
+  // Create contact listener
+  const listener = new Jolt.ContactListenerJS()
+
+  // Called when contact is first detected
+  listener.OnContactAdded = (
+    body1: JoltBodyID,
+    body2: JoltBodyID,
+    _manifold: unknown,
+    _settings: unknown,
+  ) => {
+    pendingCollisions.push({
+      bodyId1: body1,
+      bodyId2: body2,
+      started: true,
+    })
+  }
+
+  // Called when contact is removed
+  listener.OnContactRemoved = (_subShapePair: unknown) => {
+    // Jolt's OnContactRemoved doesn't give us body IDs directly
+    // We'll handle contact exit differently if needed
+  }
+
+  // Required callbacks (can be empty)
+  listener.OnContactValidate = () => {
+    return Jolt.ValidateResult_AcceptAllContactsForThisBodyPair
+  }
+
+  listener.OnContactPersisted = () => {
+    // Contact still active
+  }
+
+  physicsSystem.SetContactListener(listener)
+  physicsWorld.contactListener = listener
+}
+
+// ============================================
 // Collision Event Processing
 // ============================================
 
-export function processCollisionEvents(
-  rapierWorld: RAPIER.World,
-  eventQueue: RAPIER.EventQueue,
-) {
-  eventQueue.drainCollisionEvents((handle1, handle2, started) => {
-    // O(1) lookup via userData stored on parent rigid bodies
-    const collider1 = rapierWorld.getCollider(handle1) as
-      | RAPIER.Collider
-      | undefined
-    const collider2 = rapierWorld.getCollider(handle2) as
-      | RAPIER.Collider
-      | undefined
-
-    const parent1 = collider1?.parent()
-    const parent2 = collider2?.parent()
-
-    const entity1 = parent1?.userData as Entity | undefined
-    const entity2 = parent2?.userData as Entity | undefined
+export function processCollisionEvents(_physicsSystem: JoltPhysicsSystem) {
+  // Process all pending collisions from contact listener
+  for (const collision of pendingCollisions) {
+    const entity1 = getEntityForBodyId(collision.bodyId1)
+    const entity2 = getEntityForBodyId(collision.bodyId2)
 
     if (entity1 && entity2) {
-      processCollisionPair(entity1, entity2, started)
+      processCollisionPair(
+        entity1 as Entity,
+        entity2 as Entity,
+        collision.started,
+      )
     }
-  })
+  }
+
+  // Clear pending collisions
+  pendingCollisions.length = 0
 }
 
 // Reusable collision event object to avoid allocations per collision
