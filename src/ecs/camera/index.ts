@@ -4,8 +4,9 @@ export {
   CameraInput,
   CameraNoise,
   CameraShake,
+  CameraState,
   IsCameraTarget,
 } from './traits'
 
 // Systems
-export {cameraInputSystem, lerpAngle} from './systems'
+export {cameraInputSystem, cameraUpdateSystem, lerpAngle} from './systems'

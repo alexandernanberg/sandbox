@@ -1,7 +1,7 @@
 import * as RAPIER from '@dimforge/rapier3d-simd-compat'
 import {createQuery} from 'koota'
 import type {World} from 'koota'
-import {cameraInputSystem} from '../camera/systems'
+import {cameraInputSystem, cameraUpdateSystem} from '../camera/systems'
 import {isPaused} from '../game'
 import {
   playerMovementSystem,
@@ -140,6 +140,9 @@ export function stepPhysics(ecsWorld: World, delta: number): StepResult {
 
   // Update player state machine (after physics, reflects actual state)
   playerStateMachineSystem(ecsWorld, delta, input)
+
+  // Update camera system (follow, collision, noise, shake)
+  cameraUpdateSystem(ecsWorld, delta)
 
   // Clear collision events at end of frame
   clearCollisionEvents(ecsWorld)
