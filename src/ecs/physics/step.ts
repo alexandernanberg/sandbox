@@ -15,6 +15,7 @@ import {
   storePreviousTransforms,
   syncTransformFromPhysics,
   interpolateTransforms,
+  smoothCharacterVisuals,
   syncToObject3D,
 } from './systems'
 import {physicsWorld, FIXED_TIMESTEP, MAX_DELTA} from './world'
@@ -100,6 +101,9 @@ export function stepPhysics(ecsWorld: World, delta: number): StepResult {
 
   // Interpolate transforms for smooth rendering
   interpolateTransforms(ecsWorld, alpha)
+
+  // Smooth character visual Y offset (for step-up animation)
+  smoothCharacterVisuals(ecsWorld, delta)
 
   // Sync to Three.js Object3Ds
   syncToObject3D(ecsWorld)

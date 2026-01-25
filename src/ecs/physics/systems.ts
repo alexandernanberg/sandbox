@@ -14,6 +14,7 @@ import {
   _vec3,
 } from '~/lib/math'
 import type {RigidBodyType, ColliderShape} from './traits'
+import {CharacterMovement, IsCharacterController} from './character'
 import {
   Transform,
   PreviousTransform,
@@ -82,6 +83,13 @@ const syncToObject3DNestedQuery = createQuery(
   Object3DRef,
   PhysicsInitialized,
   ParentInverseMatrix,
+)
+const characterVisualSmoothQuery = createQuery(
+  Transform,
+  RenderTransform,
+  CharacterMovement,
+  IsCharacterController,
+  PhysicsInitialized,
 )
 
 // Temporary Three.js objects for matrix operations
@@ -440,5 +448,63 @@ export function syncToObject3D(world: World) {
 
     object.position.copy(_tempObject3D.position)
     object.quaternion.copy(_tempObject3D.quaternion)
+  }
+}
+
+// ============================================
+// Character Visual Smoothing System
+// ============================================
+
+/** How quickly visual Y catches up to physics Y (higher = faster) */
+const VISUAL_SMOOTH_FACTOR = 15.0
+/** Minimum Y jump to trigger smoothing (smaller changes snap instantly) */
+const STEP_UP_THRESHOLD = 0.08
+
+/**
+ * Smooth character visual Y position for step-up climbing.
+ * Only applies smoothing when there's a sudden upward Y change (step-up).
+ * Gradual changes (slopes, normal movement) snap instantly to avoid camera lag.
+ *
+ * Call this AFTER interpolateTransforms and BEFORE syncToObject3D.
+ */
+export function smoothCharacterVisuals(world: World, delta: number) {
+  for (const entity of world.query(characterVisualSmoothQuery)) {
+    const movement = entity.get(CharacterMovement)!
+    const transform = entity.get(Transform)!
+
+    // Skip if not initialized yet
+    if (!movement.visualYInitialized) continue
+
+    // Target is the CURRENT physics Y (not interpolated)
+    const targetY = transform.y
+    const currentVisualY = movement.visualY
+
+    // Calculate how much Y jumped this frame
+    const yDelta = targetY - currentVisualY
+
+    let newVisualY: number
+
+    // Only smooth large upward jumps (step-ups) while grounded
+    // Small changes and downward movement snap instantly
+    if (movement.grounded && !movement.sliding && yDelta > STEP_UP_THRESHOLD) {
+      // Smoothly interpolate visual Y toward physics Y
+      const t = 1 - Math.exp(-VISUAL_SMOOTH_FACTOR * delta)
+      newVisualY = currentVisualY + yDelta * t
+    } else {
+      // Snap to physics Y (no smoothing needed)
+      newVisualY = targetY
+    }
+
+    // Apply visual Y to render transform (override the interpolated Y)
+    entity.set(RenderTransform, (r) => {
+      r.y = newVisualY
+      return r
+    })
+
+    // Update visual Y in movement state
+    entity.set(CharacterMovement, (m) => {
+      m.visualY = newVisualY
+      return m
+    })
   }
 }

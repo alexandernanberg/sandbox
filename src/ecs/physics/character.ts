@@ -135,6 +135,10 @@ export const CharacterMovement = trait({
   coyoteCounter: 0, // Frames since leaving ground
   jumpBufferCounter: 0, // Frames since jump was pressed
   jumpRequested: false, // Jump input this frame
+  // Visual Y position for smooth step-up animation
+  // Smoothly interpolates toward physics Y instead of snapping
+  visualY: 0,
+  visualYInitialized: false,
 })
 
 // Tag for entities that are character controllers
@@ -342,8 +346,7 @@ function detectGround(
       }
     }
 
-    const _slopeCos = Math.cos(config.maxSlopeAngle)
-    // Hysteresis: if grounded last frame, use a more lenient threshold (5° extra)
+    // Hysteresis: if grounded last frame, use a more lenient threshold (5 degrees extra)
     // This prevents flickering when walking near edges with interpolated normals
     const hysteresisAngle = wasGroundedLastFrame ? 5 * (Math.PI / 180) : 0
     const effectiveSlopeCos = Math.cos(config.maxSlopeAngle + hysteresisAngle)
@@ -701,6 +704,7 @@ interface MoveResult {
   hitCeiling: boolean
   hitFloor: boolean
   steppedUp: boolean
+  stepUpAmount: number // Actual Y distance stepped up
 }
 
 const _moveResult: MoveResult = {
@@ -711,6 +715,7 @@ const _moveResult: MoveResult = {
   hitCeiling: false,
   hitFloor: false,
   steppedUp: false,
+  stepUpAmount: 0,
 }
 
 function moveAndSlide(
@@ -730,6 +735,7 @@ function moveAndSlide(
   _moveResult.hitCeiling = false
   _moveResult.hitFloor = false
   _moveResult.steppedUp = false
+  _moveResult.stepUpAmount = 0
 
   setVec3(_slideVel, velocity.x, velocity.y, velocity.z)
   setVec3(_prevMoveDir, 0, 0, 0)
@@ -898,6 +904,7 @@ function moveAndSlide(
           _moveResult.y += _stepPos.y
           _moveResult.z += _stepPos.z
           _moveResult.steppedUp = true
+          _moveResult.stepUpAmount = _stepPos.y
           // Continue with remaining velocity after step
           const remainingSpeed = speed - hit.time_of_impact
           if (remainingSpeed > MIN_MOVE_DISTANCE) {
@@ -1065,8 +1072,8 @@ function attemptStepUp(
   const slopeCos = Math.cos(config.maxSlopeAngle)
   if (downHit.normal1.y < slopeCos) return false
 
-  const stepUpAmount =
-    config.stepHeight - downHit.time_of_impact + config.skinWidth
+  // Position character just above step surface (minimal gap to avoid z-fighting)
+  const stepUpAmount = config.stepHeight - downHit.time_of_impact + 0.001
   if (stepUpAmount < 0.01) return false
 
   target.x = velocity.x
@@ -1441,7 +1448,6 @@ export function characterControllerSystem(
       finalMoveY += _platformVel.y
     } else {
       // Process full velocity through moveAndSlide
-      // The slope projection already adjusted _velocity to follow slope surface
       const moveResult = moveAndSlide(
         rapierWorld,
         {x: posX, y: posY, z: posZ},
@@ -1493,6 +1499,16 @@ export function characterControllerSystem(
     // ========================================
     // 12. UPDATE MOVEMENT STATE
     // ========================================
+    // Track visual Y for smooth step-up animation
+    // On first frame, initialize to current physics Y
+    // After that, visualY is updated by the smoothing system
+    let visualY = movement.visualY
+    let visualYInitialized = movement.visualYInitialized
+    if (!visualYInitialized) {
+      visualY = posY + finalMoveY
+      visualYInitialized = true
+    }
+
     entity.set(CharacterMovement, (m) => {
       m.vx = movement.vx
       m.vy = movement.vy
@@ -1517,6 +1533,8 @@ export function characterControllerSystem(
       m.coyoteCounter = coyoteCounter
       m.jumpBufferCounter = jumpBufferCounter
       m.jumpRequested = false // Clear after processing
+      m.visualY = visualY
+      m.visualYInitialized = visualYInitialized
       return m
     })
 
@@ -1551,7 +1569,6 @@ export function characterPostStepSystem(
     const shapeRef = entity.get(CharacterShapeRef)!
     const config = entity.get(CharacterControllerConfig)! as CharacterConfig
     const bodyRef = entity.get(RigidBodyRef)!
-    const _transform = entity.get(Transform)!
 
     const shape = shapeRef.shape
     const body = bodyRef.body
@@ -1561,7 +1578,7 @@ export function characterPostStepSystem(
     const collider = body.collider(0)
     const pos = body.translation()
 
-    // Run depenetration to push out of any overlapping kinematic bodies
+    // Push character out of any overlapping kinematic bodies
     depenetrate(
       rapierWorld,
       {x: pos.x, y: pos.y, z: pos.z},
@@ -1608,9 +1625,9 @@ export function createCharacterController(
   const entities = world.query(characterCreationQuery)
 
   for (const entity of entities) {
-    if (entity.has(CharacterShapeRef)) {
-      const ref = entity.get(CharacterShapeRef)!
-      if (ref.shape) continue
+    // Skip if shape already exists
+    if (entity.has(CharacterShapeRef) && entity.get(CharacterShapeRef)!.shape) {
+      continue
     }
 
     const config = entity.get(CharacterControllerConfig)! as CharacterConfig
@@ -1620,21 +1637,21 @@ export function createCharacterController(
       config.capsuleRadius,
     )
 
+    const shapeData = {
+      shape,
+      halfHeight: config.capsuleHalfHeight,
+      radius: config.capsuleRadius,
+    }
+
     if (entity.has(CharacterShapeRef)) {
       entity.set(CharacterShapeRef, (ref) => {
-        ref.shape = shape
-        ref.halfHeight = config.capsuleHalfHeight
-        ref.radius = config.capsuleRadius
+        ref.shape = shapeData.shape
+        ref.halfHeight = shapeData.halfHeight
+        ref.radius = shapeData.radius
         return ref
       })
     } else {
-      entity.add(
-        CharacterShapeRef({
-          shape,
-          halfHeight: config.capsuleHalfHeight,
-          radius: config.capsuleRadius,
-        }),
-      )
+      entity.add(CharacterShapeRef(shapeData))
     }
   }
 }
@@ -1643,17 +1660,11 @@ export function createCharacterController(
 // Character Controller Cleanup
 // ============================================
 
-export function cleanupCharacterController(
-  entity: Entity,
-  _rapierWorld: RAPIER.World,
-) {
+export function cleanupCharacterController(entity: Entity) {
   if (!entity.has(CharacterShapeRef)) return
 
-  const ref = entity.get(CharacterShapeRef)!
-  if (ref.shape) {
-    entity.set(CharacterShapeRef, (r) => {
-      r.shape = null
-      return r
-    })
-  }
+  entity.set(CharacterShapeRef, (ref) => {
+    ref.shape = null
+    return ref
+  })
 }
