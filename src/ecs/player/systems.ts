@@ -2,7 +2,7 @@ import {createQuery} from 'koota'
 import type {World} from 'koota'
 import type {PlayerStateType} from './traits'
 import {CameraOrbit, lerpAngle} from '../camera'
-import {CharacterMovement} from '../physics/character'
+import {CharacterMovement} from '../physics/rapier-kcc'
 import {Object3DRef} from '../physics/traits'
 import {syncStateTags} from '../state-machine'
 import {

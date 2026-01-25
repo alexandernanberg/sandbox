@@ -6,7 +6,7 @@ import {
   CharacterControllerConfig,
   CharacterMovement,
   IsCharacterController,
-} from './character'
+} from './rapier-kcc'
 import {RigidBody, CapsuleCollider} from './components'
 import {RigidBodyRef} from './traits'
 

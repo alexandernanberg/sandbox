@@ -38,13 +38,13 @@ export {
   isCollidingWith,
 } from './events'
 
-// Character controller
+// Character controller (Rapier built-in KCC)
 export {
-  CharacterShapeRef,
+  RapierKCCRef,
   CharacterControllerConfig,
   CharacterMovement,
   IsCharacterController,
-} from './character'
+} from './rapier-kcc'
 
 // Physics world (ECS-centric, can be used outside React)
 export {
@@ -131,7 +131,7 @@ export {
   characterControllerSystem,
   createCharacterController,
   cleanupCharacterController,
-} from './character'
+} from './rapier-kcc'
 
 // Character controller React component
 export {CharacterController} from './character-controller'

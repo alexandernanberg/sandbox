@@ -14,7 +14,7 @@ import {
   _vec3,
 } from '~/lib/math'
 import type {RigidBodyType, ColliderShape} from './traits'
-import {CharacterMovement, IsCharacterController} from './character'
+import {CharacterMovement, IsCharacterController} from './rapier-kcc'
 import {
   Transform,
   PreviousTransform,

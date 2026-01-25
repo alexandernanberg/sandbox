@@ -13,7 +13,7 @@ import {
   createCharacterController,
   characterControllerSystem,
   characterPostStepSystem,
-} from './character'
+} from './rapier-kcc'
 import {processCollisionEvents, clearCollisionEvents} from './events'
 import {
   initializeTransformFromObject3D,
