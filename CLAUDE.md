@@ -23,6 +23,18 @@ pnpm run format        # Format with oxfmt
 pnpm run format:check  # Check formatting
 ```
 
+## Commit Convention
+
+Use semantic commit messages:
+
+- `feat:` - New features
+- `fix:` - Bug fixes
+- `refactor:` - Code changes that neither fix bugs nor add features
+- `perf:` - Performance improvements
+- `docs:` - Documentation only changes
+- `chore:` - Build process, dependencies, or tooling changes
+- `test:` - Adding or updating tests
+
 ## Project Structure
 
 ```
