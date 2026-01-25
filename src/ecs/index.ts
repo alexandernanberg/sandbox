@@ -120,3 +120,9 @@ export * from './player'
 
 // Re-export camera traits
 export * from './camera'
+
+// Re-export game state
+export * from './game'
+
+// Re-export state machine utilities
+export * from './state-machine'

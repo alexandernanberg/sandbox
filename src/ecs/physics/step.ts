@@ -1,7 +1,14 @@
 import * as RAPIER from '@dimforge/rapier3d-simd-compat'
+import {createQuery} from 'koota'
 import type {World} from 'koota'
 import {cameraInputSystem} from '../camera/systems'
-import {playerMovementSystem, playerFacingSystem} from '../player/systems'
+import {isPaused} from '../game'
+import {
+  playerMovementSystem,
+  playerFacingSystem,
+  playerStateMachineSystem,
+} from '../player/systems'
+import {Input} from '../player/traits'
 import {
   createCharacterController,
   characterControllerSystem,
@@ -19,6 +26,9 @@ import {
   syncToObject3D,
 } from './systems'
 import {physicsWorld, FIXED_TIMESTEP, MAX_DELTA} from './world'
+
+// Cached query for input singleton
+const inputQuery = createQuery(Input)
 
 export interface StepResult {
   stepped: boolean
@@ -38,13 +48,23 @@ export function stepPhysics(ecsWorld: World, delta: number): StepResult {
     return {stepped: false, alpha: 0}
   }
 
+  // Check if game is paused - still update camera but skip physics
+  const paused = isPaused(ecsWorld)
+
   // Clamp delta to prevent spiral of death
   if (delta > MAX_DELTA) {
     delta = MAX_DELTA
   }
 
-  // Update camera orbit from mouse/gamepad input (before physics)
+  // Update camera orbit from mouse/gamepad input (always, even when paused)
   cameraInputSystem(ecsWorld)
+
+  // If paused, skip physics simulation but still sync visuals
+  if (paused) {
+    // Still sync Object3Ds for any queued visual updates
+    syncToObject3D(ecsWorld)
+    return {stepped: false, alpha: physicsWorld.accumulator / FIXED_TIMESTEP}
+  }
 
   // Initialize transforms from Object3D world matrices
   initializeTransformFromObject3D(ecsWorld)
@@ -57,6 +77,13 @@ export function stepPhysics(ecsWorld: World, delta: number): StepResult {
   physicsWorld.accumulator += delta
 
   let stepped = false
+
+  // Get input for state machine (read once per frame)
+  let input = {movement: {x: 0, y: 0}, jump: false, sprint: false}
+  for (const entity of ecsWorld.query(inputQuery)) {
+    input = entity.get(Input)!
+    break
+  }
 
   // Fixed timestep loop
   while (physicsWorld.accumulator >= FIXED_TIMESTEP) {
@@ -110,6 +137,9 @@ export function stepPhysics(ecsWorld: World, delta: number): StepResult {
 
   // Update player facing direction (visual mesh rotation)
   playerFacingSystem(ecsWorld, delta)
+
+  // Update player state machine (after physics, reflects actual state)
+  playerStateMachineSystem(ecsWorld, delta, input)
 
   // Clear collision events at end of frame
   clearCollisionEvents(ecsWorld)

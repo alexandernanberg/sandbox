@@ -1,14 +1,20 @@
 import {createQuery} from 'koota'
 import type {World} from 'koota'
+import type {PlayerStateType} from './traits'
 import {CameraOrbit, lerpAngle} from '../camera'
 import {CharacterMovement} from '../physics/character'
 import {Object3DRef} from '../physics/traits'
+import {syncStateTags} from '../state-machine'
 import {
   Input,
   IsPlayer,
   PlayerMovementConfig,
   PlayerVelocity,
   FacingDirection,
+  PlayerState,
+  IsGrounded,
+  IsAirborne,
+  IsSliding,
 } from './traits'
 
 // ============================================
@@ -24,7 +30,21 @@ const playerMovementQuery = createQuery(
 
 const playerFacingQuery = createQuery(IsPlayer, FacingDirection, Object3DRef)
 
+const playerStateQuery = createQuery(IsPlayer, PlayerState, CharacterMovement)
+
 const cameraOrbitQuery = createQuery(CameraOrbit)
+
+const inputQuery = createQuery(Input)
+
+// State to tag mapping for fast ECS queries
+const playerStateToTag: Record<PlayerStateType, typeof IsGrounded> = {
+  idle: IsGrounded,
+  walking: IsGrounded,
+  running: IsGrounded,
+  jumping: IsAirborne,
+  falling: IsAirborne,
+  sliding: IsSliding,
+}
 
 // ============================================
 // Player Movement System
@@ -36,13 +56,11 @@ const cameraOrbitQuery = createQuery(CameraOrbit)
  * Run this before the physics step.
  */
 export function playerMovementSystem(world: World, delta: number) {
-  // Get input singleton - find first entity with Input trait
-  const inputEntities = world.query(Input)
+  // Get input singleton
   let input = {movement: {x: 0, y: 0}, jump: false, sprint: false}
-
-  for (const entity of inputEntities) {
+  for (const entity of world.query(inputQuery)) {
     input = entity.get(Input)!
-    break // Only need first (singleton)
+    break
   }
 
   // Get camera yaw for camera-relative movement
@@ -156,4 +174,62 @@ export function playerFacingSystem(world: World, delta: number) {
     // Offset by -PI/2 to align with forward direction
     objRef.object.rotation.y = -newYaw + Math.PI / 2
   }
+}
+
+// ============================================
+// Player State Machine System
+// ============================================
+
+/**
+ * Updates player state machine based on movement/physics state.
+ * Determines current state from CharacterMovement flags and input.
+ * Run this after physics step to reflect actual state.
+ */
+export function playerStateMachineSystem(
+  world: World,
+  delta: number,
+  input: {movement: {x: number; y: number}; sprint: boolean},
+) {
+  const inputLen = Math.sqrt(
+    input.movement.x * input.movement.x + input.movement.y * input.movement.y,
+  )
+  const hasMovementInput = inputLen > 0.1
+
+  world.query(playerStateQuery).updateEach(([state, movement], entity) => {
+    // Determine new state based on physics flags
+    let newState: PlayerStateType
+
+    if (movement.sliding) {
+      newState = 'sliding'
+    } else if (movement.grounded) {
+      // Grounded states
+      if (!hasMovementInput) {
+        newState = 'idle'
+      } else if (input.sprint) {
+        newState = 'running'
+      } else {
+        newState = 'walking'
+      }
+    } else {
+      // Airborne states
+      // Check if we're rising (jumping) or falling
+      if (movement.vy > 0.1) {
+        newState = 'jumping'
+      } else {
+        newState = 'falling'
+      }
+    }
+
+    // Update time in state
+    state.timeInState += delta
+
+    // Transition if state changed
+    if (newState !== state.current) {
+      state.previous = state.current
+      state.current = newState
+      state.timeInState = 0
+      // Only sync tags when state actually changes
+      syncStateTags(entity, PlayerState, playerStateToTag)
+    }
+  })
 }
