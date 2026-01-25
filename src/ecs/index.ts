@@ -55,15 +55,17 @@ const ballCollider = (radius: number, restitution = 0, friction = 0.5) =>
 // ============================================
 // ACTIONS
 // ============================================
-// Actions are safe ways to modify the world from React
+
+const BALL_COLORS = ['red', 'green', 'blue', 'yellow', 'purple'] as const
+
+function randomColor(): string {
+  return BALL_COLORS[Math.floor(Math.random() * BALL_COLORS.length)]!
+}
 
 export const actions = createActions((w) => ({
-  // Spawn a single ball at a position with ECS physics
   spawnBall: (x: number, y: number, z: number) => {
-    const colors = ['red', 'green', 'blue', 'yellow', 'purple']
-    const color = colors[Math.floor(Math.random() * colors.length)]
+    const color = randomColor()
 
-    // Spawn rigid body entity
     const rbEntity = w.spawn(
       IsBall,
       IsPhysicsEntity,
@@ -75,23 +77,18 @@ export const actions = createActions((w) => ({
       RigidBodyConfig,
     )
 
-    // Spawn collider as child entity
     w.spawn(IsColliderEntity, ChildOf(rbEntity), ballCollider(0.5, 1, 0.9))
 
     return rbEntity
   },
 
-  // Spawn multiple balls at random positions
   spawnBalls: (count: number) => {
-    const colors = ['red', 'green', 'blue', 'yellow', 'purple']
-
     for (let i = 0; i < count; i++) {
-      const x = Math.random() * 2 - 1 // -1 to 1
-      const z = Math.random() * 2 - 1 // -1 to 1
+      const x = Math.random() * 2 - 1
+      const z = Math.random() * 2 - 1
       const y = 6
-      const color = colors[Math.floor(Math.random() * colors.length)]
+      const color = randomColor()
 
-      // Spawn rigid body entity
       const rbEntity = w.spawn(
         IsBall,
         IsPhysicsEntity,
@@ -103,14 +100,11 @@ export const actions = createActions((w) => ({
         RigidBodyConfig,
       )
 
-      // Spawn collider as child entity
       w.spawn(IsColliderEntity, ChildOf(rbEntity), ballCollider(0.5, 1, 0.9))
     }
   },
 
-  // Remove all balls
   clearBalls: () => {
-    // Collect entities first to avoid mutating during iteration
     const balls = [...w.query(IsBall)]
     for (const entity of balls) {
       entity.destroy()

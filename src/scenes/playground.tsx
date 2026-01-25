@@ -143,6 +143,11 @@ export function Playground({debugCamera: _debugCamera}: PlaygroundProps) {
       {/* Trampoline */}
       <Trampoline position={[12, 0, 8]} />
 
+      {/* Stairs */}
+      <Stairs position={[0, 0, -10]} />
+      {/* Gentler stairs - smaller step height */}
+      <Stairs position={[4, 0, -10]} stepHeight={0.15} stepDepth={0.5} />
+
       <RigidBody position={[0, 4, -2]} scale={3} angularVelocity={[10, 0, 0]}>
         <Stone />
       </RigidBody>
@@ -578,6 +583,51 @@ function Trampoline({position}: TrampolineProps) {
 }
 
 // ============================================
+// Stairs
+// ============================================
+
+interface StairsProps {
+  position?: [number, number, number]
+  stepCount?: number
+  stepHeight?: number
+  stepDepth?: number
+  stepWidth?: number
+}
+
+function Stairs({
+  position = [0, 0, 0],
+  stepCount = 8,
+  stepHeight = 0.25,
+  stepDepth = 0.4,
+  stepWidth = 3,
+}: StairsProps) {
+  const steps = []
+
+  for (let i = 0; i < stepCount; i++) {
+    const y = stepHeight / 2 + i * stepHeight
+    const z = -i * stepDepth
+    steps.push(
+      <CuboidCollider
+        key={i}
+        args={[stepWidth, stepHeight, stepDepth]}
+        position={[0, y, z]}
+      >
+        <mesh castShadow receiveShadow>
+          <boxGeometry args={[stepWidth, stepHeight, stepDepth]} />
+          <meshStandardMaterial color={0x808080} />
+        </mesh>
+      </CuboidCollider>,
+    )
+  }
+
+  return (
+    <RigidBody type="fixed" position={position}>
+      {steps}
+    </RigidBody>
+  )
+}
+
+// ============================================
 // Player with ECS-driven movement
 // ============================================
 
@@ -598,6 +648,7 @@ function Player({position}: PlayerProps) {
       coyote: {label: 'Coyote'},
       inputVel: {label: 'Input Vel', type: 'string'},
       moveVel: {label: 'Move Vel', type: 'string'},
+      posY: {label: 'Pos Y', format: (v) => v.toFixed(3)},
     },
     {expanded: true, index: 0},
   )
@@ -626,6 +677,12 @@ function Player({position}: PlayerProps) {
       `${x.toFixed(2)} ${y.toFixed(2)} ${z.toFixed(2)}`
     kccDebug.current.inputVel = fmt(movement.vx, movement.vy, movement.vz)
     kccDebug.current.moveVel = fmt(movement.mx, movement.my, movement.mz)
+
+    // Get Y position from rigid body
+    const bodyRef = controller.entity.get(RigidBodyRef)
+    if (bodyRef?.body) {
+      kccDebug.current.posY = bodyRef.body.translation().y
+    }
   })
 
   // Add player traits to the character controller entity

@@ -67,7 +67,7 @@ function App() {
         debug={physicsControls.debug}
         gravity={physicsControls.gravity}
       >
-        <InputManager />
+        <InputManager disablePointerLock={cameraControls.debug} />
         <Playground debugCamera={cameraControls.debug} />
       </PhysicsProvider>
     </LightProvider>

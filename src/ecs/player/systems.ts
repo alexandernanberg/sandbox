@@ -62,21 +62,17 @@ export function playerMovementSystem(world: World, delta: number) {
   // Process all player entities
   for (const entity of world.query(playerMovementQuery)) {
     const config = entity.get(PlayerMovementConfig)!
-    const velocity = entity.get(PlayerVelocity)!
+    const prevVelocity = entity.get(PlayerVelocity)!
     const movement = entity.get(CharacterMovement)!
 
     const isGrounded = movement.grounded
     const isSliding = movement.sliding
-    // Can jump with coyote time (counter > 0 means we were recently grounded)
     const canJump = isGrounded || movement.coyoteCounter > 0
     const speed = input.sprint ? config.sprintSpeed : config.walkSpeed
 
     // Transform input by camera yaw (camera-relative movement)
-    // Camera at yaw=0 is behind player looking at -Z, so forward = -Z
     const cos = Math.cos(cameraYaw)
     const sin = Math.sin(cameraYaw)
-    // Input X = strafe (A/D), Input Y = forward/back (W/S)
-    // Transform to world coordinates based on camera facing direction
     const worldX = normalizedX * cos - normalizedY * sin
     const worldZ = -normalizedX * sin - normalizedY * cos
 
@@ -85,32 +81,27 @@ export function playerMovementSystem(world: World, delta: number) {
     const vx = worldX * speed * delta * slideMultiplier
     const vz = worldZ * speed * delta * slideMultiplier
 
-    // Vertical movement (jump + gravity)
-    let vy = velocity.y
+    // Vertical movement - start from previous Y velocity
+    let vy = prevVelocity.y
 
-    // Jumping - use coyote time and jump buffer
-    // The actual jump execution happens if canJump AND (jumpRequested OR jumpBuffered)
-    // We set jumpRequested here, the character controller handles the buffer
+    // Apply jump velocity (character controller handles jump buffering)
     if (canJump && input.jump) {
       vy = Math.sqrt(config.jumpHeight * -0.05 * config.gravity)
     }
 
-    // Gravity handling:
-    // - When grounded on walkable slope: zero downward velocity (but keep upward for jump)
-    // - When sliding or airborne: apply gravity with terminal velocity
-    const terminalVelocity = -20 // Max fall speed
+    // Apply gravity based on state
+    const terminalVelocity = -20
+    const slideTerminalVelocity = -5
 
     if (isGrounded && !isSliding) {
-      // Grounded - zero downward velocity but preserve upward (jump) velocity
+      // Grounded: zero downward velocity but preserve upward (jump) velocity
       if (vy < 0) vy = 0
     } else if (isSliding) {
-      // Sliding - apply gravity but cap to slide speed (character is touching surface)
-      // Use a lower cap since we're sliding along the surface, not free-falling
-      const slideTerminal = -5
+      // Sliding: apply gravity with lower terminal velocity
       vy += config.gravity * delta
-      if (vy < slideTerminal) vy = slideTerminal
+      if (vy < slideTerminalVelocity) vy = slideTerminalVelocity
     } else {
-      // Airborne - apply gravity with terminal velocity
+      // Airborne: apply gravity with terminal velocity
       vy += config.gravity * delta
       if (vy < terminalVelocity) vy = terminalVelocity
     }
