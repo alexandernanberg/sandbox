@@ -58,9 +58,19 @@ export const CameraOrbit = trait({
   /** Smoothing when easing camera out (recovery) - higher = faster */
   easeOutSmoothing: 5.0,
 
-  // Look-ahead framing
+  // Smooth follow (camera lags behind player)
+  /** How fast camera follows target horizontally (higher = snappier) */
+  followSmoothing: 6.0,
+  /** How fast camera follows target vertically (lower = less motion sickness) */
+  followSmoothingY: 2.0,
+  /** Smoothed follow position */
+  followX: 0,
+  followY: 0,
+  followZ: 0,
+
+  // Look-ahead framing (on top of smooth follow)
   /** How far ahead to offset based on velocity */
-  lookAheadDistance: 1.5,
+  lookAheadDistance: 1.0,
   /** How fast look-ahead responds to velocity changes */
   lookAheadSmoothing: 3.0,
   /** Current look-ahead offset (smoothed) */

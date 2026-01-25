@@ -5,7 +5,7 @@ import {useActions} from 'koota/react'
 import type {ComponentProps} from 'react'
 import {Suspense, useLayoutEffect, useRef, useState} from 'react'
 import {RepeatWrapping} from 'three'
-import {ThirdPersonCamera} from '~/components/cameras'
+import {OrbitDebugVisualizer, ThirdPersonCamera} from '~/components/cameras'
 import {useControls, useMonitor} from '~/components/debug-controls'
 import {
   actions,
@@ -35,9 +35,10 @@ import Stone from '~/models/stone'
 
 interface PlaygroundProps {
   debugCamera: boolean
+  showOrbitRings: boolean
 }
 
-export function Playground({debugCamera: _debugCamera}: PlaygroundProps) {
+export function Playground({debugCamera, showOrbitRings}: PlaygroundProps) {
   // useActions gives us ECS actions bound to the world in context
   const {spawnBalls, clearBalls} = useActions(actions)
 
@@ -59,7 +60,8 @@ export function Playground({debugCamera: _debugCamera}: PlaygroundProps) {
 
   return (
     <>
-      <ThirdPersonCamera />
+      {!debugCamera && <ThirdPersonCamera />}
+      {showOrbitRings && <OrbitDebugVisualizer />}
       <Player position={[0, 2, 0]} />
 
       <Floor />
@@ -605,7 +607,7 @@ function Player({position}: PlayerProps) {
   // Update debug values each physics frame
   usePhysicsUpdate(() => {
     const controller = controllerRef.current
-    if (!controller?.entity?.isAlive()) return
+    if (!controller || !controller.entity.isAlive()) return
 
     const movement = controller.entity.get(CharacterMovement)
     if (!movement) return
@@ -616,6 +618,7 @@ function Player({position}: PlayerProps) {
       : movement.sliding
         ? 'Sliding'
         : 'Airborne'
+    // eslint-disable-next-line react-compiler/react-compiler -- intentional mutation for debug monitor
     kccDebug.current.state = state
     kccDebug.current.groundY = movement.groundNormalY
     kccDebug.current.groundDist = movement.groundDistance

@@ -342,7 +342,7 @@ function detectGround(
       }
     }
 
-    const slopeCos = Math.cos(config.maxSlopeAngle)
+    const _slopeCos = Math.cos(config.maxSlopeAngle)
     // Hysteresis: if grounded last frame, use a more lenient threshold (5° extra)
     // This prevents flickering when walking near edges with interpolated normals
     const hysteresisAngle = wasGroundedLastFrame ? 5 * (Math.PI / 180) : 0
@@ -1551,7 +1551,7 @@ export function characterPostStepSystem(
     const shapeRef = entity.get(CharacterShapeRef)!
     const config = entity.get(CharacterControllerConfig)! as CharacterConfig
     const bodyRef = entity.get(RigidBodyRef)!
-    const transform = entity.get(Transform)!
+    const _transform = entity.get(Transform)!
 
     const shape = shapeRef.shape
     const body = bodyRef.body

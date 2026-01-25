@@ -15,9 +15,14 @@ interface InputManagerState {
   pointerLocked: boolean
 }
 
+interface InputManagerProps {
+  /** When true, disables pointer lock (for debug camera mode) */
+  disablePointerLock?: boolean
+}
+
 // TODO: support QWERTY and AZERTY
 
-export function InputManager() {
+export function InputManager({disablePointerLock = false}: InputManagerProps) {
   const gl = useThree((state) => state.gl)
   const world = useWorld()
   const inputEntityRef = useRef<Entity | null>(null)
@@ -157,6 +162,7 @@ export function InputManager() {
     const domElement = gl.domElement
 
     const handleClick = () => {
+      if (disablePointerLock) return
       if (!state.pointerLocked) {
         void domElement.requestPointerLock()
       }
@@ -189,7 +195,7 @@ export function InputManager() {
       document.removeEventListener('pointerlockerror', handlePointerLockError)
       document.removeEventListener('mousemove', handlePointerMove)
     }
-  }, [gl.domElement, state])
+  }, [gl.domElement, state, disablePointerLock])
 
   useEffect(() => {
     const handleConnect = (event: GamepadEvent) => {

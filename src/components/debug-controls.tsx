@@ -234,11 +234,11 @@ export function useMonitor<T extends MonitorSchema>(
 
     for (const key of Object.keys(sch) as Array<keyof T>) {
       const config = sch[key] as MonitorConfig | undefined
-      const label = config?.label ?? String(key)
+      const bindingLabel = config?.label ?? String(key)
 
       const bindingParams: BindingParams = {
         readonly: true,
-        label,
+        label: bindingLabel,
       }
 
       if (config?.format) {
