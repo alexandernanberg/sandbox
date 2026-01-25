@@ -142,3 +142,31 @@ export const CameraInput = trait(() => ({
 
 /** Tag for the entity the camera follows */
 export const IsCameraTarget = trait()
+
+// ============================================
+// Camera Output State (computed each frame)
+// ============================================
+
+/**
+ * Computed camera state output from the camera system.
+ * React component reads this to update the Three.js camera.
+ */
+export const CameraState = trait({
+  // Final camera position (after all processing)
+  positionX: 0,
+  positionY: 4,
+  positionZ: 8,
+
+  // Look-at target position
+  lookAtX: 0,
+  lookAtY: 0,
+  lookAtZ: 0,
+
+  // Shake rotation offsets (applied after lookAt)
+  shakeRotationX: 0,
+  shakeRotationY: 0,
+  shakeRotationZ: 0,
+
+  // Elapsed time for noise calculations
+  elapsedTime: 0,
+})
