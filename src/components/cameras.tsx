@@ -7,6 +7,7 @@ import type {Ref, RefObject} from 'react'
 import {useImperativeHandle, useLayoutEffect, useRef} from 'react'
 import type {Object3D, PerspectiveCamera as PerspectiveCameraImpl} from 'three'
 import {Vector3} from 'three'
+import {useControls, useMonitor} from '~/components/debug-controls'
 import {
   CameraOrbit,
   CameraNoise,
@@ -89,6 +90,70 @@ export function ThirdPersonCamera({
       }
     }
   }, [world])
+
+  // ========================================
+  // DEBUG CONTROLS
+  // ========================================
+
+  const cameraSettings = useControls(
+    'Camera',
+    {
+      distance: {value: 5, min: 1, max: 15, step: 0.5},
+      heightOffset: {value: heightOffset, min: 0, max: 4, step: 0.1},
+      sensitivity: {value: 0.003, min: 0.001, max: 0.01, step: 0.001},
+      // Collision
+      minDistance: {value: 1.5, min: 0.5, max: 3, step: 0.1},
+      pullInSpeed: {value: 25, min: 5, max: 50, step: 1},
+      easeOutSpeed: {value: 5, min: 1, max: 20, step: 1},
+      // Look-ahead
+      lookAheadDist: {value: 1.5, min: 0, max: 4, step: 0.1},
+      lookAheadSpeed: {value: 3, min: 0.5, max: 10, step: 0.5},
+      // Framing
+      aimOffsetX: {value: 0.3, min: -1, max: 1, step: 0.1},
+      // Noise
+      noiseEnabled: {value: true},
+      noiseAmplitude: {value: 0.015, min: 0, max: 0.1, step: 0.005},
+    },
+    {expanded: false, index: 1},
+  )
+
+  const cameraMonitor = useMonitor(
+    'Camera State',
+    {
+      distance: {label: 'Distance', format: (v) => v.toFixed(2)},
+      collision: {label: 'Collision', type: 'string'},
+      yaw: {label: 'Yaw°', format: (v) => v.toFixed(1)},
+      pitch: {label: 'Pitch°', format: (v) => v.toFixed(1)},
+    },
+    {expanded: false, index: 2},
+  )
+
+  // Sync debug controls to ECS trait
+  useLayoutEffect(() => {
+    const entity = cameraEntityRef.current
+    if (!entity?.isAlive()) return
+
+    entity.set(CameraOrbit, (o) => {
+      o.distance = cameraSettings.distance
+      o.sensitivity = cameraSettings.sensitivity
+      o.minDistance = cameraSettings.minDistance
+      o.pullInSmoothing = cameraSettings.pullInSpeed
+      o.easeOutSmoothing = cameraSettings.easeOutSpeed
+      o.lookAheadDistance = cameraSettings.lookAheadDist
+      o.lookAheadSmoothing = cameraSettings.lookAheadSpeed
+      o.aimOffsetX = cameraSettings.aimOffsetX
+      return o
+    })
+
+    entity.set(CameraNoise, (n) => {
+      n.enabled = cameraSettings.noiseEnabled
+      n.positionAmplitude = cameraSettings.noiseAmplitude
+      return n
+    })
+  }, [cameraSettings])
+
+  // Effective height offset from controls
+  const effectiveHeightOffset = cameraSettings.heightOffset
 
   useFrame((_, delta) => {
     const camera = ref.current
@@ -183,11 +248,11 @@ export function ThirdPersonCamera({
     // ========================================
     const collisionDistance = castWhiskerRays(
       effectiveTarget,
-      computeCameraPosition(orbitTarget, yaw, pitch, distance, heightOffset),
+      computeCameraPosition(orbitTarget, yaw, pitch, distance, effectiveHeightOffset),
       yaw,
       pitch,
       distance,
-      heightOffset,
+      effectiveHeightOffset,
       orbit.collisionPadding,
     )
 
@@ -220,7 +285,7 @@ export function ThirdPersonCamera({
       yaw,
       pitch,
       currentDist,
-      heightOffset,
+      effectiveHeightOffset,
     )
 
     // ========================================
@@ -279,7 +344,7 @@ export function ThirdPersonCamera({
     // Look at target
     targetLookAt.set(
       effectiveTarget.x,
-      targetPos.y + heightOffset * 0.5,
+      targetPos.y + effectiveHeightOffset * 0.5,
       effectiveTarget.z,
     )
     camera.lookAt(targetLookAt)
@@ -290,6 +355,15 @@ export function ThirdPersonCamera({
       camera.rotation.y += shakeRotation.y
       camera.rotation.z += shakeRotation.z
     }
+
+    // ========================================
+    // 9. UPDATE DEBUG MONITOR
+    // ========================================
+    cameraMonitor.current.distance = currentDist
+    cameraMonitor.current.collision =
+      currentDist < distance - 0.1 ? 'Active' : 'Clear'
+    cameraMonitor.current.yaw = (yaw * 180) / Math.PI
+    cameraMonitor.current.pitch = (pitch * 180) / Math.PI
   })
 
   return (
