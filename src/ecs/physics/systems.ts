@@ -101,16 +101,12 @@ const _parentInverseMatrix = new Matrix4()
 // Transform Initialization System
 // ============================================
 
-export function initializeTransformFromObject3D(world: World) {
-  // Query filters uninitialized entities via Not(PhysicsInitialized)
-  const entities = world.query(uninitializedTransformQuery)
-
-  for (const entity of entities) {
-    const objRef = entity.get(Object3DRef)!
-    const object3d = objRef.object
+export function initializeTransformFromObject3D(world: World): void {
+  for (const entity of world.query(uninitializedTransformQuery)) {
+    const object3d = entity.get(Object3DRef)!.object
     if (!object3d) continue
 
-    // Ensure world matrix is up to date (including parent chain)
+    // Decompose world matrix to get initial transform
     object3d.updateWorldMatrix(true, false)
     _tempObject3D.matrix.copy(object3d.matrixWorld)
     _tempObject3D.matrix.decompose(
@@ -119,15 +115,13 @@ export function initializeTransformFromObject3D(world: World) {
       _tempObject3D.scale,
     )
 
-    // Copy from decomposed Object3D to scratch transform
     copyFromObject3D(_transform, _tempObject3D)
     entity.set(Transform, _transform)
     entity.set(PreviousTransform, _transform)
     entity.set(RenderTransform, _transform)
 
-    // Store parent inverse matrix for nested objects (for syncing back to local coords)
+    // Store parent inverse matrix for nested objects
     if (object3d.parent && object3d.parent.type !== 'Scene') {
-      // Reuse temp matrix to avoid allocation
       _parentInverseMatrix.copy(object3d.parent.matrixWorld).invert()
       entity.add(
         ParentInverseMatrix({
@@ -142,8 +136,10 @@ export function initializeTransformFromObject3D(world: World) {
 // Body Creation System
 // ============================================
 
-export function createPhysicsBodies(world: World, rapierWorld: RAPIER.World) {
-  // Query filters uninitialized entities via Not(PhysicsInitialized)
+export function createPhysicsBodies(
+  world: World,
+  rapierWorld: RAPIER.World,
+): void {
   const entities = world.query(uninitializedBodiesQuery)
 
   for (const entity of entities) {
@@ -250,8 +246,10 @@ function createRigidBodyDesc(type: RigidBodyType): RAPIER.RigidBodyDesc {
 // Reusable scale object to avoid allocations
 const _scale = {x: 1, y: 1, z: 1}
 
-export function createColliders(world: World, rapierWorld: RAPIER.World) {
-  // Query filters uninitialized colliders via Not(ColliderInitialized)
+export function createColliders(
+  world: World,
+  rapierWorld: RAPIER.World,
+): void {
   const colliders = world.query(uninitializedCollidersQuery)
 
   for (const entity of colliders) {
@@ -387,39 +385,31 @@ function createColliderDesc(
 // Transform Sync Systems
 // ============================================
 
-export function storePreviousTransforms(world: World) {
-  // Use updateEach for direct trait mutation (no get/set overhead)
+export function storePreviousTransforms(world: World): void {
   world.query(previousTransformQuery).updateEach(([current, previous]) => {
     copyTransform(previous, current)
   })
 }
 
-export function syncTransformFromPhysics(world: World) {
-  const entities = world.query(syncFromPhysicsQuery)
-
-  for (const entity of entities) {
-    const bodyRef = entity.get(RigidBodyRef)!
-    const body = bodyRef.body
-
+export function syncTransformFromPhysics(world: World): void {
+  for (const entity of world.query(syncFromPhysicsQuery)) {
+    const body = entity.get(RigidBodyRef)!.body
     if (!body || body.isSleeping() || body.isFixed()) continue
 
-    // Copy from Rapier body to scratch transform
     copyFromRapier(_transform, body.translation(), body.rotation())
     entity.set(Transform, _transform)
   }
 }
 
-export function interpolateTransforms(world: World, alpha: number) {
-  // Use updateEach for direct trait mutation (no get/set overhead)
+export function interpolateTransforms(world: World, alpha: number): void {
   world.query(interpolateQuery).updateEach(([current, previous, render]) => {
-    // Interpolate position (lerp) and rotation (slerp)
     lerpVec3(render, previous, current, alpha)
     slerpQuat(_quat, previous, current, alpha)
     copyQuat(render, _quat)
   })
 }
 
-export function syncToObject3D(world: World) {
+export function syncToObject3D(world: World): void {
   // Fast path for root objects (common case) - no has() check needed
   for (const entity of world.query(syncToObject3DRootQuery)) {
     const render = entity.get(RenderTransform)!
@@ -467,7 +457,7 @@ const STEP_UP_THRESHOLD = 0.08
  *
  * Call this AFTER interpolateTransforms and BEFORE syncToObject3D.
  */
-export function smoothCharacterVisuals(world: World, delta: number) {
+export function smoothCharacterVisuals(world: World, delta: number): void {
   for (const entity of world.query(characterVisualSmoothQuery)) {
     const movement = entity.get(CharacterMovement)!
     const transform = entity.get(Transform)!

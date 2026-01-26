@@ -78,9 +78,10 @@ export function stepPhysics(ecsWorld: World, delta: number): StepResult {
 
   let stepped = false
 
-  // Get input for state machine (read once per frame)
+  // Get input singleton for state machine
   let input = {movement: {x: 0, y: 0}, jump: false, sprint: false}
-  for (const entity of ecsWorld.query(inputQuery)) {
+  const inputEntities = ecsWorld.query(inputQuery)
+  for (const entity of inputEntities) {
     input = entity.get(Input)!
     break
   }

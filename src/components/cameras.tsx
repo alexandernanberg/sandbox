@@ -208,7 +208,7 @@ export function ThirdPersonCamera({
  * addCameraTrauma(world, 0.3) // player hit
  * addCameraTrauma(world, 0.6) // explosion
  */
-export function addCameraTrauma(world: World, amount: number) {
+export function addCameraTrauma(world: World, amount: number): void {
   for (const entity of world.query(CameraShake)) {
     entity.set(CameraShake, (s) => {
       s.trauma = Math.min(1, s.trauma + amount)

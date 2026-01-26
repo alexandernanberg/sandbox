@@ -262,7 +262,8 @@ function cosineInterpolation(t: number): number {
 }
 
 /**
- * Attempt to blend smoothly for cosine-like smoothstep, to ease in/out of the extremes.
+ * Hermite interpolation - eases in and out of extremes.
+ * Used by interpolateOrbitRigs for smooth rig transitions.
  */
 function smoothstep(t: number): number {
   // Hermite interpolation: 3t² - 2t³
