@@ -272,6 +272,24 @@ export interface JoltCollideShapeSettings {
   mMaxSeparationDistance: number
 }
 
+// JoltSettings for simplified JS API initialization
+export interface JoltSettings {
+  mMaxWorkerThreads: number
+  mMaxBodies: number
+  mMaxBodyPairs: number
+  mMaxContactConstraints: number
+  mTempAllocatorSize: number
+}
+
+// JoltInterface - simplified JS API wrapper
+export interface JoltInterface {
+  GetPhysicsSystem(): JoltPhysicsSystem
+  GetTempAllocator(): JoltTempAllocator
+  Step(deltaTime: number, collisionSteps: number): number
+  SetGravity(gravity: JoltVec3): void
+  GetGravity(): JoltVec3
+}
+
 export interface JoltPhysicsSystem {
   Init(
     maxBodies: number,

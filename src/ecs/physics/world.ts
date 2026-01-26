@@ -3,10 +3,10 @@ import type {
   JoltModule,
   JoltPhysicsSystem,
   JoltTempAllocator,
-  JoltJobSystem,
   JoltBodyInterface,
   JoltBodyID,
   JoltBody,
+  JoltInterface,
 } from './jolt-types'
 import {
   LAYER_NON_MOVING,
@@ -23,12 +23,20 @@ import {RigidBodyRef, IsPhysicsEntity} from './traits'
 // ============================================
 
 let joltModule: JoltModule | null = null
+let joltInterface: JoltInterface | null = null
 
 export function getJolt(): JoltModule {
   if (!joltModule) {
     throw new Error('Jolt not initialized. Call initJolt() first.')
   }
   return joltModule
+}
+
+export function getJoltInterface(): JoltInterface {
+  if (!joltInterface) {
+    throw new Error('Jolt not initialized. Call initJolt() first.')
+  }
+  return joltInterface
 }
 
 export function setJoltModule(module: JoltModule): void {
@@ -43,7 +51,6 @@ export interface PhysicsWorldState {
   physicsSystem: JoltPhysicsSystem | null
   bodyInterface: JoltBodyInterface | null
   tempAllocator: JoltTempAllocator | null
-  jobSystem: JoltJobSystem | null
   accumulator: number
   initialized: boolean
   // Body ID to Entity mapping for collision events
@@ -61,7 +68,6 @@ export const physicsWorld: PhysicsWorldState = {
   physicsSystem: null,
   bodyInterface: null,
   tempAllocator: null,
-  jobSystem: null,
   accumulator: 0,
   initialized: false,
   bodyIdToEntity: new Map(),
@@ -86,6 +92,48 @@ const DEFAULT_MAX_BODIES = 10240
 const DEFAULT_MAX_BODY_PAIRS = 65536
 const DEFAULT_MAX_CONTACT_CONSTRAINTS = 10240
 
+// Custom collision filtering setup
+function setupCollisionFiltering(Jolt: JoltModule, settings: unknown): void {
+  // Layer constants for collision filtering
+  const OBJECT_LAYER_NON_MOVING = LAYER_NON_MOVING
+  const OBJECT_LAYER_MOVING = LAYER_MOVING
+  const BROAD_PHASE_LAYER_NON_MOVING = BP_LAYER_NON_MOVING
+  const BROAD_PHASE_LAYER_MOVING = BP_LAYER_MOVING
+
+  // Object layer pair filter - determines which object layers can collide
+  const objectFilter = new Jolt.ObjectLayerPairFilterTable(NUM_OBJECT_LAYERS)
+  objectFilter.EnableCollision(OBJECT_LAYER_NON_MOVING, OBJECT_LAYER_MOVING)
+  objectFilter.EnableCollision(OBJECT_LAYER_MOVING, OBJECT_LAYER_MOVING)
+
+  // Broad phase layer interface - maps object layers to broad phase layers
+  const bpInterface = new Jolt.BroadPhaseLayerInterfaceTable(
+    NUM_OBJECT_LAYERS,
+    NUM_BROAD_PHASE_LAYERS,
+  )
+  bpInterface.MapObjectToBroadPhaseLayer(
+    OBJECT_LAYER_NON_MOVING,
+    BROAD_PHASE_LAYER_NON_MOVING,
+  )
+  bpInterface.MapObjectToBroadPhaseLayer(
+    OBJECT_LAYER_MOVING,
+    BROAD_PHASE_LAYER_MOVING,
+  )
+
+  // Object vs broad phase layer filter
+  const objectVsBPFilter = new Jolt.ObjectVsBroadPhaseLayerFilterTable(
+    bpInterface,
+    NUM_BROAD_PHASE_LAYERS,
+    objectFilter,
+    NUM_OBJECT_LAYERS,
+  )
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const joltSettings = settings as any
+  joltSettings.mObjectLayerPairFilter = objectFilter
+  joltSettings.mBroadPhaseLayerInterface = bpInterface
+  joltSettings.mObjectVsBroadPhaseLayerFilter = objectVsBPFilter
+}
+
 // Must be called after Jolt module is loaded
 export function initPhysicsWorld(
   ecsWorld: World,
@@ -102,55 +150,24 @@ export function initPhysicsWorld(
   const maxContactConstraints =
     config.maxContactConstraints ?? DEFAULT_MAX_CONTACT_CONSTRAINTS
 
-  // Create temp allocator (10MB)
-  physicsWorld.tempAllocator = new Jolt.TempAllocatorImpl(10 * 1024 * 1024)
+  // Create settings for JoltInterface
+  const settings = new Jolt.JoltSettings()
+  settings.mMaxBodies = maxBodies
+  settings.mMaxBodyPairs = maxBodyPairs
+  settings.mMaxContactConstraints = maxContactConstraints
 
-  // Create job system (use max threads)
-  physicsWorld.jobSystem = new Jolt.JobSystemThreadPool(
-    Jolt.cMaxPhysicsJobs,
-    Jolt.cMaxPhysicsBarriers,
-    -1, // auto detect threads
-  )
+  // Setup collision filtering
+  setupCollisionFiltering(Jolt, settings)
 
-  // Create object layer pair filter
-  const objectLayerPairFilter = new Jolt.ObjectLayerPairFilterTable(
-    NUM_OBJECT_LAYERS,
-  )
-  objectLayerPairFilter.EnableCollision(LAYER_NON_MOVING, LAYER_MOVING)
-  objectLayerPairFilter.EnableCollision(LAYER_MOVING, LAYER_MOVING)
+  // Create Jolt interface (handles temp allocator, job system internally)
+  const newJoltInterface = new Jolt.JoltInterface(settings)
+  joltInterface = newJoltInterface
+  Jolt.destroy(settings)
 
-  // Create broad phase layer interface
-  const bpLayerInterface = new Jolt.BroadPhaseLayerInterfaceTable(
-    NUM_OBJECT_LAYERS,
-    NUM_BROAD_PHASE_LAYERS,
-  )
-  bpLayerInterface.MapObjectToBroadPhaseLayer(
-    LAYER_NON_MOVING,
-    BP_LAYER_NON_MOVING,
-  )
-  bpLayerInterface.MapObjectToBroadPhaseLayer(LAYER_MOVING, BP_LAYER_MOVING)
-
-  // Create object vs broad phase layer filter
-  const objectVsBroadPhaseLayerFilter =
-    new Jolt.ObjectVsBroadPhaseLayerFilterTable(
-      bpLayerInterface,
-      NUM_BROAD_PHASE_LAYERS,
-      objectLayerPairFilter,
-      NUM_OBJECT_LAYERS,
-    )
-
-  // Create physics system
-  const physicsSystem = new Jolt.PhysicsSystem()
-  physicsSystem.Init(
-    maxBodies,
-    0, // numBodyMutexes (0 = auto)
-    maxBodyPairs,
-    maxContactConstraints,
-    bpLayerInterface,
-    objectVsBroadPhaseLayerFilter,
-    objectLayerPairFilter,
-  )
+  // Get physics system from interface
+  const physicsSystem = newJoltInterface.GetPhysicsSystem()
   physicsWorld.physicsSystem = physicsSystem
+  physicsWorld.tempAllocator = newJoltInterface.GetTempAllocator()
 
   // Set gravity
   const gravityVec = new Jolt.Vec3(gravity.x, gravity.y, gravity.z)
@@ -213,22 +230,14 @@ export function destroyPhysicsWorld(ecsWorld: World): void {
     physicsWorld.contactListener = null
   }
 
-  // Clean up Jolt resources
-  if (physicsWorld.physicsSystem) {
-    Jolt.destroy(physicsWorld.physicsSystem)
-    physicsWorld.physicsSystem = null
+  // Clean up Jolt interface (handles physicsSystem, tempAllocator, jobSystem internally)
+  if (joltInterface) {
+    Jolt.destroy(joltInterface)
+    joltInterface = null
   }
 
-  if (physicsWorld.jobSystem) {
-    Jolt.destroy(physicsWorld.jobSystem)
-    physicsWorld.jobSystem = null
-  }
-
-  if (physicsWorld.tempAllocator) {
-    Jolt.destroy(physicsWorld.tempAllocator)
-    physicsWorld.tempAllocator = null
-  }
-
+  physicsWorld.physicsSystem = null
+  physicsWorld.tempAllocator = null
   physicsWorld.bodyInterface = null
   physicsWorld.bodyIdToEntity.clear()
   physicsWorld.accumulator = 0
@@ -256,10 +265,6 @@ export function getBodyInterface(): JoltBodyInterface | null {
 
 export function getTempAllocator(): JoltTempAllocator | null {
   return physicsWorld.tempAllocator
-}
-
-export function getJobSystem(): JoltJobSystem | null {
-  return physicsWorld.jobSystem
 }
 
 // Map body ID to entity for collision lookups

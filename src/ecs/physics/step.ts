@@ -24,7 +24,13 @@ import {
   smoothCharacterVisuals,
   syncToObject3D,
 } from './systems'
-import {physicsWorld, FIXED_TIMESTEP, MAX_DELTA, getJolt} from './world'
+import {
+  physicsWorld,
+  FIXED_TIMESTEP,
+  MAX_DELTA,
+  getJolt,
+  getJoltInterface,
+} from './world'
 
 // Cached query for input singleton
 const inputQuery = createQuery(Input)
@@ -43,19 +49,14 @@ export interface StepResult {
  * Returns the interpolation alpha for rendering.
  */
 export function stepPhysics(ecsWorld: World, delta: number): StepResult {
-  const {
-    physicsSystem,
-    tempAllocator,
-    jobSystem,
-    beforeStepCallbacks,
-    afterStepCallbacks,
-  } = physicsWorld
+  const {physicsSystem, beforeStepCallbacks, afterStepCallbacks} = physicsWorld
 
-  if (!physicsSystem || !tempAllocator || !jobSystem) {
+  if (!physicsSystem) {
     return {stepped: false, alpha: 0}
   }
 
   const Jolt = getJolt()
+  const joltInterface = getJoltInterface()
 
   // Check if game is paused - still update camera but skip physics
   const paused = isPaused(ecsWorld)
@@ -113,9 +114,8 @@ export function stepPhysics(ecsWorld: World, delta: number): StepResult {
     // Run character controller system (sets kinematic positions)
     characterControllerSystem(ecsWorld, physicsSystem, FIXED_TIMESTEP)
 
-    // Step the physics simulation
-    // Jolt uses collision steps (1 is typical) and allocator/job system
-    physicsSystem.Update(FIXED_TIMESTEP, 1, tempAllocator, jobSystem)
+    // Step the physics simulation using JoltInterface's simplified Step API
+    joltInterface.Step(FIXED_TIMESTEP, 1)
 
     // Sync physics state back to ECS
     syncTransformFromPhysics(ecsWorld, physicsSystem)
