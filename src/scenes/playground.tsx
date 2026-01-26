@@ -32,7 +32,6 @@ import {
   getJolt,
 } from '~/ecs/physics'
 import type {CharacterControllerApi} from '~/ecs/physics'
-import {ACTIVATION_ACTIVATE} from '~/ecs/physics/jolt-types'
 import Ramp from '~/models/ramp'
 import Slope from '~/models/slope'
 import Stone from '~/models/stone'
@@ -202,7 +201,7 @@ function Ball({position, linearVelocity}: BallProps) {
     const bodyRef = entity.get(RigidBodyRef)
     const bodyInterface = getBodyInterface()
     const Jolt = getJolt()
-    if (bodyRef?.bodyId && bodyInterface && Jolt) {
+    if (bodyRef?.bodyId && bodyInterface) {
       const impulse = new Jolt.Vec3(0, 5, 0)
       bodyInterface.AddImpulse(bodyRef.bodyId, impulse)
       Jolt.destroy(impulse)
@@ -418,7 +417,7 @@ function Elevator({position}: ElevatorProps) {
     const bodyRef = entity.get(RigidBodyRef)
     const bodyInterface = getBodyInterface()
     const Jolt = getJolt()
-    if (!bodyRef?.bodyId || !bodyInterface || !Jolt) return
+    if (!bodyRef?.bodyId || !bodyInterface) return
 
     // Use physics time instead of wall time to ensure consistent velocity
     // across multiple physics steps per frame
@@ -520,7 +519,7 @@ function SpinningPlatform({
     const bodyRef = entity.get(RigidBodyRef)
     const bodyInterface = getBodyInterface()
     const Jolt = getJolt()
-    if (!bodyRef?.bodyId || !bodyInterface || !Jolt) return
+    if (!bodyRef?.bodyId || !bodyInterface) return
 
     const angularVelocity = speed * delta
     angle.current += angularVelocity

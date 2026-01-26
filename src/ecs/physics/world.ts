@@ -7,6 +7,9 @@ import type {
   JoltBodyID,
   JoltBody,
   JoltInterface,
+  JoltObjectLayerPairFilter,
+  JoltObjectVsBroadPhaseLayerFilter,
+  JoltSettings,
 } from './jolt-types'
 import {destroyCharacterFilters} from './character'
 import {
@@ -64,8 +67,8 @@ export interface PhysicsWorldState {
   // Contact listener
   contactListener: unknown
   // Collision filtering objects (stored for character controller use)
-  objectLayerPairFilter: unknown
-  objectVsBroadPhaseLayerFilter: unknown
+  objectLayerPairFilter: JoltObjectLayerPairFilter | null
+  objectVsBroadPhaseLayerFilter: JoltObjectVsBroadPhaseLayerFilter | null
 }
 
 export const physicsWorld: PhysicsWorldState = {
@@ -99,31 +102,31 @@ const DEFAULT_MAX_BODY_PAIRS = 65536
 const DEFAULT_MAX_CONTACT_CONSTRAINTS = 10240
 
 // Custom collision filtering setup
-function setupCollisionFiltering(Jolt: JoltModule, settings: unknown): void {
-  // Layer constants for collision filtering
-  const OBJECT_LAYER_NON_MOVING = LAYER_NON_MOVING
-  const OBJECT_LAYER_MOVING = LAYER_MOVING
-  const BROAD_PHASE_LAYER_NON_MOVING = BP_LAYER_NON_MOVING
-  const BROAD_PHASE_LAYER_MOVING = BP_LAYER_MOVING
-
+function setupCollisionFiltering(
+  Jolt: JoltModule,
+  settings: JoltSettings,
+): void {
   // Object layer pair filter - determines which object layers can collide
   const objectFilter = new Jolt.ObjectLayerPairFilterTable(NUM_OBJECT_LAYERS)
-  objectFilter.EnableCollision(OBJECT_LAYER_NON_MOVING, OBJECT_LAYER_MOVING)
-  objectFilter.EnableCollision(OBJECT_LAYER_MOVING, OBJECT_LAYER_MOVING)
+  objectFilter.EnableCollision(LAYER_NON_MOVING, LAYER_MOVING)
+  objectFilter.EnableCollision(LAYER_MOVING, LAYER_MOVING)
 
   // Broad phase layer interface - maps object layers to broad phase layers
   const bpInterface = new Jolt.BroadPhaseLayerInterfaceTable(
     NUM_OBJECT_LAYERS,
     NUM_BROAD_PHASE_LAYERS,
   )
-  bpInterface.MapObjectToBroadPhaseLayer(
-    OBJECT_LAYER_NON_MOVING,
-    BROAD_PHASE_LAYER_NON_MOVING,
-  )
-  bpInterface.MapObjectToBroadPhaseLayer(
-    OBJECT_LAYER_MOVING,
-    BROAD_PHASE_LAYER_MOVING,
-  )
+
+  // Create BroadPhaseLayer objects (required by Jolt TypeScript types)
+  const bpLayerNonMoving = new Jolt.BroadPhaseLayer(BP_LAYER_NON_MOVING)
+  const bpLayerMoving = new Jolt.BroadPhaseLayer(BP_LAYER_MOVING)
+
+  bpInterface.MapObjectToBroadPhaseLayer(LAYER_NON_MOVING, bpLayerNonMoving)
+  bpInterface.MapObjectToBroadPhaseLayer(LAYER_MOVING, bpLayerMoving)
+
+  // Clean up BroadPhaseLayer objects (values are copied internally)
+  Jolt.destroy(bpLayerNonMoving)
+  Jolt.destroy(bpLayerMoving)
 
   // Object vs broad phase layer filter
   const objectVsBPFilter = new Jolt.ObjectVsBroadPhaseLayerFilterTable(
@@ -137,11 +140,10 @@ function setupCollisionFiltering(Jolt: JoltModule, settings: unknown): void {
   physicsWorld.objectLayerPairFilter = objectFilter
   physicsWorld.objectVsBroadPhaseLayerFilter = objectVsBPFilter
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const joltSettings = settings as any
-  joltSettings.mObjectLayerPairFilter = objectFilter
-  joltSettings.mBroadPhaseLayerInterface = bpInterface
-  joltSettings.mObjectVsBroadPhaseLayerFilter = objectVsBPFilter
+  // Configure JoltSettings with collision filtering
+  settings.mObjectLayerPairFilter = objectFilter
+  settings.mBroadPhaseLayerInterface = bpInterface
+  settings.mObjectVsBroadPhaseLayerFilter = objectVsBPFilter
 }
 
 // Must be called after Jolt module is loaded
@@ -192,15 +194,16 @@ export function initPhysicsWorld(
 
   // Set up automatic cleanup when physics traits are removed
   const unsubRigidBody = ecsWorld.onRemove(RigidBodyRef, (entity) => {
-    const Jolt = joltModule
+    // Check Jolt module is available
     const bodyInterface = physicsWorld.bodyInterface
-    if (!Jolt || !bodyInterface) return
+    if (!joltModule || !bodyInterface) return
 
     const bodyRef = entity.get(RigidBodyRef)
     if (bodyRef?.bodyId != null) {
       try {
-        const bodyId = bodyRef.bodyId as JoltBodyID
-        if (!bodyId.IsInvalid()) {
+        const bodyId = bodyRef.bodyId
+        // Check if body is still in the physics system
+        if (bodyInterface.IsAdded(bodyId)) {
           // Remove from mapping
           physicsWorld.bodyIdToEntity.delete(bodyId.GetIndexAndSequenceNumber())
           // Remove and destroy body
@@ -295,15 +298,10 @@ export function getBodyById(bodyId: JoltBodyID): JoltBody | null {
   const Jolt = joltModule
   if (!Jolt || !physicsWorld.physicsSystem) return null
 
-  const bodyLockInterface = physicsWorld.physicsSystem.GetBodyLockInterface()
-  const lock = new Jolt.BodyLockRead(bodyLockInterface, bodyId)
-  if (lock.Succeeded()) {
-    const body = lock.GetBody()
-    lock.ReleaseLock()
-    return body
-  }
-  lock.ReleaseLock()
-  return null
+  // Use TryGetBody from BodyLockInterface (no-lock version for simple access)
+  const bodyLockInterface =
+    physicsWorld.physicsSystem.GetBodyLockInterfaceNoLock()
+  return bodyLockInterface.TryGetBody(bodyId)
 }
 
 // Register callbacks

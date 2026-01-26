@@ -39,12 +39,16 @@ export function setupContactListener(physicsSystem: JoltPhysicsSystem): void {
   const listener = new Jolt.ContactListenerJS()
 
   // Called when contact is first detected
+  // Note: ContactListenerJS callbacks receive raw WASM pointers (numbers), not typed objects
   listener.OnContactAdded = (
-    body1: JoltBodyID,
-    body2: JoltBodyID,
-    _manifold: unknown,
-    _settings: unknown,
+    body1Ptr: number,
+    body2Ptr: number,
+    _manifold: number,
+    _settings: number,
   ) => {
+    // Wrap pointers to get typed BodyID objects
+    const body1 = Jolt.wrapPointer(body1Ptr, Jolt.BodyID)
+    const body2 = Jolt.wrapPointer(body2Ptr, Jolt.BodyID)
     pendingCollisions.push({
       bodyId1: body1,
       bodyId2: body2,
@@ -53,17 +57,27 @@ export function setupContactListener(physicsSystem: JoltPhysicsSystem): void {
   }
 
   // Called when contact is removed
-  listener.OnContactRemoved = (_subShapePair: unknown) => {
+  listener.OnContactRemoved = (_subShapePairPtr: number) => {
     // Jolt's OnContactRemoved doesn't give us body IDs directly
     // We'll handle contact exit differently if needed
   }
 
   // Required callbacks (can be empty)
-  listener.OnContactValidate = () => {
+  listener.OnContactValidate = (
+    _body1Ptr: number,
+    _body2Ptr: number,
+    _baseOffsetPtr: number,
+    _collisionResultPtr: number,
+  ) => {
     return Jolt.ValidateResult_AcceptAllContactsForThisBodyPair
   }
 
-  listener.OnContactPersisted = () => {
+  listener.OnContactPersisted = (
+    _body1Ptr: number,
+    _body2Ptr: number,
+    _manifoldPtr: number,
+    _settingsPtr: number,
+  ) => {
     // Contact still active
   }
 
@@ -83,8 +97,8 @@ export function processCollisionEvents(_physicsSystem: JoltPhysicsSystem) {
 
     if (entity1 && entity2) {
       processCollisionPair(
-        entity1 as Entity,
-        entity2 as Entity,
+        entity1,
+        entity2,
         collision.started,
       )
     }

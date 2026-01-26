@@ -10,11 +10,7 @@ import {
   _transform,
   _quat,
 } from '~/lib/math'
-import type {
-  JoltBodyInterface,
-  JoltPhysicsSystem,
-  JoltShape,
-} from './jolt-types'
+import type {JoltPhysicsSystem, JoltShape, JoltModule} from './jolt-types'
 import type {RigidBodyType, ColliderShape} from './traits'
 import {CharacterMovement, IsCharacterController} from './character'
 import {
@@ -34,7 +30,6 @@ import {
   RigidBodyConfig,
   RigidBodyRef,
   ColliderConfig,
-  ColliderRef,
   IsPhysicsEntity,
   IsColliderEntity,
   PhysicsInitialized,
@@ -168,7 +163,8 @@ interface ColliderConfigData {
   scaleZ: number
 }
 
-const pendingColliders = new Map<
+// Reserved for future use - collecting pending colliders until body is created
+const _pendingColliders = new Map<
   unknown,
   {shape: ColliderShape; config: ColliderConfigData}[]
 >()
@@ -249,7 +245,8 @@ export function createPhysicsBodies(
           colliderData.config.offsetQw,
         )
 
-        compoundSettings.AddShape(offset, rotation, subShape, 0)
+        // Use AddShapeShape which takes a Shape directly (not ShapeSettings)
+        compoundSettings.AddShapeShape(offset, rotation, subShape, 0)
         Jolt.destroy(offset)
         Jolt.destroy(rotation)
       }
@@ -376,9 +373,8 @@ function getMotionType(type: RigidBodyType): number {
   }
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 function createJoltShape(
-  Jolt: any,
+  Jolt: JoltModule,
   shape: ColliderShape,
   scaleX: number,
   scaleY: number,
@@ -459,24 +455,23 @@ function createJoltShape(
         scaledVertices[i + 1] = shape.vertices[i + 1]! * scaleY
         scaledVertices[i + 2] = shape.vertices[i + 2]! * scaleZ
       }
-      const settings = new Jolt.MeshShapeSettings()
-      // Add triangles
+      // Build triangle list (Triangle constructor takes Vec3, not Float3)
       const triList = new Jolt.TriangleList()
       for (let i = 0; i < shape.indices.length; i += 3) {
         const i0 = shape.indices[i]! * 3
         const i1 = shape.indices[i + 1]! * 3
         const i2 = shape.indices[i + 2]! * 3
-        const v0 = new Jolt.Float3(
+        const v0 = new Jolt.Vec3(
           scaledVertices[i0]!,
           scaledVertices[i0 + 1]!,
           scaledVertices[i0 + 2]!,
         )
-        const v1 = new Jolt.Float3(
+        const v1 = new Jolt.Vec3(
           scaledVertices[i1]!,
           scaledVertices[i1 + 1]!,
           scaledVertices[i1 + 2]!,
         )
-        const v2 = new Jolt.Float3(
+        const v2 = new Jolt.Vec3(
           scaledVertices[i2]!,
           scaledVertices[i2 + 1]!,
           scaledVertices[i2 + 2]!,
@@ -488,7 +483,8 @@ function createJoltShape(
         Jolt.destroy(v2)
         Jolt.destroy(tri)
       }
-      settings.mTriangleVertices = triList
+      // Use constructor that accepts TriangleList directly
+      const settings = new Jolt.MeshShapeSettings(triList)
       const result = settings.Create().Get()
       Jolt.destroy(triList)
       Jolt.destroy(settings)
@@ -528,7 +524,7 @@ function createJoltShape(
 // In Jolt, colliders (shapes) are created as part of the body
 // This function is kept for compatibility but colliders are created in createPhysicsBodies
 export function createColliders(
-  world: World,
+  _world: World,
   _physicsSystem: JoltPhysicsSystem,
 ) {
   // Colliders are now handled in createPhysicsBodies since Jolt
@@ -550,7 +546,6 @@ export function syncTransformFromPhysics(
   world: World,
   physicsSystem: JoltPhysicsSystem,
 ) {
-  const Jolt = getJolt()
   const bodyInterface = physicsSystem.GetBodyInterface()
   const entities = world.query(syncFromPhysicsQuery)
 
@@ -558,7 +553,8 @@ export function syncTransformFromPhysics(
     const bodyRef = entity.get(RigidBodyRef)!
     const bodyId = bodyRef.bodyId
 
-    if (!bodyId || bodyId.IsInvalid()) continue
+    // Check if body ID is valid (invalid IDs have index 0xFFFFFFFF)
+    if (!bodyId || bodyId.GetIndex() === 0xffffffff) continue
 
     // Skip if body is not active (sleeping) or static
     if (!bodyInterface.IsActive(bodyId)) continue

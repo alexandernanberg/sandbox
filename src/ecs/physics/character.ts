@@ -6,7 +6,11 @@ import type {
   JoltCharacterVirtual,
   JoltShape,
   JoltModule,
-  JoltBodyID,
+  JoltBroadPhaseLayerFilter,
+  JoltObjectLayerFilter,
+  JoltBodyFilter,
+  JoltShapeFilter,
+  JoltExtendedUpdateSettings,
 } from './jolt-types'
 import {
   GROUND_STATE_ON_GROUND,
@@ -34,11 +38,11 @@ const _platformVel = {x: 0, y: 0, z: 0}
 // ============================================
 
 interface CharacterFilters {
-  broadPhaseFilter: unknown
-  objectLayerFilter: unknown
-  bodyFilter: unknown
-  shapeFilter: unknown
-  updateSettings: unknown
+  broadPhaseFilter: JoltBroadPhaseLayerFilter
+  objectLayerFilter: JoltObjectLayerFilter
+  bodyFilter: JoltBodyFilter
+  shapeFilter: JoltShapeFilter
+  updateSettings: JoltExtendedUpdateSettings
 }
 
 let cachedFilters: CharacterFilters | null = null
@@ -57,14 +61,15 @@ function getOrCreateFilters(Jolt: JoltModule): CharacterFilters {
   }
 
   // Create filters using the stored filter objects (like the official Jolt examples)
+  // Cast to proper types - the stored objects are already the correct Jolt types
   const broadPhaseFilter = new Jolt.DefaultBroadPhaseLayerFilter(
     objectVsBroadPhaseLayerFilter,
     LAYER_MOVING,
-  )
+  ) as JoltBroadPhaseLayerFilter
   const objectLayerFilter = new Jolt.DefaultObjectLayerFilter(
     objectLayerPairFilter,
     LAYER_MOVING,
-  )
+  ) as JoltObjectLayerFilter
   const bodyFilter = new Jolt.BodyFilter()
   const shapeFilter = new Jolt.ShapeFilter()
   const updateSettings = new Jolt.ExtendedUpdateSettings()
@@ -95,7 +100,8 @@ export function destroyCharacterFilters(): void {
 // Constants
 // ============================================
 
-const EPSILON = 0.001
+// Reserved for future use
+const _EPSILON = 0.001
 
 // ============================================
 // Character Controller Traits
@@ -247,7 +253,10 @@ function getPlatformVelocity(
 
   // Get ground body
   const groundBodyId = character.GetGroundBodyID()
-  if (groundBodyId.IsInvalid()) {
+  // Check if body ID is valid by checking the index (invalid IDs have index 0xFFFFFFFF)
+  // BodyID index of 0xFFFFFFFF (4294967295) indicates invalid
+  const bodyIndex = groundBodyId.GetIndex()
+  if (bodyIndex === 0xffffffff) {
     return null
   }
 
@@ -258,7 +267,7 @@ function getPlatformVelocity(
   }
 
   // Check if it's kinematic with velocity
-  const entity = platformEntity as Entity
+  const entity = platformEntity
   if (!entity.has(KinematicVelocity)) {
     return null
   }
@@ -305,9 +314,9 @@ export function characterControllerSystem(
     if (!character) continue
 
     // Get current position
-    let posX = transform.x
-    let posY = transform.y
-    let posZ = transform.z
+    const posX = transform.x
+    const posY = transform.y
+    const posZ = transform.z
 
     // Get platform velocity
     const platformEntity = getPlatformVelocity(
@@ -421,6 +430,10 @@ export function characterControllerSystem(
     // Get gravity for character update
     const gravity = physicsSystem.GetGravity()
 
+    // Get temp allocator (must exist if physics is initialized)
+    const tempAllocator = physicsWorld.tempAllocator
+    if (!tempAllocator) continue
+
     // Use Update method with gravity vector
     character.Update(
       delta,
@@ -429,7 +442,7 @@ export function characterControllerSystem(
       filters.objectLayerFilter,
       filters.bodyFilter,
       filters.shapeFilter,
-      physicsWorld.tempAllocator,
+      tempAllocator,
     )
 
     // Get new position
@@ -547,7 +560,6 @@ export function createCharacterController(
       settings,
       position,
       rotation,
-      0, // userData
       physicsSystem,
     )
 

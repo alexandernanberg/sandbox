@@ -51,7 +51,8 @@ const _middleRig = {distance: 0, height: 0}
 const _bottomRig = {distance: 0, height: 0}
 
 // Whisker offsets for multi-ray collision (normalized offsets in camera space)
-const WHISKER_OFFSETS = [
+// Reserved for future use
+const _WHISKER_OFFSETS = [
   {x: 0, y: 0}, // Center
   {x: 0.4, y: 0}, // Right
   {x: -0.4, y: 0}, // Left
