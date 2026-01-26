@@ -63,6 +63,9 @@ export interface PhysicsWorldState {
   afterStepCallbacks: Set<(delta: number) => void>
   // Contact listener
   contactListener: unknown
+  // Collision filtering objects (stored for character controller use)
+  objectLayerPairFilter: unknown
+  objectVsBroadPhaseLayerFilter: unknown
 }
 
 export const physicsWorld: PhysicsWorldState = {
@@ -76,6 +79,8 @@ export const physicsWorld: PhysicsWorldState = {
   beforeStepCallbacks: new Set(),
   afterStepCallbacks: new Set(),
   contactListener: null,
+  objectLayerPairFilter: null,
+  objectVsBroadPhaseLayerFilter: null,
 }
 
 export const FIXED_TIMESTEP = 1 / 60
@@ -127,6 +132,10 @@ function setupCollisionFiltering(Jolt: JoltModule, settings: unknown): void {
     objectFilter,
     NUM_OBJECT_LAYERS,
   )
+
+  // Store filter objects for character controller use
+  physicsWorld.objectLayerPairFilter = objectFilter
+  physicsWorld.objectVsBroadPhaseLayerFilter = objectVsBPFilter
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const joltSettings = settings as any
@@ -248,6 +257,8 @@ export function destroyPhysicsWorld(ecsWorld: World): void {
   physicsWorld.initialized = false
   physicsWorld.beforeStepCallbacks.clear()
   physicsWorld.afterStepCallbacks.clear()
+  physicsWorld.objectLayerPairFilter = null
+  physicsWorld.objectVsBroadPhaseLayerFilter = null
 }
 
 export function setGravity(gravity: {x: number; y: number; z: number}): void {

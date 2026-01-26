@@ -43,21 +43,26 @@ interface CharacterFilters {
 
 let cachedFilters: CharacterFilters | null = null
 
-function getOrCreateFilters(
-  Jolt: JoltModule,
-  physicsSystem: JoltPhysicsSystem,
-): CharacterFilters {
+function getOrCreateFilters(Jolt: JoltModule): CharacterFilters {
   if (cachedFilters) {
     return cachedFilters
   }
 
-  // Create filters once and reuse them
+  // Use the stored filter objects from physics world initialization
+  // These are the same objects used to configure JoltSettings
+  const {objectVsBroadPhaseLayerFilter, objectLayerPairFilter} = physicsWorld
+
+  if (!objectVsBroadPhaseLayerFilter || !objectLayerPairFilter) {
+    throw new Error('Physics world not initialized - missing filter objects')
+  }
+
+  // Create filters using the stored filter objects (like the official Jolt examples)
   const broadPhaseFilter = new Jolt.DefaultBroadPhaseLayerFilter(
-    physicsSystem.GetObjectVsBroadPhaseLayerFilter(),
+    objectVsBroadPhaseLayerFilter,
     LAYER_MOVING,
   )
   const objectLayerFilter = new Jolt.DefaultObjectLayerFilter(
-    physicsSystem.GetObjectLayerPairFilter(),
+    objectLayerPairFilter,
     LAYER_MOVING,
   )
   const bodyFilter = new Jolt.BodyFilter()
@@ -411,12 +416,12 @@ export function characterControllerSystem(
     Jolt.destroy(joltVel)
 
     // Get or create cached filters
-    const filters = getOrCreateFilters(Jolt, physicsSystem)
+    const filters = getOrCreateFilters(Jolt)
 
     // Get gravity for character update
     const gravity = physicsSystem.GetGravity()
 
-    // Use simpler Update method (ExtendedUpdate may have issues with filter lifecycle)
+    // Use Update method with gravity vector
     character.Update(
       delta,
       gravity,
