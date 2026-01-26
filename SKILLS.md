@@ -139,17 +139,41 @@ const character = new Jolt.CharacterVirtual(
 )
 ```
 
-### Velocity Units
+### Velocity and Gravity Handling
 
-`SetLinearVelocity()` expects velocity in **m/s**. The `Update()` method applies delta internally:
+**Critical**: `Update()` applies gravity to the character's velocity. To preserve gravity accumulation across frames, you must:
+
+1. Read current velocity from character (includes accumulated gravity)
+2. Override horizontal components with player input
+3. For vertical: preserve character's vy unless jumping
+4. Set the combined velocity back
+5. Call Update()
 
 ```typescript
-// Velocity in m/s - NOT multiplied by delta
-const velocity = new Jolt.Vec3(vx, vy, vz)
-character.SetLinearVelocity(velocity)
-Jolt.destroy(velocity)
+// 1. Read current velocity (includes gravity from previous Update)
+const currentVel = character.GetLinearVelocity()
+const charVy = currentVel.GetY()
 
-// Update applies delta and gravity internally
+// 2. Build final velocity
+const finalVx = inputVx // player input
+const finalVz = inputVz // player input
+
+// 3. Vertical: preserve gravity, but apply jump if jumping
+let finalVy: number
+if (isJumping) {
+  finalVy = jumpVelocity // override with jump impulse
+} else if (isGrounded) {
+  finalVy = Math.max(charVy, 0) // zero out downward, keep upward
+} else {
+  finalVy = charVy // keep accumulated gravity
+}
+
+// 4. Set velocity
+const joltVel = new Jolt.Vec3(finalVx, finalVy, finalVz)
+character.SetLinearVelocity(joltVel)
+Jolt.destroy(joltVel)
+
+// 5. Update applies delta and gravity
 character.Update(
   deltaTime, // seconds
   gravity, // Vec3 - applied by Update
@@ -160,6 +184,8 @@ character.Update(
   tempAllocator,
 )
 ```
+
+**Common mistake**: Overwriting velocity each frame without reading the current velocity first will cause gravity to not work (character floats).
 
 ### Character Filters
 
