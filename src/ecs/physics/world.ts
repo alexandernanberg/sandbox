@@ -8,6 +8,7 @@ import type {
   JoltBody,
   JoltInterface,
 } from './jolt-types'
+import {destroyCharacterFilters} from './character'
 import {
   LAYER_NON_MOVING,
   LAYER_MOVING,
@@ -223,6 +224,9 @@ export function destroyPhysicsWorld(ecsWorld: World): void {
       entity.destroy()
     }
   }
+
+  // Clean up character filters
+  destroyCharacterFilters()
 
   // Clean up contact listener
   if (physicsWorld.contactListener) {

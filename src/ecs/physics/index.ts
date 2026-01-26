@@ -160,6 +160,7 @@ export {
   characterControllerSystem,
   createCharacterController,
   cleanupCharacterController,
+  destroyCharacterFilters,
 } from './character'
 
 // Character controller React component

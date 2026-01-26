@@ -30,6 +30,63 @@ const _velocity = {x: 0, y: 0, z: 0}
 const _platformVel = {x: 0, y: 0, z: 0}
 
 // ============================================
+// Cached filter objects (created once, reused)
+// ============================================
+
+interface CharacterFilters {
+  broadPhaseFilter: unknown
+  objectLayerFilter: unknown
+  bodyFilter: unknown
+  shapeFilter: unknown
+  updateSettings: unknown
+}
+
+let cachedFilters: CharacterFilters | null = null
+
+function getOrCreateFilters(
+  Jolt: JoltModule,
+  physicsSystem: JoltPhysicsSystem,
+): CharacterFilters {
+  if (cachedFilters) {
+    return cachedFilters
+  }
+
+  // Create filters once and reuse them
+  const broadPhaseFilter = new Jolt.DefaultBroadPhaseLayerFilter(
+    physicsSystem.GetObjectVsBroadPhaseLayerFilter(),
+    LAYER_MOVING,
+  )
+  const objectLayerFilter = new Jolt.DefaultObjectLayerFilter(
+    physicsSystem.GetObjectLayerPairFilter(),
+    LAYER_MOVING,
+  )
+  const bodyFilter = new Jolt.BodyFilter()
+  const shapeFilter = new Jolt.ShapeFilter()
+  const updateSettings = new Jolt.ExtendedUpdateSettings()
+
+  cachedFilters = {
+    broadPhaseFilter,
+    objectLayerFilter,
+    bodyFilter,
+    shapeFilter,
+    updateSettings,
+  }
+
+  return cachedFilters
+}
+
+export function destroyCharacterFilters(): void {
+  if (!cachedFilters) return
+  const Jolt = getJolt()
+  Jolt.destroy(cachedFilters.broadPhaseFilter)
+  Jolt.destroy(cachedFilters.objectLayerFilter)
+  Jolt.destroy(cachedFilters.bodyFilter)
+  Jolt.destroy(cachedFilters.shapeFilter)
+  Jolt.destroy(cachedFilters.updateSettings)
+  cachedFilters = null
+}
+
+// ============================================
 // Constants
 // ============================================
 
@@ -353,50 +410,22 @@ export function characterControllerSystem(
     character.SetLinearVelocity(joltVel)
     Jolt.destroy(joltVel)
 
-    // Create update settings for step climbing
-    const updateSettings = new Jolt.ExtendedUpdateSettings()
+    // Get or create cached filters
+    const filters = getOrCreateFilters(Jolt, physicsSystem)
 
-    // Configure step climbing
-    const stepDown = new Jolt.Vec3(0, -config.stepHeight, 0)
-    const stepUp = new Jolt.Vec3(0, config.stepHeight, 0)
-    updateSettings.mStickToFloorStepDown = stepDown
-    updateSettings.mWalkStairsStepUp = stepUp
-
-    // Get gravity
+    // Get gravity for character update
     const gravity = physicsSystem.GetGravity()
 
-    // Create filters
-    const broadPhaseFilter = new Jolt.DefaultBroadPhaseLayerFilter(
-      physicsSystem.GetObjectVsBroadPhaseLayerFilter(),
-      LAYER_MOVING,
-    )
-    const objectLayerFilter = new Jolt.DefaultObjectLayerFilter(
-      physicsSystem.GetObjectLayerPairFilter(),
-      LAYER_MOVING,
-    )
-    const bodyFilter = new Jolt.BodyFilter()
-    const shapeFilter = new Jolt.ShapeFilter()
-
-    // Update character
-    character.ExtendedUpdate(
+    // Use simpler Update method (ExtendedUpdate may have issues with filter lifecycle)
+    character.Update(
       delta,
       gravity,
-      updateSettings,
-      broadPhaseFilter,
-      objectLayerFilter,
-      bodyFilter,
-      shapeFilter,
+      filters.broadPhaseFilter,
+      filters.objectLayerFilter,
+      filters.bodyFilter,
+      filters.shapeFilter,
       physicsWorld.tempAllocator,
     )
-
-    // Cleanup
-    Jolt.destroy(stepDown)
-    Jolt.destroy(stepUp)
-    Jolt.destroy(updateSettings)
-    Jolt.destroy(broadPhaseFilter)
-    Jolt.destroy(objectLayerFilter)
-    Jolt.destroy(bodyFilter)
-    Jolt.destroy(shapeFilter)
 
     // Get new position
     const newPos = character.GetPosition()
