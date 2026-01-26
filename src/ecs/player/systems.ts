@@ -55,7 +55,7 @@ const playerStateToTag: Record<PlayerStateType, typeof IsGrounded> = {
  * Movement is relative to camera yaw (GTA-style).
  * Run this before the physics step.
  */
-export function playerMovementSystem(world: World, delta: number) {
+export function playerMovementSystem(world: World, _delta: number) {
   // Get input singleton
   let input = {movement: {x: 0, y: 0}, jump: false, sprint: false}
   for (const entity of world.query(inputQuery)) {
@@ -95,34 +95,26 @@ export function playerMovementSystem(world: World, delta: number) {
     const worldZ = -normalizedX * sin - normalizedY * cos
 
     // Horizontal movement (reduced control when sliding)
+    // Velocity in m/s - Jolt's Update() will apply delta internally
     const slideMultiplier = isSliding ? 0.3 : 1.0
-    const vx = worldX * speed * delta * slideMultiplier
-    const vz = worldZ * speed * delta * slideMultiplier
+    const vx = worldX * speed * slideMultiplier
+    const vz = worldZ * speed * slideMultiplier
 
-    // Vertical movement - start from previous Y velocity
+    // Vertical movement
+    // Jolt's CharacterVirtual.Update() applies gravity internally,
+    // so we only need to handle jump impulse here
     let vy = prevVelocity.y
 
     // Apply jump velocity (character controller handles jump buffering)
     if (canJump && input.jump) {
-      vy = Math.sqrt(config.jumpHeight * -0.05 * config.gravity)
-    }
-
-    // Apply gravity based on state
-    const terminalVelocity = -20
-    const slideTerminalVelocity = -5
-
-    if (isGrounded && !isSliding) {
+      // Jump velocity calculation: v = sqrt(2 * g * h)
+      // config.gravity is negative, so we negate it
+      vy = Math.sqrt(2 * -config.gravity * config.jumpHeight)
+    } else if (isGrounded && !isSliding) {
       // Grounded: zero downward velocity but preserve upward (jump) velocity
       if (vy < 0) vy = 0
-    } else if (isSliding) {
-      // Sliding: apply gravity with lower terminal velocity
-      vy += config.gravity * delta
-      if (vy < slideTerminalVelocity) vy = slideTerminalVelocity
-    } else {
-      // Airborne: apply gravity with terminal velocity
-      vy += config.gravity * delta
-      if (vy < terminalVelocity) vy = terminalVelocity
     }
+    // Note: gravity and terminal velocity are handled by Jolt's Update()
 
     // Update velocity trait
     entity.set(PlayerVelocity, {x: vx, y: vy, z: vz})
