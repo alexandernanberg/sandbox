@@ -388,48 +388,44 @@ function createJoltShape(
 
   switch (shape.type) {
     case 'ball': {
-      // SphereShape(radius, material) - use null for default material
-      const result = new Jolt.SphereShape(shape.radius * uniformScale, null)
+      // SphereShape(radius, material?) - omit material for default
+      const result = new Jolt.SphereShape(shape.radius * uniformScale)
       return result
     }
     case 'cuboid': {
-      // BoxShape(halfExtent, convexRadius, material)
+      // BoxShape(halfExtent, convexRadius?, material?)
       const halfExtent = new Jolt.Vec3(
         shape.hx * scaleX,
         shape.hy * scaleY,
         shape.hz * scaleZ,
       )
-      const result = new Jolt.BoxShape(halfExtent, 0.05, null)
+      const result = new Jolt.BoxShape(halfExtent, 0.05)
       Jolt.destroy(halfExtent)
       return result
     }
     case 'capsule': {
-      // CapsuleShape(halfHeight, radius, material)
+      // CapsuleShape(halfHeight, radius, material?)
       const result = new Jolt.CapsuleShape(
         shape.halfHeight * scaleY,
         shape.radius * Math.max(scaleX, scaleZ),
-        null,
       )
       return result
     }
     case 'cylinder': {
-      // CylinderShape(halfHeight, radius, convexRadius, material)
+      // CylinderShape(halfHeight, radius, convexRadius?, material?)
       const result = new Jolt.CylinderShape(
         shape.halfHeight * scaleY,
         shape.radius * Math.max(scaleX, scaleZ),
         0.05,
-        null,
       )
       return result
     }
     case 'cone': {
-      // Jolt doesn't have a cone shape, use tapered capsule or cylinder
-      // For now, use cylinder as approximation
+      // Jolt doesn't have a cone shape, use cylinder as approximation
       const result = new Jolt.CylinderShape(
         shape.halfHeight * scaleY,
         shape.radius * Math.max(scaleX, scaleZ),
         0.05,
-        null,
       )
       return result
     }
@@ -519,7 +515,7 @@ function createJoltShape(
     }
     default: {
       // Fallback to unit sphere
-      const result = new Jolt.SphereShape(1, null)
+      const result = new Jolt.SphereShape(1)
       return result
     }
   }

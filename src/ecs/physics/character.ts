@@ -523,11 +523,10 @@ export function createCharacterController(
     const transform = entity.get(Transform)!
 
     // Create capsule shape using direct constructor
-    // CapsuleShape(halfHeight, radius, material)
+    // CapsuleShape(halfHeight, radius, material?)
     const shape = new Jolt.CapsuleShape(
       config.capsuleHalfHeight,
       config.capsuleRadius,
-      null,
     )
 
     // Create character settings
