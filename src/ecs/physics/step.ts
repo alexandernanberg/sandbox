@@ -30,6 +30,9 @@ import {physicsWorld, FIXED_TIMESTEP, MAX_DELTA} from './world'
 // Cached query for input singleton
 const inputQuery = createQuery(Input)
 
+// Default input (reused to avoid per-frame allocation)
+const _defaultInput = {movement: {x: 0, y: 0}, jump: false, sprint: false}
+
 export interface StepResult {
   stepped: boolean
   alpha: number
@@ -78,9 +81,10 @@ export function stepPhysics(ecsWorld: World, delta: number): StepResult {
 
   let stepped = false
 
-  // Get input for state machine (read once per frame)
-  let input = {movement: {x: 0, y: 0}, jump: false, sprint: false}
-  for (const entity of ecsWorld.query(inputQuery)) {
+  // Get input singleton for state machine
+  let input = _defaultInput
+  const inputEntities = ecsWorld.query(inputQuery)
+  for (const entity of inputEntities) {
     input = entity.get(Input)!
     break
   }

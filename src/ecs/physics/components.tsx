@@ -10,7 +10,11 @@ import {
   useMemo,
   useRef,
 } from 'react'
-import type {Object3D, Vector3} from 'three'
+import {Vector3} from 'three'
+import type {Object3D} from 'three'
+
+// Scratch vector for getWorldScale (avoids allocation per collider setup)
+const _scaleVec3 = new Vector3()
 import type {RigidBodyType, ColliderShape, CollisionCallback} from './traits'
 import {
   Transform,
@@ -265,10 +269,10 @@ function useColliderSetup(shape: ColliderShape, props: BaseColliderProps) {
       scaleZ = 1
     if (object3d) {
       object3d.updateWorldMatrix(true, false)
-      const scale = object3d.getWorldScale(object3d.scale.clone())
-      scaleX = scale.x
-      scaleY = scale.y
-      scaleZ = scale.z
+      object3d.getWorldScale(_scaleVec3)
+      scaleX = _scaleVec3.x
+      scaleY = _scaleVec3.y
+      scaleZ = _scaleVec3.z
     }
 
     // Spawn collider entity with relation to parent rigid body

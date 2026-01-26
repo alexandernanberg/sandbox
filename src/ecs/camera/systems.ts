@@ -8,6 +8,8 @@ import {
   computeCameraPosition,
   exponentialSmoothing,
   interpolateOrbitRigsSmooth,
+  _cameraPos,
+  _orbitRig,
 } from './math'
 import {
   CameraOrbit,
@@ -72,8 +74,8 @@ const WHISKER_OFFSETS = [
  * Updates camera orbit state from mouse input.
  * Call this before rendering but after input is captured.
  */
-export function cameraInputSystem(world: World) {
-  // Get camera input singleton
+export function cameraInputSystem(world: World): void {
+  // Get camera input singleton and consume delta
   let deltaX = 0
   let deltaY = 0
   let locked = false
@@ -83,7 +85,6 @@ export function cameraInputSystem(world: World) {
     deltaX = input.delta.x
     deltaY = input.delta.y
     locked = input.locked
-    // Clear delta after reading (consumed)
     entity.set(CameraInput, (i) => {
       i.delta.x = 0
       i.delta.y = 0
@@ -92,27 +93,23 @@ export function cameraInputSystem(world: World) {
     break
   }
 
-  // Only update camera if pointer is locked
   if (!locked) return
 
-  // Update camera orbit
+  // Apply mouse delta to camera orbit
   for (const entity of world.query(cameraOrbitQuery)) {
     const orbit = entity.get(CameraOrbit)!
-    const sensitivity = orbit.sensitivity
-
-    // Update yaw and pitch
-    const newYaw = orbit.yaw - deltaX * sensitivity
-    let newPitch = orbit.pitch + deltaY * sensitivity
-
-    // Clamp pitch
-    newPitch = Math.max(orbit.minPitch, Math.min(orbit.maxPitch, newPitch))
+    const newYaw = orbit.yaw - deltaX * orbit.sensitivity
+    const newPitch = Math.max(
+      orbit.minPitch,
+      Math.min(orbit.maxPitch, orbit.pitch + deltaY * orbit.sensitivity),
+    )
 
     entity.set(CameraOrbit, (o) => {
       o.yaw = newYaw
       o.pitch = newPitch
       return o
     })
-    break // Only one camera
+    break
   }
 }
 
@@ -255,18 +252,19 @@ export function cameraUpdateSystem(world: World, delta: number) {
     _bottomRig.distance = orbit.bottomDistance
     _bottomRig.height = orbit.bottomHeight
 
-    // Interpolate between top/middle/bottom orbits based on pitch
-    const interpolatedOrbit = interpolateOrbitRigsSmooth(
+    // Interpolate between top/middle/bottom orbits based on pitch (uses scratch object)
+    interpolateOrbitRigsSmooth(
       pitch,
       orbit.minPitch,
       orbit.maxPitch,
       _topRig,
       _middleRig,
       _bottomRig,
+      _orbitRig,
     )
 
-    const targetDistance = interpolatedOrbit.distance
-    const effectiveHeightOffset = interpolatedOrbit.height
+    const targetDistance = _orbitRig.distance
+    const effectiveHeightOffset = _orbitRig.height
 
     // Apply aim offset in camera space
     _aimOffsetWorld.x = Math.cos(yaw) * orbit.aimOffsetX
@@ -279,15 +277,18 @@ export function cameraUpdateSystem(world: World, delta: number) {
     // ========================================
     // 4. WHISKER COLLISION DETECTION
     // ========================================
+    // Compute ideal position using scratch object for collision check
+    computeCameraPosition(
+      _orbitTarget,
+      yaw,
+      pitch,
+      targetDistance,
+      effectiveHeightOffset,
+      _cameraPos,
+    )
     const collisionDistance = castWhiskerRays(
       _effectiveTarget,
-      computeCameraPosition(
-        _orbitTarget,
-        yaw,
-        pitch,
-        targetDistance,
-        effectiveHeightOffset,
-      ),
+      _cameraPos,
       yaw,
       pitch,
       targetDistance,
@@ -320,16 +321,15 @@ export function cameraUpdateSystem(world: World, delta: number) {
     // ========================================
     // 6. FINAL CAMERA POSITION (instant rotation, smoothed distance only)
     // ========================================
-    const computedPos = computeCameraPosition(
+    // Compute directly into _finalPosition to avoid allocation
+    computeCameraPosition(
       _orbitTarget,
       yaw,
       pitch,
       currentDist,
       effectiveHeightOffset,
+      _finalPosition,
     )
-    _finalPosition.x = computedPos.x
-    _finalPosition.y = computedPos.y
-    _finalPosition.z = computedPos.z
 
     // ========================================
     // 7. CAMERA NOISE (subtle)

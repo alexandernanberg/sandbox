@@ -204,14 +204,20 @@ const characterCreationQuery = createQuery(
 // Ground Detection via Shapecast
 // ============================================
 
-// Filter callback to exclude dynamic bodies and self from queries
-function createStaticFilter(selfCollider: RAPIER.Collider) {
-  return (collider: RAPIER.Collider): boolean => {
-    if (collider === selfCollider) return false
-    const body = collider.parent()
-    // Only collide with fixed/kinematic bodies, not dynamic
-    return body ? !body.isDynamic() : true
-  }
+// Cached static filter state (avoids closure allocation per call)
+let _filterSelfCollider: RAPIER.Collider | null = null
+
+// Static filter callback - filters out dynamic bodies and the character's own collider
+function staticFilterCallback(collider: RAPIER.Collider): boolean {
+  if (collider === _filterSelfCollider) return false
+  const body = collider.parent()
+  // Only collide with fixed/kinematic bodies, not dynamic
+  return body ? !body.isDynamic() : true
+}
+
+// Set the collider to exclude from static filter queries
+function setStaticFilterCollider(selfCollider: RAPIER.Collider): void {
+  _filterSelfCollider = selfCollider
 }
 
 // Scratch objects for edge verification
@@ -221,6 +227,11 @@ const _verifiedNormal = {x: 0, y: 0, z: 0}
 // Scratch objects for impulse application (reused to avoid allocations)
 const _impulse = {x: 0, y: 0, z: 0}
 const _contactPoint = {x: 0, y: 0, z: 0}
+
+// Scratch objects for moveAndSlide and character controller
+const _horizVel = {x: 0, y: 0, z: 0}
+const _finalPos = {x: 0, y: 0, z: 0}
+const _charPos = {x: 0, y: 0, z: 0}
 
 /**
  * Detects if a normal is an "edge normal" - interpolated between two faces.
@@ -747,6 +758,9 @@ function moveAndSlide(
   _moveResult.steppedUp = false
   _moveResult.stepUpAmount = 0
 
+  // Set filter collider once for all casts in this function
+  setStaticFilterCollider(selfCollider)
+
   setVec3(_slideVel, velocity.x, velocity.y, velocity.z)
   setVec3(_prevMoveDir, 0, 0, 0)
 
@@ -838,8 +852,6 @@ function moveAndSlide(
     }
 
     // Now check for static/kinematic bodies that actually block movement
-    const staticFilter = createStaticFilter(selfCollider)
-
     const hit = rapierWorld.castShape(
       _castPos,
       _identityRot,
@@ -852,7 +864,7 @@ function moveAndSlide(
       undefined, // filterGroups
       undefined, // excludeCollider (handled by filter)
       undefined, // excludeRigidBody
-      staticFilter, // filterPredicate
+      staticFilterCallback, // filterPredicate
     )
 
     if (!hit || hit.time_of_impact >= speed - MIN_MOVE_DISTANCE) {
@@ -1007,14 +1019,13 @@ function attemptStepUp(
   velocity: {x: number; y: number; z: number},
   shape: RAPIER.Capsule,
   config: CharacterConfig,
-  selfCollider: RAPIER.Collider,
+  _selfCollider: RAPIER.Collider,
   target: {x: number; y: number; z: number},
 ): boolean {
   const hSpeed = Math.sqrt(velocity.x * velocity.x + velocity.z * velocity.z)
   if (hSpeed < MIN_MOVE_DISTANCE) return false
 
-  // Only step up on static/kinematic surfaces
-  const filter = createStaticFilter(selfCollider)
+  // Note: staticFilterCallback already set by caller (moveAndSlide)
 
   // Check room above
   const upHit = rapierWorld.castShape(
@@ -1029,7 +1040,7 @@ function attemptStepUp(
     undefined, // filterGroups
     undefined, // excludeCollider (handled by filter)
     undefined, // excludeRigidBody
-    filter, // filterPredicate
+    staticFilterCallback, // filterPredicate
   )
 
   if (upHit && upHit.time_of_impact < config.stepHeight - 0.01) {
@@ -1054,7 +1065,7 @@ function attemptStepUp(
     undefined, // filterGroups
     undefined, // excludeCollider (handled by filter)
     undefined, // excludeRigidBody
-    filter, // filterPredicate
+    staticFilterCallback, // filterPredicate
   )
 
   if (horizHit && horizHit.time_of_impact < hSpeed) {
@@ -1081,7 +1092,7 @@ function attemptStepUp(
     undefined, // filterGroups
     undefined, // excludeCollider (handled by filter)
     undefined, // excludeRigidBody
-    filter, // filterPredicate
+    staticFilterCallback, // filterPredicate
   )
 
   if (!downHit) return false
@@ -1108,11 +1119,10 @@ function snapToGround(
   position: {x: number; y: number; z: number},
   shape: RAPIER.Capsule,
   config: CharacterConfig,
-  selfCollider: RAPIER.Collider,
+  _selfCollider: RAPIER.Collider,
   delta: number,
 ): number {
-  // Only snap to static/kinematic ground, not dynamic bodies
-  const filter = createStaticFilter(selfCollider)
+  // Note: staticFilterCallback already set by caller (characterControllerSystem)
 
   // OpenKCC: Snap distance = stepHeight * 2.0
   const snapDistance = config.stepHeight * 2.0
@@ -1129,7 +1139,7 @@ function snapToGround(
     undefined, // filterGroups
     undefined, // excludeCollider (handled by filter)
     undefined, // excludeRigidBody
-    filter, // filterPredicate
+    staticFilterCallback, // filterPredicate
   )
 
   if (!hit) return 0
@@ -1203,6 +1213,9 @@ export function characterControllerSystem(
     if (!shape || !body) continue
 
     const collider = body.collider(0)
+
+    // Set filter collider for all shape casts in this iteration
+    setStaticFilterCollider(collider)
 
     let posX = transform.x
     let posY = transform.y
@@ -1444,11 +1457,12 @@ export function characterControllerSystem(
 
     if (onMovingPlatform && groundInfo.grounded && !isJumping) {
       // On platform - horizontal with collision, vertical follows platform
-      const horizVel = {x: _velocity.x, y: 0, z: _velocity.z}
+      setVec3(_horizVel, _velocity.x, 0, _velocity.z)
+      setVec3(_charPos, posX, posY, posZ)
       const horizResult = moveAndSlide(
         rapierWorld,
-        {x: posX, y: posY, z: posZ},
-        horizVel,
+        _charPos,
+        _horizVel,
         shape,
         collider,
         config,
@@ -1465,9 +1479,10 @@ export function characterControllerSystem(
       finalMoveY += _platformVel.y
     } else {
       // Process full velocity through moveAndSlide
+      setVec3(_charPos, posX, posY, posZ)
       const moveResult = moveAndSlide(
         rapierWorld,
-        {x: posX, y: posY, z: posZ},
+        _charPos,
         _velocity,
         shape,
         collider,
@@ -1558,12 +1573,8 @@ export function characterControllerSystem(
     // ========================================
     // 13. APPLY FINAL POSITION
     // ========================================
-    const finalPos = {
-      x: posX + finalMoveX,
-      y: posY + finalMoveY,
-      z: posZ + finalMoveZ,
-    }
-    body.setNextKinematicTranslation(finalPos)
+    setVec3(_finalPos, posX + finalMoveX, posY + finalMoveY, posZ + finalMoveZ)
+    body.setNextKinematicTranslation(_finalPos)
   }
 }
 
@@ -1595,10 +1606,13 @@ export function characterPostStepSystem(
     const collider = body.collider(0)
     const pos = body.translation()
 
+    // Set up position scratch object
+    setVec3(_charPos, pos.x, pos.y, pos.z)
+
     // Push character out of any overlapping kinematic bodies
     depenetrate(
       rapierWorld,
-      {x: pos.x, y: pos.y, z: pos.z},
+      _charPos,
       shape,
       collider,
       _depenetratePos,
@@ -1612,18 +1626,19 @@ export function characterPostStepSystem(
       Math.abs(_depenetratePos.y) > EPSILON ||
       Math.abs(_depenetratePos.z) > EPSILON
     ) {
-      const newPos = {
-        x: pos.x + _depenetratePos.x,
-        y: pos.y + _depenetratePos.y,
-        z: pos.z + _depenetratePos.z,
-      }
-      body.setTranslation(newPos, true)
+      setVec3(
+        _finalPos,
+        pos.x + _depenetratePos.x,
+        pos.y + _depenetratePos.y,
+        pos.z + _depenetratePos.z,
+      )
+      body.setTranslation(_finalPos, true)
 
       // Also update the Transform trait
       entity.set(Transform, (t) => {
-        t.x = newPos.x
-        t.y = newPos.y
-        t.z = newPos.z
+        t.x = _finalPos.x
+        t.y = _finalPos.y
+        t.z = _finalPos.z
         return t
       })
     }

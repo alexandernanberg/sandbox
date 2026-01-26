@@ -1,3 +1,4 @@
+import type {World} from 'koota'
 import {createActions, createWorld, trait} from 'koota'
 import {
   Transform,
@@ -62,51 +63,32 @@ function randomColor(): string {
   return BALL_COLORS[Math.floor(Math.random() * BALL_COLORS.length)]!
 }
 
+function spawnBallAt(w: World, x: number, y: number, z: number) {
+  const rbEntity = w.spawn(
+    IsBall,
+    IsPhysicsEntity,
+    Object3DRef,
+    BallColor({color: randomColor()}),
+    Transform({x, y, z}),
+    PreviousTransform({x, y, z}),
+    RenderTransform({x, y, z}),
+    RigidBodyConfig,
+  )
+  w.spawn(IsColliderEntity, ChildOf(rbEntity), ballCollider(0.5, 1, 0.9))
+  return rbEntity
+}
+
 export const actions = createActions((w) => ({
-  spawnBall: (x: number, y: number, z: number) => {
-    const color = randomColor()
-
-    const rbEntity = w.spawn(
-      IsBall,
-      IsPhysicsEntity,
-      Object3DRef,
-      BallColor({color}),
-      Transform({x, y, z}),
-      PreviousTransform({x, y, z}),
-      RenderTransform({x, y, z}),
-      RigidBodyConfig,
-    )
-
-    w.spawn(IsColliderEntity, ChildOf(rbEntity), ballCollider(0.5, 1, 0.9))
-
-    return rbEntity
-  },
+  spawnBall: (x: number, y: number, z: number) => spawnBallAt(w, x, y, z),
 
   spawnBalls: (count: number) => {
     for (let i = 0; i < count; i++) {
-      const x = Math.random() * 2 - 1
-      const z = Math.random() * 2 - 1
-      const y = 6
-      const color = randomColor()
-
-      const rbEntity = w.spawn(
-        IsBall,
-        IsPhysicsEntity,
-        Object3DRef,
-        BallColor({color}),
-        Transform({x, y, z}),
-        PreviousTransform({x, y, z}),
-        RenderTransform({x, y, z}),
-        RigidBodyConfig,
-      )
-
-      w.spawn(IsColliderEntity, ChildOf(rbEntity), ballCollider(0.5, 1, 0.9))
+      spawnBallAt(w, Math.random() * 2 - 1, 6, Math.random() * 2 - 1)
     }
   },
 
   clearBalls: () => {
-    const balls = [...w.query(IsBall)]
-    for (const entity of balls) {
+    for (const entity of [...w.query(IsBall)]) {
       entity.destroy()
     }
   },
