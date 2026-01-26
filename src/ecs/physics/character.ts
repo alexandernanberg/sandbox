@@ -397,30 +397,38 @@ export function characterControllerSystem(
     if (Math.abs(inheritedVy) < 0.001) inheritedVy = 0
     if (Math.abs(inheritedVz) < 0.001) inheritedVz = 0
 
-    // Build velocity
-    const inputVy = movement.vy
+    // Get character's current velocity (includes accumulated gravity from previous frames)
+    const currentVel = character.GetLinearVelocity()
+    const charVy = currentVel.GetY()
 
-    if (shouldJump && inputVy > 0) {
-      coyoteCounter = 0
-      jumpBufferCounter = 0
-    }
-
-    setVec3(
-      _velocity,
-      movement.vx + inheritedVx,
-      inputVy + inheritedVy,
-      movement.vz + inheritedVz,
-    )
+    // Build final velocity
+    // Horizontal: use input velocity + inherited momentum
+    let finalVx = movement.vx + inheritedVx
+    let finalVz = movement.vz + inheritedVz
 
     // Add platform velocity if grounded
     if (isGrounded && onMovingPlatform) {
-      _velocity.x += _platformVel.x
-      _velocity.y += _platformVel.y
-      _velocity.z += _platformVel.z
+      finalVx += _platformVel.x
+      finalVz += _platformVel.z
+    }
+
+    // Vertical: preserve character's vy (gravity accumulation) unless jumping or grounded
+    let finalVy: number
+    if (shouldJump && movement.vy > 0) {
+      // Jump: use jump velocity from input
+      finalVy = movement.vy
+      coyoteCounter = 0
+      jumpBufferCounter = 0
+    } else if (isGrounded && !isSliding) {
+      // Grounded: zero out downward velocity, keep upward
+      finalVy = Math.max(charVy, 0)
+    } else {
+      // Airborne: keep accumulated gravity velocity
+      finalVy = charVy + inheritedVy
     }
 
     // Apply velocity to character
-    const joltVel = new Jolt.Vec3(_velocity.x, _velocity.y, _velocity.z)
+    const joltVel = new Jolt.Vec3(finalVx, finalVy, finalVz)
     character.SetLinearVelocity(joltVel)
     Jolt.destroy(joltVel)
 
@@ -435,6 +443,7 @@ export function characterControllerSystem(
     if (!tempAllocator) continue
 
     // Use Update method with gravity vector
+    // This applies gravity to velocity and moves the character
     character.Update(
       delta,
       gravity,

@@ -80,7 +80,6 @@ export function playerMovementSystem(world: World, _delta: number) {
   // Process all player entities
   for (const entity of world.query(playerMovementQuery)) {
     const config = entity.get(PlayerMovementConfig)!
-    const prevVelocity = entity.get(PlayerVelocity)!
     const movement = entity.get(CharacterMovement)!
 
     const isGrounded = movement.grounded
@@ -101,20 +100,16 @@ export function playerMovementSystem(world: World, _delta: number) {
     const vz = worldZ * speed * slideMultiplier
 
     // Vertical movement
-    // Jolt's CharacterVirtual.Update() applies gravity internally,
-    // so we only need to handle jump impulse here
-    let vy = prevVelocity.y
+    // Jolt's CharacterVirtual handles gravity - we only provide jump impulse
+    // The character controller reads from Jolt's velocity which accumulates gravity
+    let vy = 0
 
-    // Apply jump velocity (character controller handles jump buffering)
+    // Apply jump velocity when jumping
     if (canJump && input.jump) {
       // Jump velocity calculation: v = sqrt(2 * g * h)
       // config.gravity is negative, so we negate it
       vy = Math.sqrt(2 * -config.gravity * config.jumpHeight)
-    } else if (isGrounded && !isSliding) {
-      // Grounded: zero downward velocity but preserve upward (jump) velocity
-      if (vy < 0) vy = 0
     }
-    // Note: gravity and terminal velocity are handled by Jolt's Update()
 
     // Update velocity trait
     entity.set(PlayerVelocity, {x: vx, y: vy, z: vz})
