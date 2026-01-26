@@ -1595,6 +1595,7 @@ export function characterPostStepSystem(
 
   for (const entity of entities) {
     const shapeRef = entity.get(CharacterShapeRef)!
+    const movement = entity.get(CharacterMovement)!
     const config = entity.get(CharacterControllerConfig)! as CharacterConfig
     const bodyRef = entity.get(RigidBodyRef)!
 
@@ -1602,6 +1603,17 @@ export function characterPostStepSystem(
     const body = bodyRef.body
 
     if (!shape || !body) continue
+
+    // Skip post-step depenetration when on a moving platform
+    // The platform moved during step(), and depenetration would fight against
+    // the intended platform-following behavior, causing jitter
+    const onMovingPlatform =
+      Math.abs(movement.platformVx) +
+        Math.abs(movement.platformVy) +
+        Math.abs(movement.platformVz) >
+      0.0001
+
+    if (onMovingPlatform && movement.grounded) continue
 
     const collider = body.collider(0)
     const pos = body.translation()

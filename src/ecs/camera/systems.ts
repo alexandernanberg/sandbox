@@ -387,9 +387,9 @@ export function cameraUpdateSystem(world: World, delta: number) {
       s.positionY = _finalPosition.y + noiseY + shakeOffsetY
       s.positionZ = _finalPosition.z + noiseZ + shakeOffsetZ
 
-      // Look at target (use orbit center height for consistent framing)
+      // Look at target (use smoothed follow position for consistent framing)
       s.lookAtX = _effectiveTarget.x
-      s.lookAtY = _targetPos.y + effectiveHeightOffset * 0.5
+      s.lookAtY = _effectiveTarget.y + effectiveHeightOffset * 0.5
       s.lookAtZ = _effectiveTarget.z
 
       s.shakeRotationX = shakeRotationX

@@ -391,6 +391,7 @@ interface ElevatorProps {
 function Elevator({position}: ElevatorProps) {
   const entityRef = useRef<Entity | null>(null)
   const prevY = useRef<number | null>(null)
+  const physicsTime = useRef(0)
 
   useLayoutEffect(() => {
     const entity = entityRef.current
@@ -403,18 +404,18 @@ function Elevator({position}: ElevatorProps) {
     }
   }, [])
 
-  usePhysicsUpdate(() => {
+  usePhysicsUpdate((delta) => {
     const entity = entityRef.current
     if (!entity) return
     const bodyRef = entity.get(RigidBodyRef)
     if (!bodyRef?.body) return
 
+    // Use physics time instead of wall time to ensure consistent velocity
+    // across multiple physics steps per frame
+    physicsTime.current += delta
+
     const vec = bodyRef.body.translation()
-    const newY = clamp(
-      3.875 + Math.sin(performance.now() / 1000) * 5,
-      0.25,
-      7.75,
-    )
+    const newY = clamp(3.875 + Math.sin(physicsTime.current) * 5, 0.25, 7.75)
 
     // Set velocity (per-frame delta)
     if (prevY.current !== null) {
