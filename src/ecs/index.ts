@@ -1,3 +1,4 @@
+import type {World} from 'koota'
 import {createActions, createWorld, trait} from 'koota'
 import {
   Transform,
@@ -62,12 +63,7 @@ function randomColor(): string {
   return BALL_COLORS[Math.floor(Math.random() * BALL_COLORS.length)]!
 }
 
-function spawnBallAt(
-  w: Parameters<Parameters<typeof createActions>[0]>[0],
-  x: number,
-  y: number,
-  z: number,
-) {
+function spawnBallAt(w: World, x: number, y: number, z: number) {
   const rbEntity = w.spawn(
     IsBall,
     IsPhysicsEntity,
