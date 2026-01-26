@@ -522,14 +522,13 @@ export function createCharacterController(
     const config = entity.get(CharacterControllerConfig)! as CharacterConfig
     const transform = entity.get(Transform)!
 
-    // Create capsule shape
-    const shapeSettings = new Jolt.CapsuleShapeSettings(
+    // Create capsule shape using direct constructor
+    // CapsuleShape(halfHeight, radius, material)
+    const shape = new Jolt.CapsuleShape(
       config.capsuleHalfHeight,
       config.capsuleRadius,
+      null,
     )
-    const shape = shapeSettings.Create().Get()
-    shape.AddRef()
-    Jolt.destroy(shapeSettings)
 
     // Create character settings
     const settings = new Jolt.CharacterVirtualSettings()

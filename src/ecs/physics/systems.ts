@@ -388,55 +388,49 @@ function createJoltShape(
 
   switch (shape.type) {
     case 'ball': {
-      const settings = new Jolt.SphereShapeSettings(shape.radius * uniformScale)
-      const result = settings.Create().Get()
-      result.AddRef()
-      Jolt.destroy(settings)
+      // SphereShape(radius, material) - use null for default material
+      const result = new Jolt.SphereShape(shape.radius * uniformScale, null)
       return result
     }
     case 'cuboid': {
+      // BoxShape(halfExtent, convexRadius, material)
       const halfExtent = new Jolt.Vec3(
         shape.hx * scaleX,
         shape.hy * scaleY,
         shape.hz * scaleZ,
       )
-      const settings = new Jolt.BoxShapeSettings(halfExtent)
-      const result = settings.Create().Get()
-      result.AddRef()
+      const result = new Jolt.BoxShape(halfExtent, 0.05, null)
       Jolt.destroy(halfExtent)
-      Jolt.destroy(settings)
       return result
     }
     case 'capsule': {
-      const settings = new Jolt.CapsuleShapeSettings(
+      // CapsuleShape(halfHeight, radius, material)
+      const result = new Jolt.CapsuleShape(
         shape.halfHeight * scaleY,
         shape.radius * Math.max(scaleX, scaleZ),
+        null,
       )
-      const result = settings.Create().Get()
-      result.AddRef()
-      Jolt.destroy(settings)
       return result
     }
     case 'cylinder': {
-      const settings = new Jolt.CylinderShapeSettings(
+      // CylinderShape(halfHeight, radius, convexRadius, material)
+      const result = new Jolt.CylinderShape(
         shape.halfHeight * scaleY,
         shape.radius * Math.max(scaleX, scaleZ),
+        0.05,
+        null,
       )
-      const result = settings.Create().Get()
-      result.AddRef()
-      Jolt.destroy(settings)
       return result
     }
     case 'cone': {
-      // Jolt uses tapered capsule or we can approximate with convex hull
+      // Jolt doesn't have a cone shape, use tapered capsule or cylinder
       // For now, use cylinder as approximation
-      const settings = new Jolt.CylinderShapeSettings(
+      const result = new Jolt.CylinderShape(
         shape.halfHeight * scaleY,
         shape.radius * Math.max(scaleX, scaleZ),
+        0.05,
+        null,
       )
-      const result = settings.Create().Get()
-      result.AddRef()
-      Jolt.destroy(settings)
       return result
     }
     case 'convexHull': {
@@ -458,7 +452,6 @@ function createJoltShape(
         Jolt.destroy(point)
       }
       const result = settings.Create().Get()
-      result.AddRef()
       Jolt.destroy(settings)
       return result
     }
@@ -501,7 +494,6 @@ function createJoltShape(
       }
       settings.mTriangleVertices = triList
       const result = settings.Create().Get()
-      result.AddRef()
       Jolt.destroy(triList)
       Jolt.destroy(settings)
       return result
@@ -522,16 +514,12 @@ function createJoltShape(
         settings.mHeightSamples.push_back(shape.heights[i]!)
       }
       const result = settings.Create().Get()
-      result.AddRef()
       Jolt.destroy(settings)
       return result
     }
     default: {
       // Fallback to unit sphere
-      const settings = new Jolt.SphereShapeSettings(1)
-      const result = settings.Create().Get()
-      result.AddRef()
-      Jolt.destroy(settings)
+      const result = new Jolt.SphereShape(1, null)
       return result
     }
   }
