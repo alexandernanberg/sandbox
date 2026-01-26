@@ -8,6 +8,8 @@ import {
   computeCameraPosition,
   exponentialSmoothing,
   interpolateOrbitRigsSmooth,
+  _cameraPos,
+  _orbitRig,
 } from './math'
 import {
   CameraOrbit,
@@ -250,18 +252,19 @@ export function cameraUpdateSystem(world: World, delta: number) {
     _bottomRig.distance = orbit.bottomDistance
     _bottomRig.height = orbit.bottomHeight
 
-    // Interpolate between top/middle/bottom orbits based on pitch
-    const interpolatedOrbit = interpolateOrbitRigsSmooth(
+    // Interpolate between top/middle/bottom orbits based on pitch (uses scratch object)
+    interpolateOrbitRigsSmooth(
       pitch,
       orbit.minPitch,
       orbit.maxPitch,
       _topRig,
       _middleRig,
       _bottomRig,
+      _orbitRig,
     )
 
-    const targetDistance = interpolatedOrbit.distance
-    const effectiveHeightOffset = interpolatedOrbit.height
+    const targetDistance = _orbitRig.distance
+    const effectiveHeightOffset = _orbitRig.height
 
     // Apply aim offset in camera space
     _aimOffsetWorld.x = Math.cos(yaw) * orbit.aimOffsetX
@@ -274,15 +277,18 @@ export function cameraUpdateSystem(world: World, delta: number) {
     // ========================================
     // 4. WHISKER COLLISION DETECTION
     // ========================================
+    // Compute ideal position using scratch object for collision check
+    computeCameraPosition(
+      _orbitTarget,
+      yaw,
+      pitch,
+      targetDistance,
+      effectiveHeightOffset,
+      _cameraPos,
+    )
     const collisionDistance = castWhiskerRays(
       _effectiveTarget,
-      computeCameraPosition(
-        _orbitTarget,
-        yaw,
-        pitch,
-        targetDistance,
-        effectiveHeightOffset,
-      ),
+      _cameraPos,
       yaw,
       pitch,
       targetDistance,
@@ -315,16 +321,15 @@ export function cameraUpdateSystem(world: World, delta: number) {
     // ========================================
     // 6. FINAL CAMERA POSITION (instant rotation, smoothed distance only)
     // ========================================
-    const computedPos = computeCameraPosition(
+    // Compute directly into _finalPosition to avoid allocation
+    computeCameraPosition(
       _orbitTarget,
       yaw,
       pitch,
       currentDist,
       effectiveHeightOffset,
+      _finalPosition,
     )
-    _finalPosition.x = computedPos.x
-    _finalPosition.y = computedPos.y
-    _finalPosition.z = computedPos.z
 
     // ========================================
     // 7. CAMERA NOISE (subtle)

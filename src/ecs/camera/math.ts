@@ -5,6 +5,16 @@
 
 import type {Vec3} from '~/lib/math'
 
+// ============================================
+// Scratch Objects (pre-allocated for hot paths)
+// ============================================
+
+/** Reusable Vec3 for camera position calculations */
+export const _cameraPos: Vec3 = {x: 0, y: 0, z: 0}
+
+/** Reusable orbit rig for interpolation */
+export const _orbitRig: OrbitRig = {distance: 0, height: 0}
+
 /**
  * Simple 2D noise function using layered sine waves.
  * No external dependencies, deterministic output.
@@ -25,7 +35,8 @@ export function noise2D(x: number, y: number): number {
  * @param pitch - Vertical rotation (radians), 0 = horizontal, positive = up
  * @param distance - Distance from target
  * @param heightOffset - Vertical offset from target position
- * @returns Camera world position
+ * @param out - Optional output object to write to (avoids allocation in hot paths)
+ * @returns Camera world position (uses provided out object or creates new one)
  */
 export function computeCameraPosition(
   target: Vec3,
@@ -33,17 +44,18 @@ export function computeCameraPosition(
   pitch: number,
   distance: number,
   heightOffset: number,
+  out?: Vec3,
 ): Vec3 {
   const cosPitch = Math.cos(pitch)
   const sinPitch = Math.sin(pitch)
   const cosYaw = Math.cos(yaw)
   const sinYaw = Math.sin(yaw)
 
-  return {
-    x: target.x + distance * cosPitch * sinYaw,
-    y: target.y + heightOffset + distance * sinPitch,
-    z: target.z + distance * cosPitch * cosYaw,
-  }
+  const result = out ?? {x: 0, y: 0, z: 0}
+  result.x = target.x + distance * cosPitch * sinYaw
+  result.y = target.y + heightOffset + distance * sinPitch
+  result.z = target.z + distance * cosPitch * cosYaw
+  return result
 }
 
 /**
@@ -217,6 +229,8 @@ export function interpolateOrbitRigs(
  * This creates a more uniform "cylindrical" camera path where distance
  * changes gradually across the entire pitch range, rather than staying
  * at middle for most of the range then jumping at the edges.
+ *
+ * @param out - Optional output object to write to (avoids allocation in hot paths)
  */
 export function interpolateOrbitRigsSmooth(
   pitch: number,
@@ -225,12 +239,12 @@ export function interpolateOrbitRigsSmooth(
   top: OrbitRig,
   middle: OrbitRig,
   bottom: OrbitRig,
+  out?: OrbitRig,
 ): OrbitRig {
   // Clamp pitch to valid range
   const clampedPitch = clamp(pitch, minPitch, maxPitch)
 
-  let distance: number
-  let height: number
+  const result = out ?? {distance: 0, height: 0}
 
   if (clampedPitch >= 0) {
     // Looking down: interpolate from middle to top
@@ -238,18 +252,20 @@ export function interpolateOrbitRigsSmooth(
     const t = maxPitch > 0 ? clampedPitch / maxPitch : 0
     // Cosine interpolation for smooth S-curve
     const smooth = cosineInterpolation(t)
-    distance = middle.distance + (top.distance - middle.distance) * smooth
-    height = middle.height + (top.height - middle.height) * smooth
+    result.distance =
+      middle.distance + (top.distance - middle.distance) * smooth
+    result.height = middle.height + (top.height - middle.height) * smooth
   } else {
     // Looking up: interpolate from middle to bottom
     // t goes from 0 (horizontal) to 1 (min pitch looking up)
     const t = minPitch < 0 ? clampedPitch / minPitch : 0
     const smooth = cosineInterpolation(t)
-    distance = middle.distance + (bottom.distance - middle.distance) * smooth
-    height = middle.height + (bottom.height - middle.height) * smooth
+    result.distance =
+      middle.distance + (bottom.distance - middle.distance) * smooth
+    result.height = middle.height + (bottom.height - middle.height) * smooth
   }
 
-  return {distance, height}
+  return result
 }
 
 /**
