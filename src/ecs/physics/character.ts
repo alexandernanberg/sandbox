@@ -18,6 +18,7 @@ import {
   GROUND_STATE_ON_STEEP_GROUND,
   LAYER_MOVING,
   BACK_FACE_MODE_COLLIDE,
+  MOTION_TYPE_DYNAMIC,
 } from './jolt-types'
 import {
   RigidBodyRef,
@@ -43,7 +44,8 @@ interface CharacterFilters {
   objectLayerFilter: JoltObjectLayerFilter
   bodyFilter: JoltBodyFilter
   shapeFilter: JoltShapeFilter
-  updateSettings: JoltExtendedUpdateSettings
+  updateSettings: JoltExtendedUpdateSettings // Normal walking with floor sticking
+  updateSettingsNoStick: JoltExtendedUpdateSettings // For jumping (no floor sticking)
   velocityVec: JoltVec3 // Cached Vec3 for velocity (avoids per-frame allocation)
 }
 
@@ -83,9 +85,17 @@ function getOrCreateFilters(Jolt: JoltModule): CharacterFilters {
   // Step up for stairs
   const walkStairs = new Jolt.Vec3(0, 0.4, 0)
   updateSettings.mWalkStairsStepUp = walkStairs
+
+  // Create second settings without floor sticking (for jumping)
+  const updateSettingsNoStick = new Jolt.ExtendedUpdateSettings()
+  const noStick = new Jolt.Vec3(0, 0, 0)
+  updateSettingsNoStick.mStickToFloorStepDown = noStick
+  updateSettingsNoStick.mWalkStairsStepUp = walkStairs // Keep stair walking
+
   // Clean up temp vectors (values are copied)
   Jolt.destroy(stickToFloor)
   Jolt.destroy(walkStairs)
+  Jolt.destroy(noStick)
 
   // Create reusable Vec3 for velocity updates (avoids per-frame allocation)
   const velocityVec = new Jolt.Vec3(0, 0, 0)
@@ -96,6 +106,7 @@ function getOrCreateFilters(Jolt: JoltModule): CharacterFilters {
     bodyFilter,
     shapeFilter,
     updateSettings,
+    updateSettingsNoStick,
     velocityVec,
   }
 
@@ -110,6 +121,7 @@ export function destroyCharacterFilters(): void {
   Jolt.destroy(cachedFilters.bodyFilter)
   Jolt.destroy(cachedFilters.shapeFilter)
   Jolt.destroy(cachedFilters.updateSettings)
+  Jolt.destroy(cachedFilters.updateSettingsNoStick)
   Jolt.destroy(cachedFilters.velocityVec)
   cachedFilters = null
 }
@@ -462,10 +474,12 @@ export function characterControllerSystem(
     }
 
     // Handle jumping - override vertical velocity
+    let justJumped = false
     if (shouldJump && movement.vy > 0) {
       newVy = movement.vy
       coyoteCounter = 0
       jumpBufferCounter = 0
+      justJumped = true
     }
 
     // Get or create cached filters (includes reusable Vec3)
@@ -479,19 +493,54 @@ export function characterControllerSystem(
     const tempAllocator = physicsWorld.tempAllocator
     if (!tempAllocator) continue
 
+    // Choose update settings based on whether we're jumping
+    // When jumping or moving upward, disable floor sticking to prevent being pulled back down
+    const isMovingUp = newVy > 0.1
+    const useNoStickSettings = justJumped || isMovingUp
+
     // Use ExtendedUpdate for floor sticking and stair walking
     // NOTE: ExtendedUpdate does NOT apply gravity - we did that above!
     // It handles: collision response, floor sticking, stair walking
     character.ExtendedUpdate(
       delta,
       gravity,
-      filters.updateSettings,
+      useNoStickSettings
+        ? filters.updateSettingsNoStick
+        : filters.updateSettings,
       filters.broadPhaseFilter,
       filters.objectLayerFilter,
       filters.bodyFilter,
       filters.shapeFilter,
       tempAllocator,
     )
+
+    // Push dynamic bodies that the character contacts
+    const bodyInterface = physicsWorld.bodyInterface
+    if (bodyInterface) {
+      const contacts = character.GetActiveContacts()
+      const numContacts = contacts.size()
+      for (let i = 0; i < numContacts; i++) {
+        const contact = contacts.at(i)
+        const contactBodyId = contact.mBodyB
+        // Only push dynamic bodies
+        if (
+          bodyInterface.GetMotionType(contactBodyId) === MOTION_TYPE_DYNAMIC
+        ) {
+          // Calculate push impulse based on character velocity and mass
+          const charVel = character.GetLinearVelocity()
+          const pushStrength = config.mass * 0.5 // Adjust multiplier for desired push force
+          const impulseX = charVel.GetX() * pushStrength * delta
+          const impulseY = 0 // Don't push vertically
+          const impulseZ = charVel.GetZ() * pushStrength * delta
+          // Only push if we have horizontal movement
+          if (Math.abs(impulseX) > 0.001 || Math.abs(impulseZ) > 0.001) {
+            const impulse = new Jolt.Vec3(impulseX, impulseY, impulseZ)
+            bodyInterface.AddImpulse(contactBodyId, impulse)
+            Jolt.destroy(impulse)
+          }
+        }
+      }
+    }
 
     // Get new position
     const newPos = character.GetPosition()
