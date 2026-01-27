@@ -408,52 +408,77 @@ export function characterControllerSystem(
     if (Math.abs(inheritedVy) < 0.001) inheritedVy = 0
     if (Math.abs(inheritedVz) < 0.001) inheritedVz = 0
 
-    // Get character's current velocity (includes accumulated gravity from previous frames)
+    // Get character's current velocity (includes accumulated velocity from previous frames)
     const currentVel = character.GetLinearVelocity()
+    const charVx = currentVel.GetX()
     const charVy = currentVel.GetY()
+    const charVz = currentVel.GetZ()
 
-    // Build final velocity
-    // Horizontal: use input velocity + inherited momentum
-    let finalVx = movement.vx + inheritedVx
-    let finalVz = movement.vz + inheritedVz
+    // Get gravity from physics system
+    const gravity = physicsSystem.GetGravity()
+    const gravityY = gravity.GetY() // Usually negative (e.g., -9.81)
 
-    // Add platform velocity if grounded
-    if (isGrounded && onMovingPlatform) {
-      finalVx += _platformVel.x
-      finalVz += _platformVel.z
+    // Build new velocity following Jolt's pattern:
+    // 1. Start with ground velocity if grounded, else current velocity
+    // 2. Apply gravity (delta * gravity)
+    // 3. Add player input for horizontal movement
+    // 4. Handle jumping
+
+    let newVx: number
+    let newVy: number
+    let newVz: number
+
+    if (isGrounded && !isSliding) {
+      // When grounded: start fresh with ground velocity
+      const groundVel = character.GetGroundVelocity()
+      newVx = groundVel.GetX()
+      newVy = groundVel.GetY()
+      newVz = groundVel.GetZ()
+
+      // Apply gravity to keep grounded (small downward force)
+      newVy += gravityY * delta
+    } else {
+      // When airborne: preserve current velocity
+      newVx = charVx
+      newVy = charVy
+      newVz = charVz
+
+      // Apply gravity (this is how gravity accumulates!)
+      newVy += gravityY * delta
     }
 
-    // Vertical velocity handling:
-    // - Jolt's ExtendedUpdate handles gravity and floor sticking
-    // - We only override vertical velocity for jumps
-    let finalVy: number
+    // Apply player horizontal input (always - allows air control)
+    newVx = movement.vx + inheritedVx
+    newVz = movement.vz + inheritedVz
+
+    // Add platform velocity if on moving platform
+    if (isGrounded && onMovingPlatform) {
+      newVx += _platformVel.x
+      newVz += _platformVel.z
+    }
+
+    // Handle jumping - override vertical velocity
     if (shouldJump && movement.vy > 0) {
-      // Jump: override with jump velocity
-      finalVy = movement.vy
+      newVy = movement.vy
       coyoteCounter = 0
       jumpBufferCounter = 0
-    } else {
-      // Keep current vertical velocity - Jolt handles gravity
-      finalVy = charVy + inheritedVy
     }
 
     // Apply velocity to character
-    const joltVel = new Jolt.Vec3(finalVx, finalVy, finalVz)
+    const joltVel = new Jolt.Vec3(newVx, newVy, newVz)
     character.SetLinearVelocity(joltVel)
     Jolt.destroy(joltVel)
 
     // Get or create cached filters
     const filters = getOrCreateFilters(Jolt)
 
-    // Get gravity for character update
-    const gravity = physicsSystem.GetGravity()
-
     // Get temp allocator (must exist if physics is initialized)
     const tempAllocator = physicsWorld.tempAllocator
     if (!tempAllocator) continue
 
     // Use ExtendedUpdate for floor sticking and stair walking
-    // This applies gravity, handles floor sticking, and moves the character
+    // NOTE: ExtendedUpdate does NOT apply gravity - we did that above!
+    // It handles: collision response, floor sticking, stair walking
     character.ExtendedUpdate(
       delta,
       gravity,
