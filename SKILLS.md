@@ -139,9 +139,38 @@ const character = new Jolt.CharacterVirtual(
 )
 ```
 
+### Use ExtendedUpdate for Floor Sticking
+
+Use `ExtendedUpdate()` instead of `Update()` for proper floor handling:
+
+```typescript
+// Configure ExtendedUpdateSettings
+const updateSettings = new Jolt.ExtendedUpdateSettings()
+const stickToFloor = new Jolt.Vec3(0, -0.5, 0) // Step down to stick
+const walkStairs = new Jolt.Vec3(0, 0.4, 0) // Step up for stairs
+updateSettings.mStickToFloorStepDown = stickToFloor
+updateSettings.mWalkStairsStepUp = walkStairs
+Jolt.destroy(stickToFloor)
+Jolt.destroy(walkStairs)
+
+// Use ExtendedUpdate instead of Update
+character.ExtendedUpdate(
+  delta,
+  gravity,
+  updateSettings, // ExtendedUpdateSettings
+  broadPhaseFilter,
+  objectLayerFilter,
+  bodyFilter,
+  shapeFilter,
+  tempAllocator,
+)
+```
+
+Without `mStickToFloorStepDown`, the character will float after walking down slopes.
+
 ### Velocity and Gravity Handling
 
-**Critical**: `Update()` applies gravity to the character's velocity. To preserve gravity accumulation across frames, you must:
+**Critical**: `ExtendedUpdate()` applies gravity to the character's velocity. To preserve gravity accumulation across frames, you must:
 
 1. Read current velocity from character (includes accumulated gravity)
 2. Override horizontal components with player input
