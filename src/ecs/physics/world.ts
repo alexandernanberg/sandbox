@@ -36,6 +36,20 @@ export function getJolt(): JoltModule {
   return joltModule
 }
 
+// Invalid body ID marker (0xFFFFFFFF indicates no body)
+const INVALID_BODY_INDEX = 0xffffffff
+
+/**
+ * Check if a Jolt BodyID is valid (type guard).
+ * Invalid body IDs have an index of 0xFFFFFFFF.
+ */
+export function isValidBodyID(
+  bodyId: JoltBodyID | null | undefined,
+): bodyId is JoltBodyID {
+  if (!bodyId) return false
+  return bodyId.GetIndex() !== INVALID_BODY_INDEX
+}
+
 export function getJoltInterface(): JoltInterface {
   if (!joltInterface) {
     throw new Error('Jolt not initialized. Call initJolt() first.')
@@ -209,6 +223,10 @@ export function initPhysicsWorld(
           // Remove and destroy body
           bodyInterface.RemoveBody(bodyId)
           bodyInterface.DestroyBody(bodyId)
+        }
+        // Release shape reference (we called AddRef when creating)
+        if (bodyRef.shape) {
+          bodyRef.shape.Release()
         }
       } catch {
         // Body may already be removed

@@ -38,7 +38,7 @@ import {
   ParentInverseMatrix,
   ChildOf,
 } from './traits'
-import {getJolt, registerBodyEntity} from './world'
+import {getJolt, registerBodyEntity, isValidBodyID} from './world'
 
 // ============================================
 // Cached Queries (created once, reused every frame)
@@ -220,6 +220,8 @@ export function createPhysicsBodies(
         colliderData.config.scaleY,
         colliderData.config.scaleZ,
       )
+      // Add reference so we own the shape (released on entity destruction)
+      shape.AddRef()
     } else {
       // Multiple colliders - create compound shape
       const compoundSettings = new Jolt.StaticCompoundShapeSettings()
@@ -287,10 +289,11 @@ export function createPhysicsBodies(
       ? MOTION_QUALITY_LINEAR_CAST
       : MOTION_QUALITY_DISCRETE
 
-    // Set friction/restitution from first collider
+    // Set friction/restitution/sensor from first collider
     if (colliderConfigs.length > 0) {
       bodySettings.mFriction = colliderConfigs[0]!.config.friction
       bodySettings.mRestitution = colliderConfigs[0]!.config.restitution
+      bodySettings.mIsSensor = colliderConfigs[0]!.config.sensor
     }
 
     // Set initial velocities
@@ -561,8 +564,7 @@ export function syncTransformFromPhysics(
     const bodyRef = entity.get(RigidBodyRef)!
     const bodyId = bodyRef.bodyId
 
-    // Check if body ID is valid (invalid IDs have index 0xFFFFFFFF)
-    if (!bodyId || bodyId.GetIndex() === 0xffffffff) continue
+    if (!isValidBodyID(bodyId)) continue
 
     // Skip if body is not active (sleeping) or static
     if (!bodyInterface.IsActive(bodyId)) continue

@@ -11,6 +11,7 @@ import type {
   JoltBodyFilter,
   JoltShapeFilter,
   JoltExtendedUpdateSettings,
+  JoltVec3,
 } from './jolt-types'
 import {
   GROUND_STATE_ON_GROUND,
@@ -24,7 +25,7 @@ import {
   PhysicsInitialized,
   KinematicVelocity,
 } from './traits'
-import {getJolt, physicsWorld, getEntityForBodyId} from './world'
+import {getJolt, physicsWorld, getEntityForBodyId, isValidBodyID} from './world'
 
 // ============================================
 // Scratch objects for character movement
@@ -43,6 +44,7 @@ interface CharacterFilters {
   bodyFilter: JoltBodyFilter
   shapeFilter: JoltShapeFilter
   updateSettings: JoltExtendedUpdateSettings
+  velocityVec: JoltVec3 // Cached Vec3 for velocity (avoids per-frame allocation)
 }
 
 let cachedFilters: CharacterFilters | null = null
@@ -85,12 +87,16 @@ function getOrCreateFilters(Jolt: JoltModule): CharacterFilters {
   Jolt.destroy(stickToFloor)
   Jolt.destroy(walkStairs)
 
+  // Create reusable Vec3 for velocity updates (avoids per-frame allocation)
+  const velocityVec = new Jolt.Vec3(0, 0, 0)
+
   cachedFilters = {
     broadPhaseFilter,
     objectLayerFilter,
     bodyFilter,
     shapeFilter,
     updateSettings,
+    velocityVec,
   }
 
   return cachedFilters
@@ -104,6 +110,7 @@ export function destroyCharacterFilters(): void {
   Jolt.destroy(cachedFilters.bodyFilter)
   Jolt.destroy(cachedFilters.shapeFilter)
   Jolt.destroy(cachedFilters.updateSettings)
+  Jolt.destroy(cachedFilters.velocityVec)
   cachedFilters = null
 }
 
@@ -264,10 +271,7 @@ function getPlatformVelocity(
 
   // Get ground body
   const groundBodyId = character.GetGroundBodyID()
-  // Check if body ID is valid by checking the index (invalid IDs have index 0xFFFFFFFF)
-  // BodyID index of 0xFFFFFFFF (4294967295) indicates invalid
-  const bodyIndex = groundBodyId.GetIndex()
-  if (bodyIndex === 0xffffffff) {
+  if (!isValidBodyID(groundBodyId)) {
     return null
   }
 
@@ -464,13 +468,12 @@ export function characterControllerSystem(
       jumpBufferCounter = 0
     }
 
-    // Apply velocity to character
-    const joltVel = new Jolt.Vec3(newVx, newVy, newVz)
-    character.SetLinearVelocity(joltVel)
-    Jolt.destroy(joltVel)
-
-    // Get or create cached filters
+    // Get or create cached filters (includes reusable Vec3)
     const filters = getOrCreateFilters(Jolt)
+
+    // Apply velocity to character using cached Vec3 (avoids per-frame allocation)
+    filters.velocityVec.Set(newVx, newVy, newVz)
+    character.SetLinearVelocity(filters.velocityVec)
 
     // Get temp allocator (must exist if physics is initialized)
     const tempAllocator = physicsWorld.tempAllocator
