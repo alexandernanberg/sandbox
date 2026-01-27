@@ -294,6 +294,12 @@ export function getEntityForBodyId(bodyId: JoltBodyID): Entity | undefined {
   return physicsWorld.bodyIdToEntity.get(bodyId.GetIndexAndSequenceNumber())
 }
 
+export function getEntityForBodyIndex(
+  indexAndSequence: number,
+): Entity | undefined {
+  return physicsWorld.bodyIdToEntity.get(indexAndSequence)
+}
+
 export function getBodyById(bodyId: JoltBodyID): JoltBody | null {
   const Jolt = joltModule
   if (!Jolt || !physicsWorld.physicsSystem) return null

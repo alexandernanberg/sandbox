@@ -244,6 +244,71 @@ Use `JoltInterface.Step()` for the physics update:
 joltInterface.Step(deltaTime, collisionSteps)
 ```
 
+## Contact Exit Detection
+
+`OnContactRemoved` doesn't provide body IDs in the JS binding. Track exits by comparing frames:
+
+```typescript
+const activeContacts = new Set<string>()
+const currentFrameContacts = new Set<string>()
+
+// In OnContactAdded and OnContactPersisted:
+const key = makeContactKey(body1, body2)
+currentFrameContacts.add(key)
+
+// After physics step, detect exits:
+for (const key of activeContacts) {
+  if (!currentFrameContacts.has(key)) {
+    // Contact ended - fire exit event
+  }
+}
+
+// Update for next frame
+activeContacts.clear()
+for (const key of currentFrameContacts) {
+  activeContacts.add(key)
+}
+currentFrameContacts.clear()
+```
+
+## Memory Management in Loops
+
+When creating objects in loops (e.g., mesh triangles), store refs and destroy after use:
+
+```typescript
+// Bad - destroys while potentially still referenced
+for (const tri of triangles) {
+  const v = new Jolt.Vec3(...)
+  triList.push_back(v)
+  Jolt.destroy(v) // Dangerous if triList holds reference
+}
+
+// Good - defer destruction until after shape creation
+const tempObjects: unknown[] = []
+for (const tri of triangles) {
+  const v = new Jolt.Vec3(...)
+  triList.push_back(v)
+  tempObjects.push(v)
+}
+const shape = settings.Create().Get()
+for (const obj of tempObjects) {
+  Jolt.destroy(obj)
+}
+```
+
+For settings with Vec3 properties (HeightFieldShapeSettings), store refs:
+
+```typescript
+const offset = new Jolt.Vec3(0, 0, 0)
+const scale = new Jolt.Vec3(1, 1, 1)
+settings.mOffset = offset
+settings.mScale = scale
+const shape = settings.Create().Get()
+Jolt.destroy(offset) // Destroy after shape is created
+Jolt.destroy(scale)
+Jolt.destroy(settings)
+```
+
 ## Common Pitfalls
 
 1. **WASM signature mismatch**: Don't pass `null` for optional constructor parameters
@@ -252,3 +317,5 @@ joltInterface.Step(deltaTime, collisionSteps)
 4. **Pointer callbacks**: Contact listener callbacks receive numbers, wrap with `Jolt.wrapPointer`
 5. **BroadPhaseLayer**: Must be objects, not raw numbers for `MapObjectToBroadPhaseLayer`
 6. **Memory leaks**: Always call `Jolt.destroy()` on WASM objects
+7. **Contact exit**: `OnContactRemoved` doesn't give body IDs - track contacts frame-to-frame
+8. **Vec3 in settings**: Store refs to Vec3 assigned to settings properties, destroy after use

@@ -456,7 +456,9 @@ function createJoltShape(
         scaledVertices[i + 2] = shape.vertices[i + 2]! * scaleZ
       }
       // Build triangle list (Triangle constructor takes Vec3, not Float3)
+      // Store refs for cleanup after shape creation (safer than immediate destroy)
       const triList = new Jolt.TriangleList()
+      const tempObjects: unknown[] = []
       for (let i = 0; i < shape.indices.length; i += 3) {
         const i0 = shape.indices[i]! * 3
         const i1 = shape.indices[i + 1]! * 3
@@ -478,14 +480,15 @@ function createJoltShape(
         )
         const tri = new Jolt.Triangle(v0, v1, v2, 0)
         triList.push_back(tri)
-        Jolt.destroy(v0)
-        Jolt.destroy(v1)
-        Jolt.destroy(v2)
-        Jolt.destroy(tri)
+        tempObjects.push(v0, v1, v2, tri)
       }
-      // Use constructor that accepts TriangleList directly
+      // Create shape, then cleanup temp objects
       const settings = new Jolt.MeshShapeSettings(triList)
       const result = settings.Create().Get()
+      // Cleanup all temp objects after shape is created
+      for (const obj of tempObjects) {
+        Jolt.destroy(obj)
+      }
       Jolt.destroy(triList)
       Jolt.destroy(settings)
       return result
@@ -495,17 +498,22 @@ function createJoltShape(
       const settings = new Jolt.HeightFieldShapeSettings()
       settings.mSampleCount = shape.ncols
       settings.mBlockSize = 2
-      settings.mOffset = new Jolt.Vec3(0, 0, 0)
-      settings.mScale = new Jolt.Vec3(
+      // Store Vec3 references so we can destroy them after settings is used
+      const offset = new Jolt.Vec3(0, 0, 0)
+      const scale = new Jolt.Vec3(
         shape.scale.x * scaleX,
         shape.scale.y * scaleY,
         shape.scale.z * scaleZ,
       )
+      settings.mOffset = offset
+      settings.mScale = scale
       // Copy height data
       for (let i = 0; i < shape.heights.length; i++) {
         settings.mHeightSamples.push_back(shape.heights[i]!)
       }
       const result = settings.Create().Get()
+      Jolt.destroy(offset)
+      Jolt.destroy(scale)
       Jolt.destroy(settings)
       return result
     }
