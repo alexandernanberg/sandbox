@@ -72,7 +72,18 @@ function getOrCreateFilters(Jolt: JoltModule): CharacterFilters {
   ) as JoltObjectLayerFilter
   const bodyFilter = new Jolt.BodyFilter()
   const shapeFilter = new Jolt.ShapeFilter()
+
+  // Configure ExtendedUpdateSettings for floor sticking and stair walking
   const updateSettings = new Jolt.ExtendedUpdateSettings()
+  // Step down to stick to floor (prevents floating after slopes)
+  const stickToFloor = new Jolt.Vec3(0, -0.5, 0)
+  updateSettings.mStickToFloorStepDown = stickToFloor
+  // Step up for stairs
+  const walkStairs = new Jolt.Vec3(0, 0.4, 0)
+  updateSettings.mWalkStairsStepUp = walkStairs
+  // Clean up temp vectors (values are copied)
+  Jolt.destroy(stickToFloor)
+  Jolt.destroy(walkStairs)
 
   cachedFilters = {
     broadPhaseFilter,
@@ -412,18 +423,17 @@ export function characterControllerSystem(
       finalVz += _platformVel.z
     }
 
-    // Vertical: preserve character's vy (gravity accumulation) unless jumping or grounded
+    // Vertical velocity handling:
+    // - Jolt's ExtendedUpdate handles gravity and floor sticking
+    // - We only override vertical velocity for jumps
     let finalVy: number
     if (shouldJump && movement.vy > 0) {
-      // Jump: use jump velocity from input
+      // Jump: override with jump velocity
       finalVy = movement.vy
       coyoteCounter = 0
       jumpBufferCounter = 0
-    } else if (isGrounded && !isSliding) {
-      // Grounded: zero out downward velocity, keep upward
-      finalVy = Math.max(charVy, 0)
     } else {
-      // Airborne: keep accumulated gravity velocity
+      // Keep current vertical velocity - Jolt handles gravity
       finalVy = charVy + inheritedVy
     }
 
@@ -442,11 +452,12 @@ export function characterControllerSystem(
     const tempAllocator = physicsWorld.tempAllocator
     if (!tempAllocator) continue
 
-    // Use Update method with gravity vector
-    // This applies gravity to velocity and moves the character
-    character.Update(
+    // Use ExtendedUpdate for floor sticking and stair walking
+    // This applies gravity, handles floor sticking, and moves the character
+    character.ExtendedUpdate(
       delta,
       gravity,
+      filters.updateSettings,
       filters.broadPhaseFilter,
       filters.objectLayerFilter,
       filters.bodyFilter,
