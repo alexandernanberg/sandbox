@@ -423,6 +423,7 @@ function Elevator({position}: ElevatorProps) {
     // across multiple physics steps per frame
     physicsTime.current += delta
 
+    const pos = bodyInterface.GetPosition(bodyRef.bodyId)
     const newY = clamp(3.875 + Math.sin(physicsTime.current) * 5, 0.25, 7.75)
 
     // Set velocity (per-frame delta)
