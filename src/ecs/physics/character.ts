@@ -12,6 +12,7 @@ import type {
   JoltShapeFilter,
   JoltExtendedUpdateSettings,
   JoltVec3,
+  JoltRVec3,
 } from './jolt-types'
 import {
   GROUND_STATE_ON_GROUND,
@@ -48,6 +49,7 @@ interface CharacterFilters {
   updateSettingsNoStick: JoltExtendedUpdateSettings // For jumping (no floor sticking)
   velocityVec: JoltVec3 // Cached Vec3 for velocity (avoids per-frame allocation)
   impulseVec: JoltVec3 // Cached Vec3 for push impulses (avoids per-contact allocation)
+  contactPosRVec: JoltRVec3 // Cached RVec3 for contact position (for impulse at point)
 }
 
 let cachedFilters: CharacterFilters | null = null
@@ -104,6 +106,9 @@ function getOrCreateFilters(Jolt: JoltModule): CharacterFilters {
   // Create reusable Vec3 for push impulses (avoids per-contact allocation)
   const impulseVec = new Jolt.Vec3(0, 0, 0)
 
+  // Create reusable RVec3 for contact position (for impulse at point)
+  const contactPosRVec = new Jolt.RVec3(0, 0, 0)
+
   cachedFilters = {
     broadPhaseFilter,
     objectLayerFilter,
@@ -113,6 +118,7 @@ function getOrCreateFilters(Jolt: JoltModule): CharacterFilters {
     updateSettingsNoStick,
     velocityVec,
     impulseVec,
+    contactPosRVec,
   }
 
   return cachedFilters
@@ -129,6 +135,7 @@ export function destroyCharacterFilters(): void {
   Jolt.destroy(cachedFilters.updateSettingsNoStick)
   Jolt.destroy(cachedFilters.velocityVec)
   Jolt.destroy(cachedFilters.impulseVec)
+  Jolt.destroy(cachedFilters.contactPosRVec)
   cachedFilters = null
 }
 
@@ -309,9 +316,33 @@ function getPlatformVelocity(
 
   const vel = entity.get(KinematicVelocity)!
 
+  // Start with linear velocity
   target.x = vel.x
   target.y = vel.y
   target.z = vel.z
+
+  // Add tangential velocity from angular rotation
+  // tangential = ω × r (cross product of angular velocity and relative position)
+  const hasAngularVel =
+    Math.abs(vel.ax) > 0.0001 ||
+    Math.abs(vel.ay) > 0.0001 ||
+    Math.abs(vel.az) > 0.0001
+
+  if (hasAngularVel && entity.has(Transform)) {
+    const platformTransform = entity.get(Transform)!
+    // Calculate position relative to platform center
+    const rx = charPos.x - platformTransform.x
+    const ry = charPos.y - platformTransform.y
+    const rz = charPos.z - platformTransform.z
+
+    // Cross product: tangential = ω × r
+    // tangentialX = ωy * rz - ωz * ry
+    // tangentialY = ωz * rx - ωx * rz
+    // tangentialZ = ωx * ry - ωy * rx
+    target.x += vel.ay * rz - vel.az * ry
+    target.y += vel.az * rx - vel.ax * rz
+    target.z += vel.ax * ry - vel.ay * rx
+  }
 
   // Clamp to max velocity
   const speed = Math.sqrt(
@@ -581,9 +612,21 @@ export function characterControllerSystem(
               const impulseX = charVelX * pushStrength
               const impulseZ = charVelZ * pushStrength
 
+              // Get contact position for realistic torque (objects tip when pushed off-center)
+              const contactPos = contact.mPosition
+              filters.contactPosRVec.Set(
+                contactPos.GetX(),
+                contactPos.GetY(),
+                contactPos.GetZ(),
+              )
+
               // Reuse cached Vec3 for impulse (no allocation)
               filters.impulseVec.Set(impulseX, 0, impulseZ)
-              bodyInterface.AddImpulse(contactBodyId, filters.impulseVec)
+              bodyInterface.AddImpulse(
+                contactBodyId,
+                filters.impulseVec,
+                filters.contactPosRVec,
+              )
             }
           }
         }
