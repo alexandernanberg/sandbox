@@ -24,6 +24,7 @@ export type JoltCharacterVirtualSettings = Jolt.CharacterVirtualSettings
 export type JoltInterface = Jolt.JoltInterface
 export type JoltSettings = Jolt.JoltSettings
 export type JoltExtendedUpdateSettings = Jolt.ExtendedUpdateSettings
+export type JoltCharacterContactListener = Jolt.CharacterContactListener
 
 // Filter types
 export type JoltBroadPhaseLayerFilter = Jolt.BroadPhaseLayerFilter

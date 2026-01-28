@@ -13,6 +13,7 @@ import type {
   JoltExtendedUpdateSettings,
   JoltVec3,
   JoltRVec3,
+  JoltCharacterContactListener,
 } from './jolt-types'
 import {
   GROUND_STATE_ON_GROUND,
@@ -51,6 +52,7 @@ interface CharacterFilters {
   velocityVec: JoltVec3 // Cached Vec3 for velocity (avoids per-frame allocation)
   impulseVec: JoltVec3 // Cached Vec3 for push impulses (avoids per-contact allocation)
   contactPosRVec: JoltRVec3 // Cached RVec3 for contact position (for impulse at point)
+  contactListener: JoltCharacterContactListener // Contact callbacks (slide prevention, conveyor belts)
 }
 
 let cachedFilters: CharacterFilters | null = null
@@ -130,6 +132,85 @@ function getOrCreateFilters(Jolt: JoltModule): CharacterFilters {
   // Create reusable RVec3 for contact position (for impulse at point)
   const contactPosRVec = new Jolt.RVec3(0, 0, 0)
 
+  // Create contact listener for contact handling callbacks (like official Jolt example)
+  // This prevents unwanted sliding on slopes and enables conveyor belt effects
+  const contactListener = new Jolt.CharacterContactListenerJS()
+
+  // OnAdjustBodyVelocity: Modify body velocity before character uses it
+  // Used for conveyor belts - add velocity to bodies the character stands on
+  contactListener.OnAdjustBodyVelocity = (
+    _characterPtr: number,
+    _body2Ptr: number,
+    _linearVelocityPtr: number,
+    _angularVelocityPtr: number,
+  ) => {
+    // Currently no conveyor belt logic - bodies provide their natural velocity
+    // Could add: linearVelocity.SetX(linearVelocity.GetX() + conveyorSpeed)
+  }
+
+  // OnContactValidate: Validate if character should collide with body
+  contactListener.OnContactValidate = (
+    _characterPtr: number,
+    _body2Ptr: number,
+    _subShapeID2Ptr: number,
+  ) => {
+    // Accept all contacts by default
+    return true
+  }
+
+  // OnContactAdded: Called when a new contact is detected
+  contactListener.OnContactAdded = (
+    _characterPtr: number,
+    _body2Ptr: number,
+    _subShapeID2Ptr: number,
+    _contactPositionPtr: number,
+    _contactNormalPtr: number,
+    _settingsPtr: number,
+  ) => {
+    // No special handling needed for added contacts
+  }
+
+  // OnContactSolve: Called during contact resolution
+  // This is the key callback for preventing unwanted sliding
+  contactListener.OnContactSolve = (
+    _characterPtr: number,
+    body2Ptr: number,
+    _subShapeID2Ptr: number,
+    _contactPositionPtr: number,
+    contactNormalPtr: number,
+    _contactVelocityPtr: number,
+    _contactMaterialPtr: number,
+    characterVelocityPtr: number,
+    newCharacterVelocityPtr: number,
+  ) => {
+    // Wrap pointers to access values
+    const body2 = Jolt.wrapPointer(body2Ptr, Jolt.Body)
+    const contactNormal = Jolt.wrapPointer(contactNormalPtr, Jolt.Vec3)
+    const characterVelocity = Jolt.wrapPointer(characterVelocityPtr, Jolt.Vec3)
+    const newCharacterVelocity = Jolt.wrapPointer(
+      newCharacterVelocityPtr,
+      Jolt.Vec3,
+    )
+
+    // Don't allow sliding down static surfaces when not actively moving
+    // This matches the official Jolt example behavior
+    if (!body2.IsDynamic()) {
+      // Check if character is barely moving (not actively controlled)
+      const charSpeed =
+        characterVelocity.GetX() * characterVelocity.GetX() +
+        characterVelocity.GetZ() * characterVelocity.GetZ()
+
+      // Check if slope is walkable (normal.y > cos(maxSlopeAngle) ~ 0.7 for 45 deg)
+      const normalY = contactNormal.GetY()
+
+      // If barely moving horizontally and on a walkable slope, prevent sliding
+      if (charSpeed < 0.01 && normalY > 0.7) {
+        // Zero out velocity to lock character in place
+        newCharacterVelocity.Set(0, 0, 0)
+      }
+    }
+  }
+
   cachedFilters = {
     broadPhaseFilter,
     objectLayerFilter,
@@ -141,6 +222,7 @@ function getOrCreateFilters(Jolt: JoltModule): CharacterFilters {
     velocityVec,
     impulseVec,
     contactPosRVec,
+    contactListener,
   }
 
   return cachedFilters
@@ -159,6 +241,7 @@ export function destroyCharacterFilters(): void {
   Jolt.destroy(cachedFilters.velocityVec)
   Jolt.destroy(cachedFilters.impulseVec)
   Jolt.destroy(cachedFilters.contactPosRVec)
+  Jolt.destroy(cachedFilters.contactListener)
   cachedFilters = null
 }
 
@@ -787,6 +870,10 @@ export function createCharacterController(
       rotation,
       physicsSystem,
     )
+
+    // Attach contact listener for slide prevention and contact callbacks
+    const filters = getOrCreateFilters(Jolt)
+    character.SetListener(filters.contactListener)
 
     // Cleanup
     Jolt.destroy(settings)
