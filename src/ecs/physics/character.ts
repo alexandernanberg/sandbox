@@ -44,6 +44,7 @@ interface CharacterFilters {
   broadPhaseFilter: JoltBroadPhaseLayerFilter
   objectLayerFilter: JoltObjectLayerFilter
   bodyFilter: JoltBodyFilter
+  movementBodyFilter: JoltBodyFilter // Filter that ignores dynamic bodies for movement
   shapeFilter: JoltShapeFilter
   updateSettings: JoltExtendedUpdateSettings // Normal walking with floor sticking
   updateSettingsNoStick: JoltExtendedUpdateSettings // For jumping (no floor sticking)
@@ -80,6 +81,25 @@ function getOrCreateFilters(Jolt: JoltModule): CharacterFilters {
   const bodyFilter = new Jolt.BodyFilter()
   const shapeFilter = new Jolt.ShapeFilter()
 
+  // Create a body filter that ignores dynamic bodies for character movement
+  // This allows the KCC to pass through dynamic objects instead of being pushed by them
+  const movementBodyFilter = new Jolt.BodyFilterJS()
+  movementBodyFilter.ShouldCollide = (inBodyID: number) => {
+    const bi = physicsWorld.bodyInterface
+    if (!bi) return true
+    // Create BodyID from the number to use with GetMotionType
+    const bodyId = new Jolt.BodyID(inBodyID)
+    const motionType = bi.GetMotionType(bodyId)
+    Jolt.destroy(bodyId)
+    // Only collide with non-dynamic bodies (static and kinematic)
+    return motionType !== MOTION_TYPE_DYNAMIC
+  }
+  movementBodyFilter.ShouldCollideLocked = (_inBody: number) => {
+    // This is called with a Body pointer, but we can't easily check motion type here
+    // Return true and let ShouldCollide handle the filtering
+    return true
+  }
+
   // Configure ExtendedUpdateSettings for floor sticking and stair walking
   const updateSettings = new Jolt.ExtendedUpdateSettings()
   // Step down to stick to floor (prevents floating after slopes)
@@ -113,6 +133,7 @@ function getOrCreateFilters(Jolt: JoltModule): CharacterFilters {
     broadPhaseFilter,
     objectLayerFilter,
     bodyFilter,
+    movementBodyFilter,
     shapeFilter,
     updateSettings,
     updateSettingsNoStick,
@@ -130,6 +151,7 @@ export function destroyCharacterFilters(): void {
   Jolt.destroy(cachedFilters.broadPhaseFilter)
   Jolt.destroy(cachedFilters.objectLayerFilter)
   Jolt.destroy(cachedFilters.bodyFilter)
+  Jolt.destroy(cachedFilters.movementBodyFilter)
   Jolt.destroy(cachedFilters.shapeFilter)
   Jolt.destroy(cachedFilters.updateSettings)
   Jolt.destroy(cachedFilters.updateSettingsNoStick)
@@ -566,6 +588,7 @@ export function characterControllerSystem(
     // Use ExtendedUpdate for floor sticking and stair walking
     // NOTE: ExtendedUpdate does NOT apply gravity - we did that above!
     // It handles: collision response, floor sticking, stair walking
+    // Use movementBodyFilter to ignore dynamic bodies - KCC should pass through them, not be pushed
     character.ExtendedUpdate(
       delta,
       gravity,
@@ -574,7 +597,16 @@ export function characterControllerSystem(
         : filters.updateSettings,
       filters.broadPhaseFilter,
       filters.objectLayerFilter,
-      filters.bodyFilter,
+      filters.movementBodyFilter, // Ignore dynamic bodies during movement
+      filters.shapeFilter,
+      tempAllocator,
+    )
+
+    // Refresh contacts with normal filter to detect dynamic bodies for pushing
+    character.RefreshContacts(
+      filters.broadPhaseFilter,
+      filters.objectLayerFilter,
+      filters.bodyFilter, // Include dynamic bodies
       filters.shapeFilter,
       tempAllocator,
     )
