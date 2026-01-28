@@ -47,6 +47,7 @@ interface CharacterFilters {
   updateSettings: JoltExtendedUpdateSettings // Normal walking with floor sticking
   updateSettingsNoStick: JoltExtendedUpdateSettings // For jumping (no floor sticking)
   velocityVec: JoltVec3 // Cached Vec3 for velocity (avoids per-frame allocation)
+  impulseVec: JoltVec3 // Cached Vec3 for push impulses (avoids per-contact allocation)
 }
 
 let cachedFilters: CharacterFilters | null = null
@@ -100,6 +101,9 @@ function getOrCreateFilters(Jolt: JoltModule): CharacterFilters {
   // Create reusable Vec3 for velocity updates (avoids per-frame allocation)
   const velocityVec = new Jolt.Vec3(0, 0, 0)
 
+  // Create reusable Vec3 for push impulses (avoids per-contact allocation)
+  const impulseVec = new Jolt.Vec3(0, 0, 0)
+
   cachedFilters = {
     broadPhaseFilter,
     objectLayerFilter,
@@ -108,6 +112,7 @@ function getOrCreateFilters(Jolt: JoltModule): CharacterFilters {
     updateSettings,
     updateSettingsNoStick,
     velocityVec,
+    impulseVec,
   }
 
   return cachedFilters
@@ -123,6 +128,7 @@ export function destroyCharacterFilters(): void {
   Jolt.destroy(cachedFilters.updateSettings)
   Jolt.destroy(cachedFilters.updateSettingsNoStick)
   Jolt.destroy(cachedFilters.velocityVec)
+  Jolt.destroy(cachedFilters.impulseVec)
   cachedFilters = null
 }
 
@@ -519,24 +525,44 @@ export function characterControllerSystem(
     if (bodyInterface) {
       const contacts = character.GetActiveContacts()
       const numContacts = contacts.size()
-      for (let i = 0; i < numContacts; i++) {
-        const contact = contacts.at(i)
-        const contactBodyId = contact.mBodyB
-        // Only push dynamic bodies
-        if (
-          bodyInterface.GetMotionType(contactBodyId) === MOTION_TYPE_DYNAMIC
-        ) {
-          // Calculate push impulse based on character velocity and mass
-          const charVel = character.GetLinearVelocity()
-          const pushStrength = config.mass * 0.5 // Adjust multiplier for desired push force
-          const impulseX = charVel.GetX() * pushStrength * delta
-          const impulseY = 0 // Don't push vertically
-          const impulseZ = charVel.GetZ() * pushStrength * delta
-          // Only push if we have horizontal movement
-          if (Math.abs(impulseX) > 0.001 || Math.abs(impulseZ) > 0.001) {
-            const impulse = new Jolt.Vec3(impulseX, impulseY, impulseZ)
-            bodyInterface.AddImpulse(contactBodyId, impulse)
-            Jolt.destroy(impulse)
+      const charVel = character.GetLinearVelocity()
+      const charVelX = charVel.GetX()
+      const charVelZ = charVel.GetZ()
+
+      // Only compute push if character is moving horizontally
+      const charSpeed = Math.sqrt(charVelX * charVelX + charVelZ * charVelZ)
+      if (charSpeed > 0.1) {
+        // Push strength: impulse = mass * velocity_change
+        // We want to transfer a fraction of character's momentum to the body
+        // Using a multiplier to tune the feel (higher = stronger push)
+        const pushMultiplier = 0.15
+        const pushStrength = config.mass * pushMultiplier
+
+        for (let i = 0; i < numContacts; i++) {
+          const contact = contacts.at(i)
+          const contactBodyId = contact.mBodyB
+
+          // Only push dynamic bodies
+          if (
+            bodyInterface.GetMotionType(contactBodyId) === MOTION_TYPE_DYNAMIC
+          ) {
+            // Get contact normal to check if we're pushing into the body
+            const contactNormal = contact.mContactNormal
+            const normalX = contactNormal.GetX()
+            const normalZ = contactNormal.GetZ()
+
+            // Dot product of velocity and contact normal (negative = pushing into body)
+            const dot = charVelX * normalX + charVelZ * normalZ
+            if (dot < -0.1) {
+              // Calculate impulse - project velocity onto contact plane
+              // This gives more realistic pushing at angles
+              const impulseX = charVelX * pushStrength
+              const impulseZ = charVelZ * pushStrength
+
+              // Reuse cached Vec3 for impulse (no allocation)
+              filters.impulseVec.Set(impulseX, 0, impulseZ)
+              bodyInterface.AddImpulse(contactBodyId, filters.impulseVec)
+            }
           }
         }
       }
