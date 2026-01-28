@@ -79,6 +79,12 @@ function spawnBallAt(w: World, x: number, y: number, z: number) {
     RenderTransform({x, y, z}),
     RigidBodyConfig,
   )
+  // Beach ball physics: high damping for air resistance (floaty fall)
+  rbEntity.set(RigidBodyConfig, (c) => {
+    c.linearDamping = 2
+    c.angularDamping = 1
+    return c
+  })
   // Beach ball: light (density 0.05), bouncy (restitution 0.95), low friction
   w.spawn(
     IsColliderEntity,
