@@ -185,6 +185,7 @@ export const CharacterControllerConfig = trait({
 
   // Physics
   mass: 75,
+  pushMultiplier: 0.15, // Multiplier for push impulse strength (higher = stronger push)
 })
 
 // Type alias for config data
@@ -206,6 +207,7 @@ interface CharacterConfig {
   coyoteFrames: number
   jumpBufferFrames: number
   mass: number
+  pushMultiplier: number
 }
 
 // Movement state for character
@@ -534,9 +536,7 @@ export function characterControllerSystem(
       if (charSpeed > 0.1) {
         // Push strength: impulse = mass * velocity_change
         // We want to transfer a fraction of character's momentum to the body
-        // Using a multiplier to tune the feel (higher = stronger push)
-        const pushMultiplier = 0.15
-        const pushStrength = config.mass * pushMultiplier
+        const pushStrength = config.mass * config.pushMultiplier
 
         for (let i = 0; i < numContacts; i++) {
           const contact = contacts.at(i)
