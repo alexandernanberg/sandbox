@@ -94,10 +94,11 @@ function getOrCreateFilters(Jolt: JoltModule): CharacterFilters {
     // Only collide with non-dynamic bodies (static and kinematic)
     return motionType !== MOTION_TYPE_DYNAMIC
   }
-  movementBodyFilter.ShouldCollideLocked = (_inBody: number) => {
-    // This is called with a Body pointer, but we can't easily check motion type here
-    // Return true and let ShouldCollide handle the filtering
-    return true
+  movementBodyFilter.ShouldCollideLocked = (inBodyPtr: number) => {
+    // Wrap the body pointer to access its methods
+    const body = Jolt.wrapPointer(inBodyPtr, Jolt.Body)
+    // Only collide with non-dynamic bodies (static and kinematic)
+    return !body.IsDynamic()
   }
 
   // Configure ExtendedUpdateSettings for floor sticking and stair walking
