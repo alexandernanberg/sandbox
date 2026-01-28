@@ -49,7 +49,7 @@ function App() {
     'Physics',
     {
       debug: {value: true},
-      gravity: {value: [0, -20, 0]}, // Higher than real gravity for snappier game feel
+      gravity: {value: [0, -25, 0]}, // Higher than real gravity for snappier game feel
       _reset: {
         title: 'Reset',
         action: updatePhysicsKey,

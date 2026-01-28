@@ -316,10 +316,14 @@ function getPlatformVelocity(
 
   const vel = entity.get(KinematicVelocity)!
 
-  // Start with linear velocity
-  target.x = vel.x
-  target.y = vel.y
-  target.z = vel.z
+  // KinematicVelocity stores velocity per physics step (1/60s)
+  // Character velocity is in m/s, so multiply by step rate to convert
+  const PHYSICS_STEP_RATE = 60
+
+  // Start with linear velocity (convert from per-step to per-second)
+  target.x = vel.x * PHYSICS_STEP_RATE
+  target.y = vel.y * PHYSICS_STEP_RATE
+  target.z = vel.z * PHYSICS_STEP_RATE
 
   // Add tangential velocity from angular rotation
   // tangential = ω × r (cross product of angular velocity and relative position)
@@ -335,13 +339,13 @@ function getPlatformVelocity(
     const ry = charPos.y - platformTransform.y
     const rz = charPos.z - platformTransform.z
 
-    // Cross product: tangential = ω × r
+    // Cross product: tangential = ω × r (convert from per-step to per-second)
     // tangentialX = ωy * rz - ωz * ry
     // tangentialY = ωz * rx - ωx * rz
     // tangentialZ = ωx * ry - ωy * rx
-    target.x += vel.ay * rz - vel.az * ry
-    target.y += vel.az * rx - vel.ax * rz
-    target.z += vel.ax * ry - vel.ay * rx
+    target.x += (vel.ay * rz - vel.az * ry) * PHYSICS_STEP_RATE
+    target.y += (vel.az * rx - vel.ax * rz) * PHYSICS_STEP_RATE
+    target.z += (vel.ax * ry - vel.ay * rx) * PHYSICS_STEP_RATE
   }
 
   // Clamp to max velocity
