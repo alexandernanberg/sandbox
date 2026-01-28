@@ -385,6 +385,28 @@ export function characterControllerSystem(
       groundNormalZ = normal.GetZ()
     }
 
+    // Apply character weight to dynamic ground (makes crates sink under character)
+    const groundBodyInterface = physicsWorld.bodyInterface
+    if (isGrounded && groundBodyInterface) {
+      const groundBodyId = character.GetGroundBodyID()
+      if (
+        isValidBodyID(groundBodyId) &&
+        groundBodyInterface.GetMotionType(groundBodyId) === MOTION_TYPE_DYNAMIC
+      ) {
+        // Get or create cached filters for the impulse vec
+        const filters = getOrCreateFilters(Jolt)
+        // Apply weight as a force: F = m * g (gravity is negative, so weight pushes down)
+        const gravity = physicsSystem.GetGravity()
+        const weightForce = config.mass * gravity.GetY() // Negative value
+        filters.impulseVec.Set(0, weightForce, 0)
+        groundBodyInterface.AddForce(
+          groundBodyId,
+          filters.impulseVec,
+          Jolt.EActivation_Activate,
+        )
+      }
+    }
+
     // Coyote time and jump buffer
     let coyoteCounter = movement.coyoteCounter
     let jumpBufferCounter = movement.jumpBufferCounter
