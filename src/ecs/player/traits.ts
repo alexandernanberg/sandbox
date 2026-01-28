@@ -66,7 +66,7 @@ export const PlayerMovementConfig = trait({
   walkSpeed: 6,
   sprintSpeed: 10,
   jumpHeight: 1.2,
-  gravity: -9.81, // Must match physics gravity for correct jump velocity calculation
+  gravity: -20, // Must match physics gravity for correct jump velocity calculation
 })
 
 /** Current player velocity (accumulated between frames) */
