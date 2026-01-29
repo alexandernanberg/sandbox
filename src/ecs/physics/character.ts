@@ -532,28 +532,18 @@ export function characterControllerSystem(
     let newVz: number
 
     if (isGrounded && !isSliding) {
-      // When grounded: start fresh with ground velocity
+      // When grounded: start with ground velocity + player input
       const groundVel = character.GetGroundVelocity()
-      newVx = groundVel.GetX()
-      newVy = groundVel.GetY()
-      newVz = groundVel.GetZ()
-
-      // Apply gravity to keep grounded (small downward force)
-      newVy += gravityY * delta
+      newVx = groundVel.GetX() + movement.vx
+      newVy = groundVel.GetY() + gravityY * delta
+      newVz = groundVel.GetZ() + movement.vz
     } else {
-      // When airborne: preserve current velocity
-      newVx = charVx
-      newVy = charVy
-      newVz = charVz
-
-      // Apply gravity (this is how gravity accumulates!)
-      newVy += gravityY * delta
+      // Airborne: preserve vertical velocity, horizontal is fresh each frame
+      // (inherited velocity provides momentum from leaving platforms)
+      newVx = movement.vx + inheritedVx
+      newVy = charVy + gravityY * delta
+      newVz = movement.vz + inheritedVz
     }
-
-    // Apply player horizontal input (always - allows air control)
-    // Note: groundVel already includes platform velocity when grounded
-    newVx += movement.vx + inheritedVx
-    newVz += movement.vz + inheritedVz
 
     // Handle jumping - override vertical velocity
     let justJumped = false
