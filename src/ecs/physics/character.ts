@@ -23,7 +23,13 @@ import {
   MOTION_TYPE_DYNAMIC,
 } from './jolt-types'
 import {RigidBodyRef, Transform, PhysicsInitialized} from './traits'
-import {getJolt, physicsWorld, getEntityForBodyId, isValidBodyID} from './world'
+import {
+  getJolt,
+  physicsWorld,
+  getEntityForBodyId,
+  isValidBodyID,
+  getJoltInterface,
+} from './world'
 
 // ============================================
 // Scratch objects for character movement
@@ -56,16 +62,13 @@ function getOrCreateFilters(Jolt: JoltModule): CharacterFilters {
     return cachedFilters
   }
 
-  // Use the stored filter objects from physics world initialization
-  // These are the same objects used to configure JoltSettings
-  const {objectVsBroadPhaseLayerFilter, objectLayerPairFilter} = physicsWorld
+  // Get filter objects from JoltInterface (exactly like official Jolt examples)
+  const joltInterface = getJoltInterface()
+  const objectVsBroadPhaseLayerFilter =
+    joltInterface.GetObjectVsBroadPhaseLayerFilter()
+  const objectLayerPairFilter = joltInterface.GetObjectLayerPairFilter()
 
-  if (!objectVsBroadPhaseLayerFilter || !objectLayerPairFilter) {
-    throw new Error('Physics world not initialized - missing filter objects')
-  }
-
-  // Create filters using the stored filter objects (like the official Jolt examples)
-  // Cast to proper types - the stored objects are already the correct Jolt types
+  // Create filters using the filter objects from JoltInterface
   const broadPhaseFilter = new Jolt.DefaultBroadPhaseLayerFilter(
     objectVsBroadPhaseLayerFilter,
     LAYER_MOVING,
