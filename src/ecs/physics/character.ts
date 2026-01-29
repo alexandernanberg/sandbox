@@ -168,49 +168,88 @@ function getOrCreateFilters(Jolt: JoltModule): CharacterFilters {
     // No special handling needed for removed contacts
   }
 
-  // OnContactSolve: Called during contact resolution
-  // This is the key callback for preventing unwanted sliding and handling dynamic bodies
+  // OnContactSolve: Called during contact resolution (matching official Jolt example)
   contactListener.OnContactSolve = (
-    _characterPtr: number,
-    body2Ptr: number,
+    characterPtr: number,
+    _body2Ptr: number,
     _subShapeID2Ptr: number,
     _contactPositionPtr: number,
     contactNormalPtr: number,
-    _contactVelocityPtr: number,
+    contactVelocityPtr: number,
     _contactMaterialPtr: number,
-    characterVelocityPtr: number,
+    _characterVelocityPtr: number,
     newCharacterVelocityPtr: number,
   ) => {
-    // Wrap pointers to access values
-    const body2 = Jolt.wrapPointer(body2Ptr, Jolt.Body)
+    // Match official example: check contactVelocity and slope, not body type
+    const character = Jolt.wrapPointer(characterPtr, Jolt.CharacterVirtual)
+    const contactVelocity = Jolt.wrapPointer(contactVelocityPtr, Jolt.Vec3)
     const contactNormal = Jolt.wrapPointer(contactNormalPtr, Jolt.Vec3)
-    const characterVelocity = Jolt.wrapPointer(characterVelocityPtr, Jolt.Vec3)
     const newCharacterVelocity = Jolt.wrapPointer(
       newCharacterVelocityPtr,
       Jolt.Vec3,
     )
 
-    // For dynamic bodies: let Jolt handle the interaction naturally
-    // mMaxStrength controls how hard the character pushes them
-    // We don't override velocity here - that was preventing natural push behavior
-
-    if (body2.IsStatic()) {
-      // For static bodies only: prevent sliding when not actively moving
-      // (Don't apply to kinematic bodies like elevators - they need proper velocity handling)
-      const charSpeed =
-        characterVelocity.GetX() * characterVelocity.GetX() +
-        characterVelocity.GetZ() * characterVelocity.GetZ()
-
-      // Check if slope is walkable (normal.y > cos(maxSlopeAngle) ~ 0.7 for 45 deg)
-      const normalY = contactNormal.GetY()
-
-      // If barely moving horizontally and on a walkable slope, prevent sliding
-      if (charSpeed < 0.01 && normalY > 0.7) {
-        // Zero out velocity to lock character in place
-        newCharacterVelocity.Set(0, 0, 0)
-      }
+    // Don't allow sliding on static surfaces when not moving and slope is walkable
+    // This matches the official Jolt example exactly
+    if (
+      contactVelocity.IsNearZero() &&
+      !character.IsSlopeTooSteep(contactNormal)
+    ) {
+      newCharacterVelocity.Set(0, 0, 0)
     }
-    // For kinematic bodies: use default Jolt behavior (proper platform support)
+  }
+
+  // Character-to-character callbacks (required by CharacterContactListenerJS)
+  contactListener.OnCharacterContactValidate = (
+    _characterPtr: number,
+    _otherCharacterPtr: number,
+    _subShapeID2Ptr: number,
+  ) => {
+    return true
+  }
+
+  contactListener.OnCharacterContactAdded = (
+    _characterPtr: number,
+    _otherCharacterPtr: number,
+    _subShapeID2Ptr: number,
+    _contactPositionPtr: number,
+    _contactNormalPtr: number,
+    _settingsPtr: number,
+  ) => {
+    // No special handling
+  }
+
+  contactListener.OnCharacterContactPersisted = (
+    _characterPtr: number,
+    _otherCharacterPtr: number,
+    _subShapeID2Ptr: number,
+    _contactPositionPtr: number,
+    _contactNormalPtr: number,
+    _settingsPtr: number,
+  ) => {
+    // No special handling
+  }
+
+  contactListener.OnCharacterContactRemoved = (
+    _characterPtr: number,
+    _otherCharacterIDPtr: number,
+    _subShapeID2Ptr: number,
+  ) => {
+    // No special handling
+  }
+
+  contactListener.OnCharacterContactSolve = (
+    _characterPtr: number,
+    _otherCharacterPtr: number,
+    _subShapeID2Ptr: number,
+    _contactPositionPtr: number,
+    _contactNormalPtr: number,
+    _contactVelocityPtr: number,
+    _contactMaterialPtr: number,
+    _characterVelocityPtr: number,
+    _newCharacterVelocityPtr: number,
+  ) => {
+    // No special handling for character-to-character
   }
 
   cachedFilters = {
