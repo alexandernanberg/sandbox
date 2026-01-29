@@ -623,50 +623,33 @@ export function characterControllerSystem(
     // Get or create cached filters (includes reusable Vec3)
     const filters = getOrCreateFilters(Jolt)
 
-    // Apply velocity to character using cached Vec3 (avoids per-frame allocation)
-    filters.velocityVec.Set(newVx, newVy, newVz)
-    character.SetLinearVelocity(filters.velocityVec)
-
     // Get temp allocator (must exist if physics is initialized)
     const tempAllocator = physicsWorld.tempAllocator
     if (!tempAllocator) continue
 
-    // Choose update settings based on whether we're jumping
-    // When jumping or moving upward, disable floor sticking to prevent being pulled back down
-    const isMovingUp = newVy > 0.1
-    const useNoStickSettings = justJumped || isMovingUp
-
-    // Use ExtendedUpdate for floor sticking and stair walking
-    // NOTE: ExtendedUpdate does NOT apply gravity - we did that above!
-    // It handles: collision response, floor sticking, stair walking
-    // Contact listener's OnContactSolve prevents dynamic bodies from pushing the character
-    character.ExtendedUpdate(
-      delta,
-      gravity,
-      useNoStickSettings
-        ? filters.updateSettingsNoStick
-        : filters.updateSettings,
+    // Push dynamic bodies BEFORE movement (so push happens at contact time, not after)
+    // Use RefreshContacts to detect what we're about to collide with
+    character.RefreshContacts(
       filters.broadPhaseFilter,
       filters.objectLayerFilter,
-      filters.bodyFilter, // Include all bodies - contact listener handles dynamics
+      filters.bodyFilter,
       filters.shapeFilter,
       tempAllocator,
     )
 
-    // Push dynamic bodies that the character contacts
     const bodyInterface = physicsWorld.bodyInterface
     if (bodyInterface) {
       const contacts = character.GetActiveContacts()
       const numContacts = contacts.size()
-      const charVel = character.GetLinearVelocity()
-      const charVelX = charVel.GetX()
-      const charVelZ = charVel.GetZ()
+
+      // Use the velocity we're ABOUT to apply, not post-collision velocity
+      const charVelX = newVx
+      const charVelZ = newVz
 
       // Only compute push if character is moving horizontally
       const charSpeed = Math.sqrt(charVelX * charVelX + charVelZ * charVelZ)
       if (charSpeed > 0.1) {
         // Push strength: impulse = mass * velocity_change
-        // We want to transfer a fraction of character's momentum to the body
         const pushStrength = config.mass * config.pushMultiplier
 
         for (let i = 0; i < numContacts; i++) {
@@ -683,15 +666,12 @@ export function characterControllerSystem(
             const normalZ = contactNormal.GetZ()
 
             // Dot product of velocity and contact normal (positive = pushing into body)
-            // Contact normal points from character toward the contacted body
             const dot = charVelX * normalX + charVelZ * normalZ
             if (dot > 0.1) {
-              // Calculate impulse - project velocity onto contact plane
-              // This gives more realistic pushing at angles
               const impulseX = charVelX * pushStrength
               const impulseZ = charVelZ * pushStrength
 
-              // Get contact position for realistic torque (objects tip when pushed off-center)
+              // Get contact position for realistic torque
               const contactPos = contact.mPosition
               filters.contactPosRVec.Set(
                 contactPos.GetX(),
@@ -699,7 +679,6 @@ export function characterControllerSystem(
                 contactPos.GetZ(),
               )
 
-              // Reuse cached Vec3 for impulse (no allocation)
               filters.impulseVec.Set(impulseX, 0, impulseZ)
               bodyInterface.AddImpulse(
                 contactBodyId,
@@ -711,6 +690,31 @@ export function characterControllerSystem(
         }
       }
     }
+
+    // Apply velocity to character using cached Vec3 (avoids per-frame allocation)
+    filters.velocityVec.Set(newVx, newVy, newVz)
+    character.SetLinearVelocity(filters.velocityVec)
+
+    // Choose update settings based on whether we're jumping
+    // When jumping or moving upward, disable floor sticking to prevent being pulled back down
+    const isMovingUp = newVy > 0.1
+    const useNoStickSettings = justJumped || isMovingUp
+
+    // Use ExtendedUpdate for floor sticking and stair walking
+    // NOTE: ExtendedUpdate does NOT apply gravity - we did that above!
+    // It handles: collision response, floor sticking, stair walking
+    character.ExtendedUpdate(
+      delta,
+      gravity,
+      useNoStickSettings
+        ? filters.updateSettingsNoStick
+        : filters.updateSettings,
+      filters.broadPhaseFilter,
+      filters.objectLayerFilter,
+      filters.bodyFilter,
+      filters.shapeFilter,
+      tempAllocator,
+    )
 
     // Get new position
     const newPos = character.GetPosition()
