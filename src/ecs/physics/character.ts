@@ -187,15 +187,11 @@ function getOrCreateFilters(Jolt: JoltModule): CharacterFilters {
       Jolt.Vec3,
     )
 
-    if (body2.IsDynamic()) {
-      // For dynamic bodies: don't let them push the character
-      // Keep the character's original velocity (ignore the collision response)
-      newCharacterVelocity.Set(
-        characterVelocity.GetX(),
-        characterVelocity.GetY(),
-        characterVelocity.GetZ(),
-      )
-    } else if (body2.IsStatic()) {
+    // For dynamic bodies: let Jolt handle the interaction naturally
+    // mMaxStrength controls how hard the character pushes them
+    // We don't override velocity here - that was preventing natural push behavior
+
+    if (body2.IsStatic()) {
       // For static bodies only: prevent sliding when not actively moving
       // (Don't apply to kinematic bodies like elevators - they need proper velocity handling)
       const charSpeed =
