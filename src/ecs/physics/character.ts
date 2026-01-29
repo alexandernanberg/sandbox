@@ -22,12 +22,7 @@ import {
   BACK_FACE_MODE_COLLIDE,
   MOTION_TYPE_DYNAMIC,
 } from './jolt-types'
-import {
-  RigidBodyRef,
-  Transform,
-  PhysicsInitialized,
-  KinematicVelocity,
-} from './traits'
+import {RigidBodyRef, Transform, PhysicsInitialized} from './traits'
 import {getJolt, physicsWorld, getEntityForBodyId, isValidBodyID} from './world'
 
 // ============================================
@@ -383,15 +378,17 @@ const characterCreationQuery = createQuery(
 )
 
 // ============================================
-// Platform Velocity
+// Platform Velocity Helper
 // ============================================
 
-function getPlatformVelocity(
-  Jolt: JoltModule,
+/**
+ * Check if standing on a moving platform and get its entity.
+ * Uses Jolt's GetGroundVelocity() which already handles tangential velocity
+ * from rotating platforms when MoveKinematic() is used.
+ */
+function getMovingPlatformEntity(
   character: JoltCharacterVirtual,
-  charPos: {x: number; y: number; z: number},
   target: {x: number; y: number; z: number},
-  lastPlatformEntity: Entity | null,
   maxVelocity: number,
 ): Entity | null {
   setVec3(target, 0, 0, 0)
@@ -414,45 +411,11 @@ function getPlatformVelocity(
     return null
   }
 
-  // Check if it's kinematic with velocity
-  const entity = platformEntity
-  if (!entity.has(KinematicVelocity)) {
-    return null
-  }
-
-  const vel = entity.get(KinematicVelocity)!
-
-  // KinematicVelocity stores velocity per physics step (1/60s)
-  // Character velocity is in m/s, so multiply by step rate to convert
-  const PHYSICS_STEP_RATE = 60
-
-  // Start with linear velocity (convert from per-step to per-second)
-  target.x = vel.x * PHYSICS_STEP_RATE
-  target.y = vel.y * PHYSICS_STEP_RATE
-  target.z = vel.z * PHYSICS_STEP_RATE
-
-  // Add tangential velocity from angular rotation
-  // tangential = ω × r (cross product of angular velocity and relative position)
-  const hasAngularVel =
-    Math.abs(vel.ax) > 0.0001 ||
-    Math.abs(vel.ay) > 0.0001 ||
-    Math.abs(vel.az) > 0.0001
-
-  if (hasAngularVel && entity.has(Transform)) {
-    const platformTransform = entity.get(Transform)!
-    // Calculate position relative to platform center
-    const rx = charPos.x - platformTransform.x
-    const ry = charPos.y - platformTransform.y
-    const rz = charPos.z - platformTransform.z
-
-    // Cross product: tangential = ω × r (convert from per-step to per-second)
-    // tangentialX = ωy * rz - ωz * ry
-    // tangentialY = ωz * rx - ωx * rz
-    // tangentialZ = ωx * ry - ωy * rx
-    target.x += (vel.ay * rz - vel.az * ry) * PHYSICS_STEP_RATE
-    target.y += (vel.az * rx - vel.ax * rz) * PHYSICS_STEP_RATE
-    target.z += (vel.ax * ry - vel.ay * rx) * PHYSICS_STEP_RATE
-  }
+  // Use Jolt's built-in ground velocity (handles rotation automatically)
+  const groundVel = character.GetGroundVelocity()
+  target.x = groundVel.GetX()
+  target.y = groundVel.GetY()
+  target.z = groundVel.GetZ()
 
   // Clamp to max velocity
   const speed = Math.sqrt(
@@ -465,7 +428,12 @@ function getPlatformVelocity(
     target.z *= scale
   }
 
-  return entity
+  // Only return entity if there's actual movement
+  if (speed < 0.0001) {
+    return null
+  }
+
+  return platformEntity
 }
 
 // ============================================
@@ -494,21 +462,14 @@ export function characterControllerSystem(
     const posY = transform.y
     const posZ = transform.z
 
-    // Get platform velocity
-    const platformEntity = getPlatformVelocity(
-      Jolt,
+    // Get platform velocity (uses Jolt's GetGroundVelocity which handles rotation)
+    const platformEntity = getMovingPlatformEntity(
       character,
-      {x: posX, y: posY, z: posZ},
       _platformVel,
-      movement.lastPlatformEntity,
       config.maxLaunchVelocity,
     )
 
-    const onMovingPlatform =
-      Math.abs(_platformVel.x) +
-        Math.abs(_platformVel.y) +
-        Math.abs(_platformVel.z) >
-      0.0001
+    const onMovingPlatform = platformEntity !== null
 
     // Check ground state
     const groundState = character.GetGroundState()
