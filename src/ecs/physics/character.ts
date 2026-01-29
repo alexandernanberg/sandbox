@@ -144,6 +144,18 @@ function getOrCreateFilters(Jolt: JoltModule): CharacterFilters {
     // No special handling needed for added contacts
   }
 
+  // OnContactPersisted: Called when contact persists between frames
+  contactListener.OnContactPersisted = (
+    _characterPtr: number,
+    _body2Ptr: number,
+    _subShapeID2Ptr: number,
+    _contactPositionPtr: number,
+    _contactNormalPtr: number,
+    _settingsPtr: number,
+  ) => {
+    // No special handling needed for persisted contacts
+  }
+
   // OnContactSolve: Called during contact resolution
   // This is the key callback for preventing unwanted sliding and handling dynamic bodies
   contactListener.OnContactSolve = (
@@ -278,7 +290,7 @@ export const CharacterControllerConfig = trait({
 
   // Physics
   mass: 75,
-  pushMultiplier: 1.5, // Multiplier for push impulse strength (higher = stronger push)
+  pushMultiplier: 5.0, // Multiplier for push impulse strength (higher = stronger push)
 })
 
 // Type alias for config data
