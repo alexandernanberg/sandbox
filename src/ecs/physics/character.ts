@@ -156,6 +156,15 @@ function getOrCreateFilters(Jolt: JoltModule): CharacterFilters {
     // No special handling needed for persisted contacts
   }
 
+  // OnContactRemoved: Called when contact is removed
+  contactListener.OnContactRemoved = (
+    _characterPtr: number,
+    _body2Ptr: number,
+    _subShapeID2Ptr: number,
+  ) => {
+    // No special handling needed for removed contacts
+  }
+
   // OnContactSolve: Called during contact resolution
   // This is the key callback for preventing unwanted sliding and handling dynamic bodies
   contactListener.OnContactSolve = (
