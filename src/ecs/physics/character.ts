@@ -566,9 +566,11 @@ export function characterControllerSystem(
     if (!tempAllocator) continue
 
     // Set allowSliding flag based on player input (prevents OnContactSolve from zeroing velocity)
+    // Match official example: allow sliding when moving OR when airborne
     const hasHorizontalInput =
       Math.abs(movement.vx) > 0.01 || Math.abs(movement.vz) > 0.01
-    _allowSliding = hasHorizontalInput
+    const isAirborne = !(isGrounded || isSliding)
+    _allowSliding = hasHorizontalInput || isAirborne
 
     // Apply velocity to character using cached Vec3 (avoids per-frame allocation)
     filters.velocityVec.Set(newVx, newVy, newVz)
