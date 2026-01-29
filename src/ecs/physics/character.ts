@@ -128,7 +128,7 @@ function getOrCreateFilters(Jolt: JoltModule): CharacterFilters {
     _body2Ptr: number,
     _subShapeID2Ptr: number,
   ) => {
-    // Accept all contacts by default
+    // Accept all contacts - we handle dynamic bodies in OnContactSolve
     return true
   }
 
@@ -299,7 +299,7 @@ export const CharacterControllerConfig = trait({
 
   // Physics
   mass: 75,
-  pushMultiplier: 5.0, // Multiplier for push impulse strength (higher = stronger push)
+  pushMultiplier: 25.0, // Multiplier for push impulse strength (higher = stronger push)
 })
 
 // Type alias for config data

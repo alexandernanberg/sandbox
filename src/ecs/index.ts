@@ -85,11 +85,11 @@ function spawnBallAt(w: World, x: number, y: number, z: number) {
     c.angularDamping = 0.3
     return c
   })
-  // Beach ball: light (density 0.05), bouncy (restitution 0.95), low friction
+  // Beach ball: very light (density 0.01), bouncy (restitution 0.95), low friction
   w.spawn(
     IsColliderEntity,
     ChildOf(rbEntity),
-    ballCollider(0.5, 0.95, 0.3, 0.05),
+    ballCollider(0.5, 0.95, 0.3, 0.01),
   )
   return rbEntity
 }
