@@ -174,9 +174,9 @@ function getOrCreateFilters(Jolt: JoltModule): CharacterFilters {
         characterVelocity.GetY(),
         characterVelocity.GetZ(),
       )
-    } else {
-      // For static/kinematic: prevent sliding when not actively moving
-      // Check if character is barely moving (not actively controlled)
+    } else if (body2.IsStatic()) {
+      // For static bodies only: prevent sliding when not actively moving
+      // (Don't apply to kinematic bodies like elevators - they need proper velocity handling)
       const charSpeed =
         characterVelocity.GetX() * characterVelocity.GetX() +
         characterVelocity.GetZ() * characterVelocity.GetZ()
@@ -190,6 +190,7 @@ function getOrCreateFilters(Jolt: JoltModule): CharacterFilters {
         newCharacterVelocity.Set(0, 0, 0)
       }
     }
+    // For kinematic bodies: use default Jolt behavior (proper platform support)
   }
 
   cachedFilters = {
