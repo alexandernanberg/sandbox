@@ -296,9 +296,9 @@ export const CharacterControllerConfig = trait({
   coyoteFrames: 6,
   jumpBufferFrames: 6,
 
-  // Physics
-  mass: 75,
-  maxStrength: 1000, // How hard character can push dynamic bodies (Jolt default: 100)
+  // Physics (match official Jolt example for proper dynamic body pushing)
+  mass: 1000, // Official example uses 1000
+  maxStrength: 100, // Official example uses 100 (Jolt default)
 })
 
 // Type alias for config data
