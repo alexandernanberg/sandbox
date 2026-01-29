@@ -661,9 +661,10 @@ export function characterControllerSystem(
             const normalX = contactNormal.GetX()
             const normalZ = contactNormal.GetZ()
 
-            // Dot product of velocity and contact normal (negative = pushing into body)
+            // Dot product of velocity and contact normal (positive = pushing into body)
+            // Contact normal points from character toward the contacted body
             const dot = charVelX * normalX + charVelZ * normalZ
-            if (dot < -0.1) {
+            if (dot > 0.1) {
               // Calculate impulse - project velocity onto contact plane
               // This gives more realistic pushing at angles
               const impulseX = charVelX * pushStrength
