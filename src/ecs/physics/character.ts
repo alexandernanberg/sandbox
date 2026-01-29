@@ -277,7 +277,7 @@ export const CharacterControllerConfig = trait({
 
   // Physics
   mass: 75,
-  pushMultiplier: 0.15, // Multiplier for push impulse strength (higher = stronger push)
+  pushMultiplier: 0.5, // Multiplier for push impulse strength (higher = stronger push)
 })
 
 // Type alias for config data
