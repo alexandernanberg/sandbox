@@ -37,6 +37,9 @@ import {
 
 const _velocity = {x: 0, y: 0, z: 0}
 
+// Flag to allow sliding when player is actively moving (prevents OnContactSolve from zeroing velocity)
+let _allowSliding = false
+
 // ============================================
 // Cached filter objects (created once, reused)
 // ============================================
@@ -188,9 +191,10 @@ function getOrCreateFilters(Jolt: JoltModule): CharacterFilters {
       Jolt.Vec3,
     )
 
-    // Don't allow sliding on static surfaces when not moving and slope is walkable
-    // This matches the official Jolt example exactly
+    // Don't allow sliding on static surfaces when idle (not actively moving)
+    // This matches the official Jolt example: only zero velocity when !allowSliding
     if (
+      !_allowSliding &&
       contactVelocity.IsNearZero() &&
       !character.IsSlopeTooSteep(contactNormal)
     ) {
@@ -560,6 +564,11 @@ export function characterControllerSystem(
     // Get temp allocator (must exist if physics is initialized)
     const tempAllocator = physicsWorld.tempAllocator
     if (!tempAllocator) continue
+
+    // Set allowSliding flag based on player input (prevents OnContactSolve from zeroing velocity)
+    const hasHorizontalInput =
+      Math.abs(movement.vx) > 0.01 || Math.abs(movement.vz) > 0.01
+    _allowSliding = hasHorizontalInput
 
     // Apply velocity to character using cached Vec3 (avoids per-frame allocation)
     filters.velocityVec.Set(newVx, newVy, newVz)
