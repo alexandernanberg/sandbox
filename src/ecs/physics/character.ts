@@ -638,9 +638,10 @@ export function characterControllerSystem(
     // Use ExtendedUpdate for floor sticking and stair walking
     // NOTE: ExtendedUpdate does NOT apply gravity - we did that above!
     // It handles: collision response, floor sticking, stair walking
+    // Pass character.GetUp() like official example
     character.ExtendedUpdate(
       delta,
-      gravity,
+      character.GetUp(),
       useNoStickSettings
         ? filters.updateSettingsNoStick
         : filters.updateSettings,
@@ -748,7 +749,7 @@ export function createCharacterController(
       config.capsuleRadius,
     )
 
-    // Create character settings
+    // Create character settings (matching official Jolt example)
     const settings = new Jolt.CharacterVirtualSettings()
     settings.mMass = config.mass
     settings.mMaxSlopeAngle = config.maxSlopeAngle
@@ -758,6 +759,12 @@ export function createCharacterController(
     settings.mCharacterPadding = config.skinWidth
     settings.mPenetrationRecoverySpeed = 1.0
     settings.mPredictiveContactDistance = 0.1
+    // Supporting volume - plane below character that defines "supported" region
+    const supportingVolume = new Jolt.Plane(
+      Jolt.Vec3.prototype.sAxisY(),
+      -config.capsuleRadius,
+    )
+    settings.mSupportingVolume = supportingVolume
 
     // Create character
     const position = new Jolt.RVec3(transform.x, transform.y, transform.z)
