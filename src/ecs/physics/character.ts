@@ -552,8 +552,8 @@ export function characterControllerSystem(
 
     // Apply player horizontal input (always - allows air control)
     // Note: groundVel already includes platform velocity when grounded
-    newVx = movement.vx + inheritedVx
-    newVz = movement.vz + inheritedVz
+    newVx += movement.vx + inheritedVx
+    newVz += movement.vz + inheritedVz
 
     // Handle jumping - override vertical velocity
     let justJumped = false
