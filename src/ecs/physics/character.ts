@@ -299,7 +299,7 @@ export const CharacterControllerConfig = trait({
 
   // Physics
   mass: 75,
-  pushMultiplier: 25.0, // Multiplier for push impulse strength (higher = stronger push)
+  maxStrength: 1000, // How hard character can push dynamic bodies (Jolt default: 100)
 })
 
 // Type alias for config data
@@ -321,7 +321,7 @@ interface CharacterConfig {
   coyoteFrames: number
   jumpBufferFrames: number
   mass: number
-  pushMultiplier: number
+  maxStrength: number
 }
 
 // Movement state for character
@@ -753,6 +753,7 @@ export function createCharacterController(
     const settings = new Jolt.CharacterVirtualSettings()
     settings.mMass = config.mass
     settings.mMaxSlopeAngle = config.maxSlopeAngle
+    settings.mMaxStrength = config.maxStrength // How hard character can push dynamic bodies
     settings.mShape = shape
     settings.mBackFaceMode = BACK_FACE_MODE_COLLIDE
     settings.mCharacterPadding = config.skinWidth
