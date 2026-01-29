@@ -450,6 +450,9 @@ export function characterControllerSystem(
     const posY = transform.y
     const posZ = transform.z
 
+    // Update ground velocity BEFORE reading it (critical - matches official example)
+    character.UpdateGroundVelocity()
+
     // Check ground state
     const groundState = character.GetGroundState()
     const isGrounded = groundState === GROUND_STATE_ON_GROUND
@@ -481,13 +484,23 @@ export function characterControllerSystem(
     const canJump = isGrounded || coyoteCounter > 0
     const shouldJump = canJump && (jumpRequested || jumpBufferCounter > 0)
 
-    // Momentum transfer from platforms (use GetGroundVelocity directly)
+    // Get character's current velocity and up vector (matches official example)
+    const characterUp = character.GetUp()
+    const linearVelocity = character.GetLinearVelocity()
+    const groundVel = character.GetGroundVelocity()
+
+    // Calculate current vertical velocity using dot product (official pattern)
+    const verticalSpeed =
+      linearVelocity.GetX() * characterUp.GetX() +
+      linearVelocity.GetY() * characterUp.GetY() +
+      linearVelocity.GetZ() * characterUp.GetZ()
+
+    // Momentum transfer from platforms
     let inheritedVx = movement.inheritedVx
     let inheritedVy = movement.inheritedVy
     let inheritedVz = movement.inheritedVz
 
     // Check if just left ground (for momentum transfer)
-    const groundVel = character.GetGroundVelocity()
     const hasGroundVelocity =
       Math.abs(groundVel.GetX()) > 0.01 ||
       Math.abs(groundVel.GetY()) > 0.01 ||
@@ -514,40 +527,51 @@ export function characterControllerSystem(
     if (Math.abs(inheritedVx) < 0.001) inheritedVx = 0
     if (Math.abs(inheritedVy) < 0.001) inheritedVy = 0
     if (Math.abs(inheritedVz) < 0.001) inheritedVz = 0
+    const groundVerticalSpeed =
+      groundVel.GetX() * characterUp.GetX() +
+      groundVel.GetY() * characterUp.GetY() +
+      groundVel.GetZ() * characterUp.GetZ()
 
-    // Get character's current velocity (includes accumulated velocity from previous frames)
-    const currentVel = character.GetLinearVelocity()
-    const charVx = currentVel.GetX()
-    const charVy = currentVel.GetY()
-    const charVz = currentVel.GetZ()
+    // Check if moving towards ground (official example threshold: 0.1)
+    const movingTowardsGround = verticalSpeed - groundVerticalSpeed < 0.1
 
     // Get gravity from physics system
     const gravity = physicsSystem.GetGravity()
-    const gravityY = gravity.GetY() // Usually negative (e.g., -9.81)
+    const gravityX = gravity.GetX()
+    const gravityY = gravity.GetY()
+    const gravityZ = gravity.GetZ()
 
-    // Build new velocity following Jolt's pattern:
-    // 1. Start with ground velocity if grounded, else current velocity
-    // 2. Apply gravity (delta * gravity)
-    // 3. Add player input for horizontal movement
-    // 4. Handle jumping
+    // Build new velocity following official Jolt pattern:
+    // 1. If grounded AND moving towards ground: start with ground velocity
+    // 2. Else: preserve current vertical velocity only
+    // 3. Apply gravity
+    // 4. Add horizontal movement
 
     let newVx: number
     let newVy: number
     let newVz: number
 
-    if (isGrounded && !isSliding) {
-      // When grounded: start with ground velocity + player input
-      const groundVel = character.GetGroundVelocity()
-      newVx = groundVel.GetX() + movement.vx
-      newVy = groundVel.GetY() + gravityY * delta
-      newVz = groundVel.GetZ() + movement.vz
+    if (isGrounded && movingTowardsGround) {
+      // When grounded and moving towards ground: start with ground velocity
+      newVx = groundVel.GetX()
+      newVy = groundVel.GetY()
+      newVz = groundVel.GetZ()
     } else {
-      // Airborne: preserve vertical velocity, horizontal is fresh each frame
-      // (inherited velocity provides momentum from leaving platforms)
-      newVx = movement.vx + inheritedVx
-      newVy = charVy + gravityY * delta
-      newVz = movement.vz + inheritedVz
+      // Airborne or moving away from ground: preserve vertical velocity only
+      // Current vertical velocity = verticalSpeed * characterUp
+      newVx = verticalSpeed * characterUp.GetX() + inheritedVx
+      newVy = verticalSpeed * characterUp.GetY()
+      newVz = verticalSpeed * characterUp.GetZ() + inheritedVz
     }
+
+    // Apply gravity (full vector, not just Y - supports tilted gravity)
+    newVx += gravityX * delta
+    newVy += gravityY * delta
+    newVz += gravityZ * delta
+
+    // Add horizontal movement (player input)
+    newVx += movement.vx
+    newVz += movement.vz
 
     // Handle jumping - override vertical velocity
     let justJumped = false
@@ -567,8 +591,10 @@ export function characterControllerSystem(
 
     // Set allowSliding flag based on player input (prevents OnContactSolve from zeroing velocity)
     // Match official example: allow sliding when moving OR when airborne
-    const hasHorizontalInput =
-      Math.abs(movement.vx) > 0.01 || Math.abs(movement.vz) > 0.01
+    // Official uses movementDirection.length() < 1.0e-12
+    const movementLengthSq =
+      movement.vx * movement.vx + movement.vz * movement.vz
+    const hasHorizontalInput = movementLengthSq > 1.0e-24 // 1.0e-12 squared
     const isAirborne = !(isGrounded || isSliding)
     _allowSliding = hasHorizontalInput || isAirborne
 
