@@ -36,7 +36,6 @@ import {
 // ============================================
 
 const _velocity = {x: 0, y: 0, z: 0}
-const _platformVel = {x: 0, y: 0, z: 0}
 
 // ============================================
 // Cached filter objects (created once, reused)
@@ -422,65 +421,6 @@ const characterCreationQuery = createQuery(
 )
 
 // ============================================
-// Platform Velocity Helper
-// ============================================
-
-/**
- * Check if standing on a moving platform and get its entity.
- * Uses Jolt's GetGroundVelocity() which already handles tangential velocity
- * from rotating platforms when MoveKinematic() is used.
- */
-function getMovingPlatformEntity(
-  character: JoltCharacterVirtual,
-  target: {x: number; y: number; z: number},
-  maxVelocity: number,
-): Entity | null {
-  setVec3(target, 0, 0, 0)
-
-  // Check if standing on ground
-  const groundState = character.GetGroundState()
-  if (groundState !== GROUND_STATE_ON_GROUND) {
-    return null
-  }
-
-  // Get ground body
-  const groundBodyId = character.GetGroundBodyID()
-  if (!isValidBodyID(groundBodyId)) {
-    return null
-  }
-
-  // Get entity for this body
-  const platformEntity = getEntityForBodyId(groundBodyId)
-  if (!platformEntity) {
-    return null
-  }
-
-  // Use Jolt's built-in ground velocity (handles rotation automatically)
-  const groundVel = character.GetGroundVelocity()
-  target.x = groundVel.GetX()
-  target.y = groundVel.GetY()
-  target.z = groundVel.GetZ()
-
-  // Clamp to max velocity
-  const speed = Math.sqrt(
-    target.x * target.x + target.y * target.y + target.z * target.z,
-  )
-  if (speed > maxVelocity) {
-    const scale = maxVelocity / speed
-    target.x *= scale
-    target.y *= scale
-    target.z *= scale
-  }
-
-  // Only return entity if there's actual movement
-  if (speed < 0.0001) {
-    return null
-  }
-
-  return platformEntity
-}
-
-// ============================================
 // Character Controller System
 // ============================================
 
@@ -506,52 +446,16 @@ export function characterControllerSystem(
     const posY = transform.y
     const posZ = transform.z
 
-    // Get platform velocity (uses Jolt's GetGroundVelocity which handles rotation)
-    const platformEntity = getMovingPlatformEntity(
-      character,
-      _platformVel,
-      config.maxLaunchVelocity,
-    )
-
-    const onMovingPlatform = platformEntity !== null
-
     // Check ground state
     const groundState = character.GetGroundState()
     const isGrounded = groundState === GROUND_STATE_ON_GROUND
     const isSliding = groundState === GROUND_STATE_ON_STEEP_GROUND
 
-    // Get ground normal
-    let groundNormalX = 0
-    let groundNormalY = 1
-    let groundNormalZ = 0
-    if (isGrounded || isSliding) {
-      const normal = character.GetGroundNormal()
-      groundNormalX = normal.GetX()
-      groundNormalY = normal.GetY()
-      groundNormalZ = normal.GetZ()
-    }
-
-    // Apply character weight to dynamic ground (makes crates sink under character)
-    const groundBodyInterface = physicsWorld.bodyInterface
-    if (isGrounded && groundBodyInterface) {
-      const groundBodyId = character.GetGroundBodyID()
-      if (
-        isValidBodyID(groundBodyId) &&
-        groundBodyInterface.GetMotionType(groundBodyId) === MOTION_TYPE_DYNAMIC
-      ) {
-        // Get or create cached filters for the impulse vec
-        const filters = getOrCreateFilters(Jolt)
-        // Apply weight as a force: F = m * g (gravity is negative, so weight pushes down)
-        const gravity = physicsSystem.GetGravity()
-        const weightForce = config.mass * gravity.GetY() // Negative value
-        filters.impulseVec.Set(0, weightForce, 0)
-        groundBodyInterface.AddForce(
-          groundBodyId,
-          filters.impulseVec,
-          Jolt.EActivation_Activate,
-        )
-      }
-    }
+    // Get ground normal (used for movement state tracking)
+    const groundNormal = character.GetGroundNormal()
+    const groundNormalX = groundNormal.GetX()
+    const groundNormalY = groundNormal.GetY()
+    const groundNormalZ = groundNormal.GetZ()
 
     // Coyote time and jump buffer
     let coyoteCounter = movement.coyoteCounter
@@ -573,17 +477,24 @@ export function characterControllerSystem(
     const canJump = isGrounded || coyoteCounter > 0
     const shouldJump = canJump && (jumpRequested || jumpBufferCounter > 0)
 
-    // Momentum transfer from platforms
+    // Momentum transfer from platforms (use GetGroundVelocity directly)
     let inheritedVx = movement.inheritedVx
     let inheritedVy = movement.inheritedVy
     let inheritedVz = movement.inheritedVz
 
+    // Check if just left ground (for momentum transfer)
+    const groundVel = character.GetGroundVelocity()
+    const hasGroundVelocity =
+      Math.abs(groundVel.GetX()) > 0.01 ||
+      Math.abs(groundVel.GetY()) > 0.01 ||
+      Math.abs(groundVel.GetZ()) > 0.01
+
     const justLeftPlatform =
-      movement.wasGroundedLastFrame && !isGrounded && onMovingPlatform
+      movement.wasGroundedLastFrame && !isGrounded && hasGroundVelocity
     if (justLeftPlatform) {
-      inheritedVx = _platformVel.x * config.momentumTransferWeight
-      inheritedVy = _platformVel.y * config.momentumTransferWeight
-      inheritedVz = _platformVel.z * config.momentumTransferWeight
+      inheritedVx = groundVel.GetX() * config.momentumTransferWeight
+      inheritedVy = groundVel.GetY() * config.momentumTransferWeight
+      inheritedVz = groundVel.GetZ() * config.momentumTransferWeight
     }
 
     // Decay inherited momentum
@@ -640,14 +551,9 @@ export function characterControllerSystem(
     }
 
     // Apply player horizontal input (always - allows air control)
+    // Note: groundVel already includes platform velocity when grounded
     newVx = movement.vx + inheritedVx
     newVz = movement.vz + inheritedVz
-
-    // Add platform velocity if on moving platform
-    if (isGrounded && onMovingPlatform) {
-      newVx += _platformVel.x
-      newVz += _platformVel.z
-    }
 
     // Handle jumping - override vertical velocity
     let justJumped = false
@@ -720,10 +626,10 @@ export function characterControllerSystem(
       m.groundNormalY = groundNormalY
       m.groundNormalZ = groundNormalZ
       m.groundDistance = 0
-      m.platformVx = _platformVel.x
-      m.platformVy = _platformVel.y
-      m.platformVz = _platformVel.z
-      m.lastPlatformEntity = platformEntity
+      m.platformVx = 0
+      m.platformVy = 0
+      m.platformVz = 0
+      m.lastPlatformEntity = null
       m.inheritedVx = inheritedVx
       m.inheritedVy = inheritedVy
       m.inheritedVz = inheritedVz
