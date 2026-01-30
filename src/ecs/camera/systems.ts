@@ -408,35 +408,70 @@ export function cameraUpdateSystem(world: World, delta: number) {
 // Whisker Collision
 // ============================================
 
+// Whisker offsets: [horizontal angle offset, vertical angle offset] in radians
+// Creates a cross pattern around the main ray for better obstacle detection
+const WHISKER_OFFSETS: ReadonlyArray<readonly [number, number]> = [
+  [0, 0], // Center ray
+  [-0.15, 0], // Left
+  [0.15, 0], // Right
+  [0, 0.1], // Up
+  [0, -0.1], // Down
+] as const
+
+// Scratch object for whisker end position
+const _whiskerEnd = {x: 0, y: 0, z: 0}
+
 function castWhiskerRays(
   target: {x: number; y: number; z: number},
   idealPos: {x: number; y: number; z: number},
-  _yaw: number,
-  _pitch: number,
+  yaw: number,
+  pitch: number,
   maxDistance: number,
-  _heightOffset: number,
+  heightOffset: number,
   padding: number,
   excludeRigidBody: JoltBody | null,
 ): number {
-  // Cast a ray from target (player) to idealPos (camera)
-  // If something is in the way, return the hit distance minus padding
-  const hit = castRayBetween(
-    target.x,
-    target.y,
-    target.z,
-    idealPos.x,
-    idealPos.y,
-    idealPos.z,
-    {excludeBody: excludeRigidBody},
-  )
+  let minDistance = maxDistance
 
-  if (hit) {
-    // Convert fraction to actual distance and subtract padding
-    const hitDistance = hit.fraction * maxDistance - padding
-    return Math.max(0, hitDistance)
+  // Ray origin is at target + half height offset (roughly chest level)
+  const originY = target.y + heightOffset * 0.5
+
+  for (const [yawOffset, pitchOffset] of WHISKER_OFFSETS) {
+    // Calculate whisker direction with offset angles
+    const whiskerYaw = yaw + yawOffset
+    const whiskerPitch = pitch + pitchOffset
+
+    // Clamp pitch to avoid flipping over
+    const clampedPitch = Math.max(
+      -Math.PI / 2 + 0.01,
+      Math.min(Math.PI / 2 - 0.01, whiskerPitch),
+    )
+
+    // Calculate whisker end position (same as orbit camera calculation)
+    const cosPitch = Math.cos(clampedPitch)
+    _whiskerEnd.x = target.x + Math.sin(whiskerYaw) * cosPitch * maxDistance
+    _whiskerEnd.y = originY + Math.sin(clampedPitch) * maxDistance
+    _whiskerEnd.z = target.z + Math.cos(whiskerYaw) * cosPitch * maxDistance
+
+    // Cast ray from target to whisker end
+    const hit = castRayBetween(
+      target.x,
+      originY,
+      target.z,
+      _whiskerEnd.x,
+      _whiskerEnd.y,
+      _whiskerEnd.z,
+      {excludeBody: excludeRigidBody},
+    )
+
+    if (hit) {
+      // Convert fraction to actual distance and subtract padding
+      const hitDistance = hit.fraction * maxDistance - padding
+      minDistance = Math.min(minDistance, Math.max(0, hitDistance))
+    }
   }
 
-  return maxDistance
+  return minDistance
 }
 
 /**
