@@ -154,6 +154,15 @@ export {
   destroyCharacterFilters,
 } from './character'
 
+// Query functions (raycasting, etc.)
+export {
+  castRay,
+  castRayBetween,
+  initRaycastObjects,
+  destroyRaycastObjects,
+} from './queries'
+export type {RaycastHit, RaycastOptions} from './queries'
+
 // Character controller React component
 export {CharacterController} from './character-controller'
 export type {

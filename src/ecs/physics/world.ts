@@ -20,6 +20,7 @@ import {
   BP_LAYER_MOVING,
   NUM_BROAD_PHASE_LAYERS,
 } from './jolt-types'
+import {destroyRaycastObjects} from './queries'
 import {RigidBodyRef, IsPhysicsEntity} from './traits'
 
 // ============================================
@@ -257,6 +258,9 @@ export function destroyPhysicsWorld(ecsWorld: World): void {
 
   // Clean up character filters
   destroyCharacterFilters()
+
+  // Clean up raycast objects
+  destroyRaycastObjects()
 
   // Clean up contact listener
   if (physicsWorld.contactListener) {

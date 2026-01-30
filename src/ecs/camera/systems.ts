@@ -1,7 +1,12 @@
 import {createQuery} from 'koota'
 import type {World} from 'koota'
 import type {JoltBody} from '../physics/jolt-types'
-import {CharacterMovement, RigidBodyRef, RenderTransform} from '../physics'
+import {
+  CharacterMovement,
+  RigidBodyRef,
+  RenderTransform,
+  castRayBetween,
+} from '../physics'
 import {
   noise2D,
   computeCameraPosition,
@@ -404,17 +409,33 @@ export function cameraUpdateSystem(world: World, delta: number) {
 // ============================================
 
 function castWhiskerRays(
-  _target: {x: number; y: number; z: number},
-  _idealPos: {x: number; y: number; z: number},
+  target: {x: number; y: number; z: number},
+  idealPos: {x: number; y: number; z: number},
   _yaw: number,
   _pitch: number,
   maxDistance: number,
   _heightOffset: number,
-  _padding: number,
-  _excludeRigidBody: JoltBody | null,
+  padding: number,
+  excludeRigidBody: JoltBody | null,
 ): number {
-  // TODO: Implement Jolt ray casting for camera collision
-  // For now, return max distance (no collision detection)
+  // Cast a ray from target (player) to idealPos (camera)
+  // If something is in the way, return the hit distance minus padding
+  const hit = castRayBetween(
+    target.x,
+    target.y,
+    target.z,
+    idealPos.x,
+    idealPos.y,
+    idealPos.z,
+    {excludeBody: excludeRigidBody},
+  )
+
+  if (hit) {
+    // Convert fraction to actual distance and subtract padding
+    const hitDistance = hit.fraction * maxDistance - padding
+    return Math.max(0, hitDistance)
+  }
+
   return maxDistance
 }
 
