@@ -85,11 +85,11 @@ function spawnBallAt(w: World, x: number, y: number, z: number) {
     c.angularDamping = 0.3
     return c
   })
-  // Ball: density 2 gives mass ~1 (like official Jolt example), bouncy, low friction
+  // Beach ball: very light (density 0.1), bouncy, low friction
   w.spawn(
     IsColliderEntity,
     ChildOf(rbEntity),
-    ballCollider(0.5, 0.95, 0.1, 2.0),
+    ballCollider(0.5, 0.95, 0.1, 0.1),
   )
   return rbEntity
 }

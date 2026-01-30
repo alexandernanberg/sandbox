@@ -21,6 +21,7 @@ import {
   LAYER_MOVING,
   BACK_FACE_MODE_COLLIDE,
   MOTION_TYPE_DYNAMIC,
+  MOTION_TYPE_KINEMATIC,
 } from './jolt-types'
 import {RigidBodyRef, Transform, PhysicsInitialized} from './traits'
 import {
@@ -495,19 +496,32 @@ export function characterControllerSystem(
       linearVelocity.GetY() * characterUp.GetY() +
       linearVelocity.GetZ() * characterUp.GetZ()
 
-    // Momentum transfer from platforms
+    // Momentum transfer from kinematic platforms only (not dynamic bodies)
     let inheritedVx = movement.inheritedVx
     let inheritedVy = movement.inheritedVy
     let inheritedVz = movement.inheritedVz
 
-    // Check if just left ground (for momentum transfer)
+    // Check if just left a kinematic platform (for momentum transfer)
+    // Don't transfer momentum from dynamic bodies (balls, crates) - only from kinematic platforms
     const hasGroundVelocity =
       Math.abs(groundVel.GetX()) > 0.01 ||
       Math.abs(groundVel.GetY()) > 0.01 ||
       Math.abs(groundVel.GetZ()) > 0.01
 
+    let isKinematicGround = false
+    if (hasGroundVelocity) {
+      const groundBodyId = character.GetGroundBodyID()
+      if (isValidBodyID(groundBodyId)) {
+        const bodyInterface = physicsWorld.bodyInterface
+        if (bodyInterface) {
+          const motionType = bodyInterface.GetMotionType(groundBodyId)
+          isKinematicGround = motionType === MOTION_TYPE_KINEMATIC
+        }
+      }
+    }
+
     const justLeftPlatform =
-      movement.wasGroundedLastFrame && !isGrounded && hasGroundVelocity
+      movement.wasGroundedLastFrame && !isGrounded && isKinematicGround
     if (justLeftPlatform) {
       inheritedVx = groundVel.GetX() * config.momentumTransferWeight
       inheritedVy = groundVel.GetY() * config.momentumTransferWeight
