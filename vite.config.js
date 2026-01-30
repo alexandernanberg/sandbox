@@ -23,28 +23,4 @@ export default defineConfig({
       // 'three-stdlib': resolve('../three-stdlib/dist'),
     },
   },
-  // Required for Jolt multithread builds (SharedArrayBuffer)
-  server: {
-    headers: {
-      'Cross-Origin-Opener-Policy': 'same-origin',
-      'Cross-Origin-Embedder-Policy': 'require-corp',
-    },
-  },
-  preview: {
-    headers: {
-      'Cross-Origin-Opener-Policy': 'same-origin',
-      'Cross-Origin-Embedder-Policy': 'require-corp',
-    },
-  },
-  // Worker config for multithread WASM
-  worker: {
-    format: 'es',
-  },
-  optimizeDeps: {
-    // Exclude multithread builds from pre-bundling (they use workers)
-    exclude: [
-      'jolt-physics/wasm-compat-multithread',
-      'jolt-physics/debug-wasm-compat-multithread',
-    ],
-  },
 })

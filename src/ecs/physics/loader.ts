@@ -1,12 +1,7 @@
 // ============================================
 // Centralized Jolt Physics Loader
 // ============================================
-// Handles dynamic loading of production (multithread) or debug Jolt build
-//
-// Multithread builds require:
-// - SharedArrayBuffer (COOP/COEP headers configured in vite.config.js)
-// - Modern browser with Web Worker support
-// - Vite worker format set to 'es' for top-level await
+// Handles dynamic loading of production or debug Jolt build
 
 import type {JoltModule} from './jolt-types'
 
@@ -16,20 +11,9 @@ let loadingPromise: Promise<JoltModule> | null = null
 let isDebugBuild = false
 
 /**
- * Check if SharedArrayBuffer is available (required for multithread)
- */
-function canUseMultithread(): boolean {
-  return typeof SharedArrayBuffer !== 'undefined'
-}
-
-/**
  * Load the Jolt Physics module
  * @param debug - If true, loads the debug build with DebugRenderer support
  * @returns Promise resolving to the Jolt module
- *
- * Build variants:
- * - Production: multithread build for better performance (falls back to single-thread)
- * - Debug: includes DebugRendererJS for visualization (larger, also multithread)
  */
 export async function loadJolt(debug = false): Promise<JoltModule> {
   // If already loaded with same build type, return cached
@@ -43,48 +27,22 @@ export async function loadJolt(debug = false): Promise<JoltModule> {
   }
 
   // If switching build types, we need to reload
-  // Note: This is a rare case - typically you'd restart the app
   if (joltModule && isDebugBuild !== debug) {
     console.warn(
-      `[Jolt] Switching from ${isDebugBuild ? 'debug' : 'production'} to ${debug ? 'debug' : 'production'} build requires page reload for full effect`,
+      `[Jolt] Switching from ${isDebugBuild ? 'debug' : 'production'} to ${debug ? 'debug' : 'production'} build requires page reload`,
     )
   }
 
   isDebugBuild = debug
-  const useMultithread = canUseMultithread()
 
-  if (!useMultithread) {
-    console.warn(
-      '[Jolt] SharedArrayBuffer not available, falling back to single-threaded build',
-    )
-  }
-
-  // Dynamic import based on build type and multithread support
+  // Dynamic import based on build type
   loadingPromise = (async () => {
     if (debug) {
-      if (useMultithread) {
-        // Debug multithread build includes DebugRendererJS
-        const initJolt = (
-          await import('jolt-physics/debug-wasm-compat-multithread')
-        ).default
-        joltModule = await initJolt()
-      } else {
-        // Debug single-thread fallback
-        const initJolt = (await import('jolt-physics/debug-wasm-compat'))
-          .default
-        joltModule = await initJolt()
-      }
+      const initJolt = (await import('jolt-physics/debug-wasm-compat')).default
+      joltModule = await initJolt()
     } else {
-      if (useMultithread) {
-        // Production multithread build (faster physics)
-        const initJolt = (await import('jolt-physics/wasm-compat-multithread'))
-          .default
-        joltModule = await initJolt()
-      } else {
-        // Production single-thread fallback
-        const initJolt = (await import('jolt-physics/wasm-compat')).default
-        joltModule = await initJolt()
-      }
+      const initJolt = (await import('jolt-physics/wasm-compat')).default
+      joltModule = await initJolt()
     }
     return joltModule
   })()
