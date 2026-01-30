@@ -1,7 +1,12 @@
 // ============================================
 // Centralized Jolt Physics Loader
 // ============================================
-// Handles dynamic loading of either production or debug Jolt build
+// Handles dynamic loading of production or debug Jolt build
+//
+// Note: Multithread builds (wasm-compat-multithread) require SharedArrayBuffer
+// and specific COOP/COEP headers. They also need bundler configuration to
+// handle Web Workers with top-level await. For simplicity, we use single-threaded
+// builds which work in all environments.
 
 import type {JoltModule} from './jolt-types'
 
@@ -14,6 +19,10 @@ let isDebugBuild = false
  * Load the Jolt Physics module
  * @param debug - If true, loads the debug build with DebugRenderer support
  * @returns Promise resolving to the Jolt module
+ *
+ * Build variants:
+ * - Production: single-threaded wasm-compat (works everywhere)
+ * - Debug: includes DebugRendererJS for visualization (larger)
  */
 export async function loadJolt(debug = false): Promise<JoltModule> {
   // If already loaded with same build type, return cached
@@ -43,7 +52,7 @@ export async function loadJolt(debug = false): Promise<JoltModule> {
       const initJolt = (await import('jolt-physics/debug-wasm-compat')).default
       joltModule = await initJolt()
     } else {
-      // Production build (smaller, faster)
+      // Production build (smaller, works everywhere)
       const initJolt = (await import('jolt-physics/wasm-compat')).default
       joltModule = await initJolt()
     }
