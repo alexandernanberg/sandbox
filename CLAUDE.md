@@ -306,6 +306,7 @@ character.GetGroundVelocity() // Platform velocity (includes rotation!)
 4. **Velocity accumulation** - Don't add input to current velocity when airborne
 5. **Dynamic body momentum** - Only transfer from kinematic platforms
 6. **Missing mass override** - Dynamic bodies need explicit mass setting
+7. **Ground velocity from dynamic bodies** - Don't use `GetGroundVelocity()` as base velocity when standing on dynamic bodies (causes feedback loop)
 
 ## Key Conventions
 
