@@ -8,15 +8,6 @@ importers:
 
   .:
     dependencies:
-      '@dimforge/rapier3d':
-        specifier: ^0.19.3
-        version: 0.19.3
-      '@dimforge/rapier3d-compat':
-        specifier: ^0.19.3
-        version: 0.19.3
-      '@dimforge/rapier3d-simd-compat':
-        specifier: ^0.19.3
-        version: 0.19.3
       '@react-three/drei':
         specifier: 10.7.7
         version: 10.7.7(@react-three/fiber@9.5.0(@types/react@19.2.9)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(three@0.182.0))(@types/react@19.2.9)(@types/three@0.182.0)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(three@0.182.0)
@@ -29,6 +20,9 @@ importers:
       directed:
         specifier: ^0.1.6
         version: 0.1.6(@types/react@19.2.9)(react@19.2.3)
+      jolt-physics:
+        specifier: ^1.0.0
+        version: 1.0.0
       koota:
         specifier: ^0.6.4
         version: 0.6.4(@types/react@19.2.9)(react@19.2.3)
@@ -223,15 +217,6 @@ packages:
 
   '@dimforge/rapier3d-compat@0.12.0':
     resolution: {integrity: sha512-uekIGetywIgopfD97oDL5PfeezkFpNhwlzlaEYNOA0N6ghdsOvh/HYjSMek5Q2O1PYvRSDFcqFVJl4r4ZBwOow==}
-
-  '@dimforge/rapier3d-compat@0.19.3':
-    resolution: {integrity: sha512-mMVdSj1PRTT108s9Swbu2GQOmHbn8kbJANRV5xfczL3s0T4vkgZAuoMRgvBzQcHanpKusbC0ZJj6z3mC3aj3vg==}
-
-  '@dimforge/rapier3d-simd-compat@0.19.3':
-    resolution: {integrity: sha512-gAiK4JoGPbjcfiu0I4fSKVnwrawCJcSILjteAjC/zs6zOs59GuMfaW5dsum/yhAzWHp+dH+w+3hp341M7ykxuQ==}
-
-  '@dimforge/rapier3d@0.19.3':
-    resolution: {integrity: sha512-tkD1tvHTDML0W9s9rUYAsx0btO9LbVTnMBKJWVgOsas5haGFbYY+pzr5hbwYysv/IJmgmMrIFoVWIcsaCUE9ow==}
 
   '@esbuild/aix-ppc64@0.27.2':
     resolution: {integrity: sha512-GZMB+a0mOMZs4MpDbj8RJp4cw+w1WV5NYD6xzgvzUJ5Ek2jerwfO2eADyI6ExDSUED+1X8aMbegahsJi+8mgpw==}
@@ -1449,6 +1434,9 @@ packages:
     peerDependencies:
       react: ^19.0.0
 
+  jolt-physics@1.0.0:
+    resolution: {integrity: sha512-rA7Mcb3CDqsDzr0J15P2DDftMR4d15/B6hfvvVh88Se3KFCYXGbPKGK2sJFGOpzUksRpyQhgbfLHgHL4SA5UzQ==}
+
   js-tokens@4.0.0:
     resolution: {integrity: sha512-RdJUflcE3cUzKiMqQgsCu06FPu9UdIJO0beYbPhHN4k6apgJtifcoCtT9bcxOpYBtpD2kCM6Sbzg4CausW/PKQ==}
 
@@ -2235,12 +2223,6 @@ snapshots:
       '@babel/helper-validator-identifier': 7.28.5
 
   '@dimforge/rapier3d-compat@0.12.0': {}
-
-  '@dimforge/rapier3d-compat@0.19.3': {}
-
-  '@dimforge/rapier3d-simd-compat@0.19.3': {}
-
-  '@dimforge/rapier3d@0.19.3': {}
 
   '@esbuild/aix-ppc64@0.27.2':
     optional: true
@@ -3563,6 +3545,8 @@ snapshots:
       react: 19.2.3
     transitivePeerDependencies:
       - '@types/react'
+
+  jolt-physics@1.0.0: {}
 
   js-tokens@4.0.0: {}
 

@@ -1,7 +1,7 @@
-import type * as RAPIER from '@dimforge/rapier3d-simd-compat'
 import {trait, relation} from 'koota'
 import type {Entity} from 'koota'
 import type {Object3D} from 'three'
+import type {JoltBodyID, JoltShape, JoltBody} from './jolt-types'
 
 // ============================================
 // Collision callback type
@@ -33,7 +33,7 @@ export const KinematicVelocity = trait({
 // Transform traits (for interpolation)
 // ============================================
 
-// Current physics state (synced from Rapier after step)
+// Current physics state (synced from Jolt after step)
 export const Transform = trait({
   x: 0,
   y: 0,
@@ -111,7 +111,7 @@ export type ColliderShape =
       nrows: number
       ncols: number
       heights: Float32Array
-      scale: RAPIER.Vector
+      scale: {x: number; y: number; z: number}
     }
 
 // Use factory function pattern to get proper type inference
@@ -139,16 +139,18 @@ export const ColliderConfig = trait(() => ({
 // Runtime handles (non-serializable)
 // ============================================
 
-// Holds reference to Rapier rigid body
+// Holds reference to Jolt body
 export const RigidBodyRef = trait(() => ({
-  handle: null as number | null,
-  body: null as RAPIER.RigidBody | null,
+  bodyId: null as JoltBodyID | null,
+  body: null as JoltBody | null,
+  shape: null as JoltShape | null,
 }))
 
-// Holds reference to Rapier collider
+// Holds reference to Jolt shape (for compound bodies)
+// In Jolt, shapes are part of bodies, so this is mainly for tracking
 export const ColliderRef = trait(() => ({
-  handle: null as number | null,
-  collider: null as RAPIER.Collider | null,
+  shape: null as JoltShape | null,
+  subShapeIndex: 0,
 }))
 
 // ============================================

@@ -34,12 +34,17 @@ export const IsBall = trait()
 export const BallColor = trait({color: 'red'})
 
 // Helper for common collider configs
-const ballCollider = (radius: number, restitution = 0, friction = 0.5) =>
+const ballCollider = (
+  radius: number,
+  restitution = 0,
+  friction = 0.5,
+  density = 1,
+) =>
   ColliderConfig({
     shape: {type: 'ball', radius},
     friction,
     restitution,
-    density: 1,
+    density,
     sensor: false,
     offsetX: 0,
     offsetY: 0,
@@ -74,7 +79,18 @@ function spawnBallAt(w: World, x: number, y: number, z: number) {
     RenderTransform({x, y, z}),
     RigidBodyConfig,
   )
-  w.spawn(IsColliderEntity, ChildOf(rbEntity), ballCollider(0.5, 1, 0.9))
+  // Beach ball physics: moderate damping for air resistance
+  rbEntity.set(RigidBodyConfig, (c) => {
+    c.linearDamping = 0.5
+    c.angularDamping = 0.3
+    return c
+  })
+  // Beach ball: very light (density 0.1), bouncy, low friction
+  w.spawn(
+    IsColliderEntity,
+    ChildOf(rbEntity),
+    ballCollider(0.5, 0.95, 0.1, 0.1),
+  )
   return rbEntity
 }
 

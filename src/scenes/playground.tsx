@@ -27,6 +27,9 @@ import {
   CharacterController,
   CharacterMovement,
   KinematicVelocity,
+  Transform,
+  getBodyInterface,
+  getJolt,
 } from '~/ecs/physics'
 import type {CharacterControllerApi} from '~/ecs/physics'
 import Ramp from '~/models/ramp'
@@ -196,8 +199,12 @@ function Ball({position, linearVelocity}: BallProps) {
     const entity = entityRef.current
     if (!entity) return
     const bodyRef = entity.get(RigidBodyRef)
-    if (bodyRef?.body) {
-      bodyRef.body.applyImpulse({x: 0, y: 5, z: 0}, true)
+    const bodyInterface = getBodyInterface()
+    const Jolt = getJolt()
+    if (bodyRef?.bodyId && bodyInterface) {
+      const impulse = new Jolt.Vec3(0, 5, 0)
+      bodyInterface.AddImpulse(bodyRef.bodyId, impulse)
+      Jolt.destroy(impulse)
     }
   }
 
@@ -408,13 +415,15 @@ function Elevator({position}: ElevatorProps) {
     const entity = entityRef.current
     if (!entity) return
     const bodyRef = entity.get(RigidBodyRef)
-    if (!bodyRef?.body) return
+    const bodyInterface = getBodyInterface()
+    const Jolt = getJolt()
+    if (!bodyRef?.bodyId || !bodyInterface) return
 
     // Use physics time instead of wall time to ensure consistent velocity
     // across multiple physics steps per frame
     physicsTime.current += delta
 
-    const vec = bodyRef.body.translation()
+    const pos = bodyInterface.GetPosition(bodyRef.bodyId)
     const newY = clamp(3.875 + Math.sin(physicsTime.current) * 5, 0.25, 7.75)
 
     // Set velocity (per-frame delta)
@@ -430,8 +439,10 @@ function Elevator({position}: ElevatorProps) {
     }
     prevY.current = newY
 
-    vec.y = newY
-    bodyRef.body.setNextKinematicTranslation(vec)
+    const newPos = new Jolt.RVec3(pos.GetX(), newY, pos.GetZ())
+    const rot = bodyInterface.GetRotation(bodyRef.bodyId)
+    bodyInterface.MoveKinematic(bodyRef.bodyId, newPos, rot, 1 / 60)
+    Jolt.destroy(newPos)
   })
 
   return (
@@ -507,12 +518,13 @@ function SpinningPlatform({
     const entity = entityRef.current
     if (!entity) return
     const bodyRef = entity.get(RigidBodyRef)
-    if (!bodyRef?.body) return
+    const bodyInterface = getBodyInterface()
+    const Jolt = getJolt()
+    if (!bodyRef?.bodyId || !bodyInterface) return
 
     const angularVelocity = speed * delta
     angle.current += angularVelocity
-    const body = bodyRef.body
-    const pos = body.translation()
+    const pos = bodyInterface.GetPosition(bodyRef.bodyId)
 
     // Set angular velocity (radians per physics step around Y axis)
     entity.set(KinematicVelocity, {
@@ -526,13 +538,11 @@ function SpinningPlatform({
 
     // Set next kinematic rotation (quaternion for Y-axis rotation)
     const halfAngle = angle.current / 2
-    body.setNextKinematicRotation({
-      x: 0,
-      y: Math.sin(halfAngle),
-      z: 0,
-      w: Math.cos(halfAngle),
-    })
-    body.setNextKinematicTranslation(pos)
+    const newRot = new Jolt.Quat(0, Math.sin(halfAngle), 0, Math.cos(halfAngle))
+    const newPos = new Jolt.RVec3(pos.GetX(), pos.GetY(), pos.GetZ())
+    bodyInterface.MoveKinematic(bodyRef.bodyId, newPos, newRot, 1 / 60)
+    Jolt.destroy(newRot)
+    Jolt.destroy(newPos)
   })
 
   return (
@@ -682,10 +692,10 @@ function Player({position}: PlayerProps) {
     kccDebug.current.inputVel = fmt(movement.vx, movement.vy, movement.vz)
     kccDebug.current.moveVel = fmt(movement.mx, movement.my, movement.mz)
 
-    // Get Y position from rigid body
-    const bodyRef = controller.entity.get(RigidBodyRef)
-    if (bodyRef?.body) {
-      kccDebug.current.posY = bodyRef.body.translation().y
+    // Get Y position from transform
+    const transform = controller.entity.get(Transform)
+    if (transform) {
+      kccDebug.current.posY = transform.y
     }
   })
 

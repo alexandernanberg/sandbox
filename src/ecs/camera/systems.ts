@@ -1,8 +1,12 @@
-import * as RAPIER from '@dimforge/rapier3d-simd-compat'
 import {createQuery} from 'koota'
 import type {World} from 'koota'
-import {CharacterMovement, RigidBodyRef, RenderTransform} from '../physics'
-import {getRapierWorld} from '../physics/world'
+import type {JoltBody} from '../physics/jolt-types'
+import {
+  CharacterMovement,
+  RigidBodyRef,
+  RenderTransform,
+  castRayBetween,
+} from '../physics'
 import {
   noise2D,
   computeCameraPosition,
@@ -38,10 +42,6 @@ const cameraTargetQuery = createQuery(IsCameraTarget, RenderTransform)
 // Scratch Objects (reused to avoid allocations)
 // ============================================
 
-const _rayOrigin = {x: 0, y: 0, z: 0}
-const _rayDirection = {x: 0, y: 0, z: 0}
-let _cachedRay: RAPIER.Ray | null = null
-
 // Camera frame scratch objects
 const _targetPos = {x: 0, y: 0, z: 0}
 const _targetVelocity = {x: 0, y: 0, z: 0}
@@ -56,7 +56,8 @@ const _middleRig = {distance: 0, height: 0}
 const _bottomRig = {distance: 0, height: 0}
 
 // Whisker offsets for multi-ray collision (normalized offsets in camera space)
-const WHISKER_OFFSETS = [
+// Reserved for future use
+const _WHISKER_OFFSETS = [
   {x: 0, y: 0}, // Center
   {x: 0.4, y: 0}, // Right
   {x: -0.4, y: 0}, // Left
@@ -141,7 +142,7 @@ export function cameraUpdateSystem(world: World, delta: number) {
     // Find target entity (player with IsCameraTarget)
     let hasTarget = false
     let hasVelocity = false
-    let targetRigidBody: RAPIER.RigidBody | null = null
+    let targetRigidBody: JoltBody | null = null
 
     for (const entity of world.query(cameraTargetQuery)) {
       const transform = entity.get(RenderTransform)!
@@ -407,6 +408,19 @@ export function cameraUpdateSystem(world: World, delta: number) {
 // Whisker Collision
 // ============================================
 
+// Whisker offsets: [horizontal angle offset, vertical angle offset] in radians
+// Creates a cross pattern around the main ray for better obstacle detection
+const WHISKER_OFFSETS: ReadonlyArray<readonly [number, number]> = [
+  [0, 0], // Center ray
+  [-0.15, 0], // Left
+  [0.15, 0], // Right
+  [0, 0.1], // Up
+  [0, -0.1], // Down
+] as const
+
+// Scratch object for whisker end position
+const _whiskerEnd = {x: 0, y: 0, z: 0}
+
 function castWhiskerRays(
   target: {x: number; y: number; z: number},
   idealPos: {x: number; y: number; z: number},
@@ -415,79 +429,50 @@ function castWhiskerRays(
   maxDistance: number,
   heightOffset: number,
   padding: number,
-  excludeRigidBody: RAPIER.RigidBody | null,
+  excludeRigidBody: JoltBody | null,
 ): number {
-  const rapier = getRapierWorld()
-  if (!rapier) return maxDistance
-
-  // Camera basis vectors
-  const cosPitch = Math.cos(pitch)
-  const sinPitch = Math.sin(pitch)
-  const cosYaw = Math.cos(yaw)
-  const sinYaw = Math.sin(yaw)
-
-  const rightX = cosYaw
-  const rightZ = -sinYaw
-  const upX = -sinPitch * sinYaw
-  const upY = cosPitch
-  const upZ = -sinPitch * cosYaw
-
-  const originX = target.x
-  const originY = target.y + heightOffset
-  const originZ = target.z
-
   let minDistance = maxDistance
 
-  for (const whisker of WHISKER_OFFSETS) {
-    const offsetX = rightX * whisker.x + upX * whisker.y
-    const offsetY = upY * whisker.y
-    const offsetZ = rightZ * whisker.x + upZ * whisker.y
+  // Ray origin is at target + half height offset (roughly chest level)
+  const originY = target.y + heightOffset * 0.5
 
-    const whiskerTargetX = idealPos.x + offsetX
-    const whiskerTargetY = idealPos.y + offsetY
-    const whiskerTargetZ = idealPos.z + offsetZ
+  for (const [yawOffset, pitchOffset] of WHISKER_OFFSETS) {
+    // Calculate whisker direction with offset angles
+    const whiskerYaw = yaw + yawOffset
+    const whiskerPitch = pitch + pitchOffset
 
-    const dx = whiskerTargetX - originX
-    const dy = whiskerTargetY - originY
-    const dz = whiskerTargetZ - originZ
-    const len = Math.sqrt(dx * dx + dy * dy + dz * dz)
+    // Clamp pitch to avoid flipping over
+    const clampedPitch = Math.max(
+      -Math.PI / 2 + 0.01,
+      Math.min(Math.PI / 2 - 0.01, whiskerPitch),
+    )
 
-    if (len < 0.001) continue
+    // Calculate whisker end position (same as orbit camera calculation)
+    const cosPitch = Math.cos(clampedPitch)
+    _whiskerEnd.x = target.x + Math.sin(whiskerYaw) * cosPitch * maxDistance
+    _whiskerEnd.y = originY + Math.sin(clampedPitch) * maxDistance
+    _whiskerEnd.z = target.z + Math.cos(whiskerYaw) * cosPitch * maxDistance
 
-    _rayOrigin.x = originX
-    _rayOrigin.y = originY
-    _rayOrigin.z = originZ
-    _rayDirection.x = dx / len
-    _rayDirection.y = dy / len
-    _rayDirection.z = dz / len
-
-    if (!_cachedRay) {
-      _cachedRay = new RAPIER.Ray(_rayOrigin, _rayDirection)
-    } else {
-      _cachedRay.origin = _rayOrigin
-      _cachedRay.dir = _rayDirection
-    }
-
-    // Cast ray with filter to exclude the player's rigid body
-    const hit = rapier.castRay(
-      _cachedRay,
-      maxDistance + 1,
-      true, // solid
-      undefined, // filterFlags
-      undefined, // filterGroups
-      undefined, // filterExcludeCollider
-      excludeRigidBody ?? undefined, // filterExcludeRigidBody
+    // Cast ray from target to whisker end
+    // staticOnly: true excludes dynamic bodies (balls, crates, etc.)
+    const hit = castRayBetween(
+      target.x,
+      originY,
+      target.z,
+      _whiskerEnd.x,
+      _whiskerEnd.y,
+      _whiskerEnd.z,
+      {excludeBody: excludeRigidBody, staticOnly: true},
     )
 
     if (hit) {
-      const hitDistance = hit.timeOfImpact - padding
-      if (hitDistance < minDistance) {
-        minDistance = hitDistance
-      }
+      // Convert fraction to actual distance and subtract padding
+      const hitDistance = hit.fraction * maxDistance - padding
+      minDistance = Math.min(minDistance, Math.max(0, hitDistance))
     }
   }
 
-  return Math.max(0, minDistance)
+  return minDistance
 }
 
 /**

@@ -17,7 +17,7 @@ import {RigidBodyRef} from './traits'
 export interface CharacterControllerApi {
   /** The ECS entity */
   readonly entity: Entity
-  /** The Rapier rigid body */
+  /** The Jolt body */
   readonly body: RigidBodyApi['body']
   /** Set movement velocity for this frame */
   setVelocity(x: number, y: number, z: number): void
