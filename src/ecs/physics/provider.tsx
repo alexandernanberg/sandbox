@@ -1,10 +1,10 @@
 import {useFrame} from '@react-three/fiber'
-import initJolt from 'jolt-physics/wasm-compat'
 import {useWorld} from 'koota/react'
 import type {ReactNode} from 'react'
-import {createContext, use, useLayoutEffect, useMemo} from 'react'
+import {createContext, use, useLayoutEffect, useMemo, useState} from 'react'
 import type {Vector3} from 'three'
 import {setupContactListener} from './events'
+import {loadJolt} from './loader'
 import {stepPhysics} from './step'
 import {
   physicsWorld,
@@ -39,14 +39,24 @@ export function usePhysicsContext() {
 
 type Triplet = [number, number, number]
 
-// Initialize Jolt module
-const joltPromise = initJolt().then((Jolt) => {
-  setJoltModule(Jolt)
-  return Jolt
-})
+// Cache for Jolt loading promises by debug mode
+const joltPromiseCache = new Map<boolean, Promise<unknown>>()
+
+function getJoltPromise(debug: boolean) {
+  let promise = joltPromiseCache.get(debug)
+  if (!promise) {
+    promise = loadJolt(debug).then((Jolt) => {
+      setJoltModule(Jolt)
+      return Jolt
+    })
+    joltPromiseCache.set(debug, promise)
+  }
+  return promise
+}
 
 export interface PhysicsProviderProps {
   children?: ReactNode
+  /** Enable debug rendering (loads larger debug build) */
   debug?: boolean
   gravity?: Triplet | Vector3
 }
@@ -56,8 +66,8 @@ export function PhysicsProvider({
   debug = false,
   gravity,
 }: PhysicsProviderProps) {
-  // Wait for Jolt to initialize
-  use(joltPromise)
+  // Wait for Jolt to initialize (debug param determines which build to load)
+  use(getJoltPromise(debug))
 
   const ecsWorld = useWorld()
 
