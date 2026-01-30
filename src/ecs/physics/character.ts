@@ -549,6 +549,19 @@ export function characterControllerSystem(
     // Check if moving towards ground (official example threshold: 0.1)
     const movingTowardsGround = verticalSpeed - groundVerticalSpeed < 0.1
 
+    // Check if ground is a dynamic body (don't inherit velocity from dynamic bodies)
+    let isGroundDynamic = false
+    if (isGrounded) {
+      const groundBodyId = character.GetGroundBodyID()
+      if (isValidBodyID(groundBodyId)) {
+        const bodyInterface = physicsWorld.bodyInterface
+        if (bodyInterface) {
+          const motionType = bodyInterface.GetMotionType(groundBodyId)
+          isGroundDynamic = motionType === MOTION_TYPE_DYNAMIC
+        }
+      }
+    }
+
     // Get gravity from physics system
     const gravity = physicsSystem.GetGravity()
     const gravityX = gravity.GetX()
@@ -557,6 +570,7 @@ export function characterControllerSystem(
 
     // Build new velocity following official Jolt pattern:
     // 1. If grounded AND moving towards ground: start with ground velocity
+    //    (but NOT for dynamic bodies - only static/kinematic)
     // 2. Else: preserve current vertical velocity only
     // 3. Apply gravity
     // 4. Add horizontal movement
@@ -565,13 +579,13 @@ export function characterControllerSystem(
     let newVy: number
     let newVz: number
 
-    if (isGrounded && movingTowardsGround) {
-      // When grounded and moving towards ground: start with ground velocity
+    if (isGrounded && movingTowardsGround && !isGroundDynamic) {
+      // When grounded on static/kinematic and moving towards ground: start with ground velocity
       newVx = groundVel.GetX()
       newVy = groundVel.GetY()
       newVz = groundVel.GetZ()
     } else {
-      // Airborne or moving away from ground: preserve vertical velocity only
+      // Airborne, moving away from ground, or on dynamic body: preserve vertical velocity only
       // Current vertical velocity = verticalSpeed * characterUp
       newVx = verticalSpeed * characterUp.GetX() + inheritedVx
       newVy = verticalSpeed * characterUp.GetY()
