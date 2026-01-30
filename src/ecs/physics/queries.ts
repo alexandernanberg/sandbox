@@ -3,6 +3,7 @@
 // ============================================
 
 import type {JoltBody, JoltBodyID} from './jolt-types'
+import {LAYER_NON_MOVING} from './jolt-types'
 import {physicsWorld, getJolt, isValidBodyID} from './world'
 
 // ============================================
@@ -27,6 +28,8 @@ export interface RaycastOptions {
   excludeBodyId?: JoltBodyID | null
   /** Exclude bodies by their Body object */
   excludeBody?: JoltBody | null
+  /** Only hit static (non-moving) bodies - useful for camera collision */
+  staticOnly?: boolean
 }
 
 // ============================================
@@ -56,6 +59,10 @@ let _objectLayerFilter:
 let _shapeFilter:
   | ReturnType<typeof getJolt>['ShapeFilter']['prototype']
   | null = null
+// Static-only object layer filter (excludes dynamic bodies)
+let _staticOnlyObjectLayerFilter:
+  | ReturnType<typeof getJolt>['ObjectLayerFilter']['prototype']
+  | null = null
 
 // Track excluded body for custom filter
 let _excludeBodyIndex: number | null = null
@@ -83,6 +90,14 @@ export function initRaycastObjects(): void {
   _broadPhaseLayerFilter = new Jolt.BroadPhaseLayerFilter()
   _objectLayerFilter = new Jolt.ObjectLayerFilter()
   _shapeFilter = new Jolt.ShapeFilter()
+
+  // Create static-only object layer filter (for camera collision)
+  // Only allows hits on LAYER_NON_MOVING (static geometry)
+  const staticOnlyFilterJS = new Jolt.ObjectLayerFilterJS()
+  staticOnlyFilterJS.ShouldCollide = (objectLayer: number): boolean => {
+    return objectLayer === LAYER_NON_MOVING
+  }
+  _staticOnlyObjectLayerFilter = staticOnlyFilterJS
 
   // Create custom body filter that can exclude a specific body
   // Note: The JS binding passes numbers (index+sequence) to callbacks, not actual Jolt objects
@@ -113,6 +128,7 @@ export function destroyRaycastObjects(): void {
   if (_bodyFilter) Jolt.destroy(_bodyFilter)
   if (_broadPhaseLayerFilter) Jolt.destroy(_broadPhaseLayerFilter)
   if (_objectLayerFilter) Jolt.destroy(_objectLayerFilter)
+  if (_staticOnlyObjectLayerFilter) Jolt.destroy(_staticOnlyObjectLayerFilter)
   if (_shapeFilter) Jolt.destroy(_shapeFilter)
 
   _rayOrigin = null
@@ -123,6 +139,7 @@ export function destroyRaycastObjects(): void {
   _bodyFilter = null
   _broadPhaseLayerFilter = null
   _objectLayerFilter = null
+  _staticOnlyObjectLayerFilter = null
   _shapeFilter = null
   _excludeBodyIndex = null
 }
@@ -148,7 +165,12 @@ export function castRay(
   dirZ: number,
   options: RaycastOptions = {},
 ): RaycastHit | null {
-  const {maxDistance = 100, excludeBodyId, excludeBody} = options
+  const {
+    maxDistance = 100,
+    excludeBodyId,
+    excludeBody,
+    staticOnly = false,
+  } = options
 
   // Ensure objects are initialized
   if (
@@ -158,6 +180,7 @@ export function castRay(
     !_bodyFilter ||
     !_broadPhaseLayerFilter ||
     !_objectLayerFilter ||
+    !_staticOnlyObjectLayerFilter ||
     !_shapeFilter
   ) {
     initRaycastObjects()
@@ -171,6 +194,7 @@ export function castRay(
     !_bodyFilter ||
     !_broadPhaseLayerFilter ||
     !_objectLayerFilter ||
+    !_staticOnlyObjectLayerFilter ||
     !_shapeFilter
   ) {
     return null
@@ -205,13 +229,17 @@ export function castRay(
   _collector.Reset()
 
   // Cast the ray
+  // Use static-only filter for camera collision (excludes dynamic bodies)
+  const objectLayerFilter = staticOnly
+    ? _staticOnlyObjectLayerFilter
+    : _objectLayerFilter
   const narrowPhaseQuery = physicsSystem.GetNarrowPhaseQuery()
   narrowPhaseQuery.CastRay(
     _ray,
     _raySettings,
     _collector,
     _broadPhaseLayerFilter,
-    _objectLayerFilter,
+    objectLayerFilter,
     _bodyFilter,
     _shapeFilter,
   )

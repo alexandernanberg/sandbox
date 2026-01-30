@@ -454,6 +454,7 @@ function castWhiskerRays(
     _whiskerEnd.z = target.z + Math.cos(whiskerYaw) * cosPitch * maxDistance
 
     // Cast ray from target to whisker end
+    // staticOnly: true excludes dynamic bodies (balls, crates, etc.)
     const hit = castRayBetween(
       target.x,
       originY,
@@ -461,7 +462,7 @@ function castWhiskerRays(
       _whiskerEnd.x,
       _whiskerEnd.y,
       _whiskerEnd.z,
-      {excludeBody: excludeRigidBody},
+      {excludeBody: excludeRigidBody, staticOnly: true},
     )
 
     if (hit) {
