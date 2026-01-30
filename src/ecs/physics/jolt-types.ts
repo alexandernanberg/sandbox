@@ -36,7 +36,7 @@ export type JoltObjectVsBroadPhaseLayerFilter =
   Jolt.ObjectVsBroadPhaseLayerFilter
 export type JoltBroadPhaseLayer = Jolt.BroadPhaseLayer
 
-// Layer constants
+// Layer constants (our custom layers, not from Jolt)
 export const LAYER_NON_MOVING = 0
 export const LAYER_MOVING = 1
 export const NUM_OBJECT_LAYERS = 2
@@ -44,31 +44,3 @@ export const NUM_OBJECT_LAYERS = 2
 export const BP_LAYER_NON_MOVING = 0
 export const BP_LAYER_MOVING = 1
 export const NUM_BROAD_PHASE_LAYERS = 2
-
-// Motion type enum values (match Jolt.EMotionType_*)
-export const MOTION_TYPE_STATIC = 0
-export const MOTION_TYPE_KINEMATIC = 1
-export const MOTION_TYPE_DYNAMIC = 2
-
-// Activation enum (match Jolt.EActivation_*)
-export const ACTIVATION_ACTIVATE = 0
-export const ACTIVATION_DONT_ACTIVATE = 1
-
-// Ground state enum (match Jolt.EGroundState_*)
-export const GROUND_STATE_ON_GROUND = 0
-export const GROUND_STATE_ON_STEEP_GROUND = 1
-export const GROUND_STATE_NOT_SUPPORTED = 2
-export const GROUND_STATE_IN_AIR = 3
-
-// Motion quality (match Jolt.EMotionQuality_*)
-export const MOTION_QUALITY_DISCRETE = 0
-export const MOTION_QUALITY_LINEAR_CAST = 1
-
-// Back face mode (match Jolt.EBackFaceMode_*)
-export const BACK_FACE_MODE_IGNORE = 0
-export const BACK_FACE_MODE_COLLIDE = 1
-
-// Override mass properties (match Jolt.EOverrideMassProperties_*)
-export const OVERRIDE_MASS_PROPERTIES_CALC_MASS_INERTIA = 0 // Calculate from shape and density
-export const OVERRIDE_MASS_PROPERTIES_CALC_INERTIA = 1 // Use mMass, calculate inertia from shape
-export const OVERRIDE_MASS_PROPERTIES_MASS_AND_INERTIA = 2 // Use both mMass and mInertia

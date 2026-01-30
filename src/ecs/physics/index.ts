@@ -91,16 +91,7 @@ export type {
   JoltShape,
   JoltCharacterVirtual,
 } from './jolt-types'
-export {
-  LAYER_NON_MOVING,
-  LAYER_MOVING,
-  MOTION_TYPE_STATIC,
-  MOTION_TYPE_KINEMATIC,
-  MOTION_TYPE_DYNAMIC,
-  GROUND_STATE_ON_GROUND,
-  GROUND_STATE_ON_STEEP_GROUND,
-  GROUND_STATE_IN_AIR,
-} from './jolt-types'
+export {LAYER_NON_MOVING, LAYER_MOVING} from './jolt-types'
 
 // React components
 export {

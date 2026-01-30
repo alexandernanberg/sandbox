@@ -15,14 +15,7 @@ import type {
   JoltRVec3,
   JoltCharacterContactListener,
 } from './jolt-types'
-import {
-  GROUND_STATE_ON_GROUND,
-  GROUND_STATE_ON_STEEP_GROUND,
-  LAYER_MOVING,
-  BACK_FACE_MODE_COLLIDE,
-  MOTION_TYPE_DYNAMIC,
-  MOTION_TYPE_KINEMATIC,
-} from './jolt-types'
+import {LAYER_MOVING} from './jolt-types'
 import {RigidBodyRef, Transform, PhysicsInitialized} from './traits'
 import {
   getJolt,
@@ -456,8 +449,8 @@ export function characterControllerSystem(
 
     // Check ground state
     const groundState = character.GetGroundState()
-    const isGrounded = groundState === GROUND_STATE_ON_GROUND
-    const isSliding = groundState === GROUND_STATE_ON_STEEP_GROUND
+    const isGrounded = groundState === Jolt.EGroundState_OnGround
+    const isSliding = groundState === Jolt.EGroundState_OnSteepGround
 
     // Get ground normal (used for movement state tracking)
     const groundNormal = character.GetGroundNormal()
@@ -515,7 +508,7 @@ export function characterControllerSystem(
         const bodyInterface = physicsWorld.bodyInterface
         if (bodyInterface) {
           const motionType = bodyInterface.GetMotionType(groundBodyId)
-          isKinematicGround = motionType === MOTION_TYPE_KINEMATIC
+          isKinematicGround = motionType === Jolt.EMotionType_Kinematic
         }
       }
     }
@@ -557,7 +550,7 @@ export function characterControllerSystem(
         const bodyInterface = physicsWorld.bodyInterface
         if (bodyInterface) {
           const motionType = bodyInterface.GetMotionType(groundBodyId)
-          isGroundDynamic = motionType === MOTION_TYPE_DYNAMIC
+          isGroundDynamic = motionType === Jolt.EMotionType_Dynamic
         }
       }
     }
@@ -755,7 +748,7 @@ export function createCharacterController(
     settings.mMaxSlopeAngle = config.maxSlopeAngle
     settings.mMaxStrength = config.maxStrength // How hard character can push dynamic bodies
     settings.mShape = shape
-    settings.mBackFaceMode = BACK_FACE_MODE_COLLIDE
+    settings.mBackFaceMode = Jolt.EBackFaceMode_CollideWithBackFaces
     settings.mCharacterPadding = config.skinWidth
     settings.mPenetrationRecoverySpeed = 1.0
     settings.mPredictiveContactDistance = 0.1

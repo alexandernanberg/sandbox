@@ -13,17 +13,7 @@ import {
 import type {JoltPhysicsSystem, JoltShape, JoltModule} from './jolt-types'
 import type {RigidBodyType, ColliderShape} from './traits'
 import {CharacterMovement, IsCharacterController} from './character'
-import {
-  LAYER_NON_MOVING,
-  LAYER_MOVING,
-  MOTION_TYPE_STATIC,
-  MOTION_TYPE_KINEMATIC,
-  MOTION_TYPE_DYNAMIC,
-  MOTION_QUALITY_DISCRETE,
-  MOTION_QUALITY_LINEAR_CAST,
-  ACTIVATION_ACTIVATE,
-  OVERRIDE_MASS_PROPERTIES_CALC_INERTIA,
-} from './jolt-types'
+import {LAYER_NON_MOVING, LAYER_MOVING} from './jolt-types'
 import {
   Transform,
   PreviousTransform,
@@ -260,9 +250,9 @@ export function createPhysicsBodies(
     }
 
     // Determine motion type
-    const motionType = getMotionType(config.type)
+    const motionType = getMotionType(Jolt, config.type)
     const layer =
-      motionType === MOTION_TYPE_STATIC ? LAYER_NON_MOVING : LAYER_MOVING
+      motionType === Jolt.EMotionType_Static ? LAYER_NON_MOVING : LAYER_MOVING
 
     // Create body settings
     const position = new Jolt.RVec3(transform.x, transform.y, transform.z)
@@ -287,8 +277,8 @@ export function createPhysicsBodies(
     bodySettings.mAngularDamping = config.angularDamping
     bodySettings.mAllowSleeping = config.canSleep
     bodySettings.mMotionQuality = config.ccd
-      ? MOTION_QUALITY_LINEAR_CAST
-      : MOTION_QUALITY_DISCRETE
+      ? Jolt.EMotionQuality_LinearCast
+      : Jolt.EMotionQuality_Discrete
 
     // Set friction/restitution/sensor from first collider
     if (colliderConfigs.length > 0) {
@@ -298,7 +288,7 @@ export function createPhysicsBodies(
 
       // Set mass from density for dynamic bodies (matching official Jolt example pattern)
       // Official uses mOverrideMassProperties = CalculateInertia and sets mMass directly
-      if (motionType === MOTION_TYPE_DYNAMIC) {
+      if (motionType === Jolt.EMotionType_Dynamic) {
         const density = colliderConfigs[0]!.config.density
         // Calculate approximate volume based on shape type
         const shapeConfig = colliderConfigs[0]!.shape
@@ -322,7 +312,7 @@ export function createPhysicsBodies(
         }
         const mass = density * volume
         bodySettings.mOverrideMassProperties =
-          OVERRIDE_MASS_PROPERTIES_CALC_INERTIA
+          Jolt.EOverrideMassProperties_CalculateInertia
         bodySettings.mMassPropertiesOverride.mMass = mass
       }
     }
@@ -364,7 +354,7 @@ export function createPhysicsBodies(
     registerBodyEntity(bodyId, entity)
 
     // Add to physics world
-    bodyInterface.AddBody(bodyId, ACTIVATION_ACTIVATE)
+    bodyInterface.AddBody(bodyId, Jolt.EActivation_Activate)
 
     // Cleanup temporary objects
     Jolt.destroy(position)
@@ -393,17 +383,17 @@ export function createPhysicsBodies(
   }
 }
 
-function getMotionType(type: RigidBodyType): number {
+function getMotionType(Jolt: JoltModule, type: RigidBodyType): number {
   switch (type) {
     case 'dynamic':
-      return MOTION_TYPE_DYNAMIC
+      return Jolt.EMotionType_Dynamic
     case 'fixed':
-      return MOTION_TYPE_STATIC
+      return Jolt.EMotionType_Static
     case 'kinematic-velocity-based':
     case 'kinematic-position-based':
-      return MOTION_TYPE_KINEMATIC
+      return Jolt.EMotionType_Kinematic
     default:
-      return MOTION_TYPE_DYNAMIC
+      return Jolt.EMotionType_Dynamic
   }
 }
 
