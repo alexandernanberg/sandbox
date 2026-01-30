@@ -178,7 +178,3 @@ export type {
   CharacterControllerProps,
   CharacterControllerApi,
 } from './character-controller'
-
-// Debug renderer (requires debug build)
-export {PhysicsDebugRenderer} from './debug-renderer'
-export type {PhysicsDebugRendererProps} from './debug-renderer'
