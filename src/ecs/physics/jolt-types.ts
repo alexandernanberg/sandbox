@@ -67,3 +67,8 @@ export const MOTION_QUALITY_LINEAR_CAST = 1
 // Back face mode (match Jolt.EBackFaceMode_*)
 export const BACK_FACE_MODE_IGNORE = 0
 export const BACK_FACE_MODE_COLLIDE = 1
+
+// Override mass properties (match Jolt.EOverrideMassProperties_*)
+export const OVERRIDE_MASS_PROPERTIES_CALC_MASS_INERTIA = 0 // Calculate from shape and density
+export const OVERRIDE_MASS_PROPERTIES_CALC_INERTIA = 1 // Use mMass, calculate inertia from shape
+export const OVERRIDE_MASS_PROPERTIES_MASS_AND_INERTIA = 2 // Use both mMass and mInertia

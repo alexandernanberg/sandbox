@@ -22,6 +22,7 @@ import {
   MOTION_QUALITY_DISCRETE,
   MOTION_QUALITY_LINEAR_CAST,
   ACTIVATION_ACTIVATE,
+  OVERRIDE_MASS_PROPERTIES_CALC_INERTIA,
 } from './jolt-types'
 import {
   Transform,
@@ -294,6 +295,36 @@ export function createPhysicsBodies(
       bodySettings.mFriction = colliderConfigs[0]!.config.friction
       bodySettings.mRestitution = colliderConfigs[0]!.config.restitution
       bodySettings.mIsSensor = colliderConfigs[0]!.config.sensor
+
+      // Set mass from density for dynamic bodies (matching official Jolt example pattern)
+      // Official uses mOverrideMassProperties = CalculateInertia and sets mMass directly
+      if (motionType === MOTION_TYPE_DYNAMIC) {
+        const density = colliderConfigs[0]!.config.density
+        // Calculate approximate volume based on shape type
+        const shapeConfig = colliderConfigs[0]!.shape
+        let volume = 1.0
+        if (shapeConfig.type === 'ball') {
+          // Sphere: V = (4/3) * π * r³
+          volume = (4 / 3) * Math.PI * Math.pow(shapeConfig.radius, 3)
+        } else if (shapeConfig.type === 'cuboid') {
+          // Box: V = l * w * h (hx, hy, hz are half-extents, so multiply each by 2)
+          volume = shapeConfig.hx * 2 * shapeConfig.hy * 2 * shapeConfig.hz * 2
+        } else if (shapeConfig.type === 'capsule') {
+          // Capsule: cylinder + two hemispheres
+          const r = shapeConfig.radius
+          const h = shapeConfig.halfHeight * 2
+          volume = Math.PI * r * r * h + (4 / 3) * Math.PI * Math.pow(r, 3)
+        } else if (shapeConfig.type === 'cylinder') {
+          // Cylinder: V = π * r² * h
+          const r = shapeConfig.radius
+          const h = shapeConfig.halfHeight * 2
+          volume = Math.PI * r * r * h
+        }
+        const mass = density * volume
+        bodySettings.mOverrideMassProperties =
+          OVERRIDE_MASS_PROPERTIES_CALC_INERTIA
+        bodySettings.mMassPropertiesOverride.mMass = mass
+      }
     }
 
     // Set initial velocities
