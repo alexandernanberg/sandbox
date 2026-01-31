@@ -60,6 +60,29 @@ export {
   wakeUp,
 } from './events'
 
+// Force and impulse helpers
+export {
+  // Impulses (instant velocity change)
+  applyImpulse,
+  applyImpulseAtPoint,
+  applyTorqueImpulse,
+  // Forces (accumulated each frame)
+  addForce,
+  addForceAtPoint,
+  addTorque,
+  resetForces,
+  resetTorques,
+  // Velocity control
+  getLinearVelocity,
+  setLinearVelocity,
+  getAngularVelocity,
+  setAngularVelocity,
+  // Utilities
+  getSpeed,
+  getAngularSpeed,
+  applyExplosion,
+} from './forces'
+
 // Character controller
 export {
   CharacterShapeRef,

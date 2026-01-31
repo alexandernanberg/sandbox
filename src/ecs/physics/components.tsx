@@ -12,6 +12,21 @@ import {
 } from 'react'
 import {Vector3} from 'three'
 import type {Object3D} from 'three'
+import type {Vec3} from './forces'
+import {
+  applyImpulse,
+  applyImpulseAtPoint,
+  applyTorqueImpulse,
+  addForce,
+  addForceAtPoint,
+  addTorque,
+  resetForces,
+  resetTorques,
+  getLinearVelocity,
+  setLinearVelocity,
+  getAngularVelocity,
+  setAngularVelocity,
+} from './forces'
 
 // Scratch vector for getWorldScale (avoids allocation per collider setup)
 const _scaleVec3 = new Vector3()
@@ -63,6 +78,36 @@ export interface RigidBodyApi {
   readonly entity: Entity
   /** The Rapier rigid body (null if not yet initialized) */
   readonly body: RAPIER.RigidBody | null
+
+  // Impulse methods (instant velocity change)
+  /** Apply an impulse at the center of mass */
+  applyImpulse(impulse: Vec3, wakeUp?: boolean): void
+  /** Apply an impulse at a specific world point (causes rotation) */
+  applyImpulseAtPoint(impulse: Vec3, point: Vec3, wakeUp?: boolean): void
+  /** Apply a torque impulse (instant angular velocity change) */
+  applyTorqueImpulse(torqueImpulse: Vec3, wakeUp?: boolean): void
+
+  // Force methods (accumulated each frame)
+  /** Add a force at the center of mass */
+  addForce(force: Vec3, wakeUp?: boolean): void
+  /** Add a force at a specific world point (causes torque) */
+  addForceAtPoint(force: Vec3, point: Vec3, wakeUp?: boolean): void
+  /** Add a torque (rotational force) */
+  addTorque(torque: Vec3, wakeUp?: boolean): void
+  /** Reset all accumulated forces */
+  resetForces(wakeUp?: boolean): void
+  /** Reset all accumulated torques */
+  resetTorques(wakeUp?: boolean): void
+
+  // Velocity methods
+  /** Get the linear velocity */
+  getLinearVelocity(): Readonly<Vec3>
+  /** Set the linear velocity directly */
+  setLinearVelocity(velocity: Vec3, wakeUp?: boolean): void
+  /** Get the angular velocity */
+  getAngularVelocity(): Readonly<Vec3>
+  /** Set the angular velocity directly */
+  setAngularVelocity(velocity: Vec3, wakeUp?: boolean): void
 }
 
 export interface RigidBodyProps extends Omit<
@@ -196,6 +241,26 @@ export function RigidBody({
       get body() {
         return entity.get(RigidBodyRef)?.body ?? null
       },
+      // Impulse methods
+      applyImpulse: (impulse, wakeUp) => applyImpulse(entity, impulse, wakeUp),
+      applyImpulseAtPoint: (impulse, point, wakeUp) =>
+        applyImpulseAtPoint(entity, impulse, point, wakeUp),
+      applyTorqueImpulse: (torqueImpulse, wakeUp) =>
+        applyTorqueImpulse(entity, torqueImpulse, wakeUp),
+      // Force methods
+      addForce: (force, wakeUp) => addForce(entity, force, wakeUp),
+      addForceAtPoint: (force, point, wakeUp) =>
+        addForceAtPoint(entity, force, point, wakeUp),
+      addTorque: (torque, wakeUp) => addTorque(entity, torque, wakeUp),
+      resetForces: (wakeUp) => resetForces(entity, wakeUp),
+      resetTorques: (wakeUp) => resetTorques(entity, wakeUp),
+      // Velocity methods
+      getLinearVelocity: () => getLinearVelocity(entity),
+      setLinearVelocity: (velocity, wakeUp) =>
+        setLinearVelocity(entity, velocity, wakeUp),
+      getAngularVelocity: () => getAngularVelocity(entity),
+      setAngularVelocity: (velocity, wakeUp) =>
+        setAngularVelocity(entity, velocity, wakeUp),
     }
   }, [])
 
