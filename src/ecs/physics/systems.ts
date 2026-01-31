@@ -174,6 +174,11 @@ export function createPhysicsBodies(
       rigidBodyDesc.setSoftCcdPrediction(config.softCcdPrediction)
     }
 
+    // Additional mass (on top of collider-computed mass)
+    if (config.additionalMass !== 0) {
+      rigidBodyDesc.setAdditionalMass(config.additionalMass)
+    }
+
     // Additional solver iterations for high-precision constraints
     if (config.additionalSolverIterations > 0) {
       rigidBodyDesc.setAdditionalSolverIterations(

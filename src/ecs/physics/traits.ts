@@ -167,6 +167,11 @@ export const RigidBodyConfig = trait(() => ({
   gravityScale: 1,
   linearDamping: 0,
   angularDamping: 0,
+  /**
+   * Additional mass added to the body (on top of collider-computed mass).
+   * Angular inertia is automatically scaled based on this mass.
+   */
+  additionalMass: 0,
   ccd: false,
   /**
    * Soft CCD prediction threshold (in seconds).

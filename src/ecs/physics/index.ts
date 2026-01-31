@@ -83,6 +83,37 @@ export {
   applyExplosion,
 } from './forces'
 
+// Mass properties helpers
+export {
+  // Mass getters
+  getMass,
+  getInverseMass,
+  getLocalCenterOfMass,
+  getWorldCenterOfMass,
+  getPrincipalInertia,
+  getInversePrincipalInertia,
+  // Gravity scale
+  getGravityScale,
+  setGravityScale,
+  // Damping
+  getLinearDamping,
+  setLinearDamping,
+  getAngularDamping,
+  setAngularDamping,
+  // Mass setters
+  setAdditionalMass,
+  setAdditionalMassProperties,
+  recomputeMassPropertiesFromColliders,
+  // Locked axes
+  lockTranslations,
+  lockRotations,
+  setEnabledTranslations,
+  setEnabledRotations,
+  // Dominance groups
+  getDominanceGroup,
+  setDominanceGroup,
+} from './mass'
+
 // Character controller
 export {
   CharacterShapeRef,

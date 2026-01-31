@@ -27,6 +27,25 @@ import {
   getAngularVelocity,
   setAngularVelocity,
 } from './forces'
+import {
+  getMass,
+  getLocalCenterOfMass,
+  getWorldCenterOfMass,
+  getPrincipalInertia,
+  getGravityScale,
+  setGravityScale,
+  getLinearDamping,
+  setLinearDamping,
+  getAngularDamping,
+  setAngularDamping,
+  setAdditionalMass,
+  lockTranslations,
+  lockRotations,
+  setEnabledTranslations,
+  setEnabledRotations,
+  getDominanceGroup,
+  setDominanceGroup,
+} from './mass'
 
 // Scratch vector for getWorldScale (avoids allocation per collider setup)
 const _scaleVec3 = new Vector3()
@@ -108,6 +127,58 @@ export interface RigidBodyApi {
   getAngularVelocity(): Readonly<Vec3>
   /** Set the angular velocity directly */
   setAngularVelocity(velocity: Vec3, wakeUp?: boolean): void
+
+  // Mass property methods
+  /** Get the total mass of the body */
+  getMass(): number
+  /** Get the local center of mass */
+  getLocalCenterOfMass(): Readonly<Vec3>
+  /** Get the world center of mass */
+  getWorldCenterOfMass(): Readonly<Vec3>
+  /** Get the principal angular inertia */
+  getPrincipalInertia(): Readonly<Vec3>
+  /** Set additional mass (auto-scales inertia) */
+  setAdditionalMass(mass: number, wakeUp?: boolean): void
+
+  // Gravity and damping
+  /** Get the gravity scale factor */
+  getGravityScale(): number
+  /** Set the gravity scale factor */
+  setGravityScale(scale: number, wakeUp?: boolean): void
+  /** Get the linear damping coefficient */
+  getLinearDamping(): number
+  /** Set the linear damping coefficient */
+  setLinearDamping(damping: number): void
+  /** Get the angular damping coefficient */
+  getAngularDamping(): number
+  /** Set the angular damping coefficient */
+  setAngularDamping(damping: number): void
+
+  // Locked axes
+  /** Lock or unlock all translations */
+  lockTranslations(locked: boolean, wakeUp?: boolean): void
+  /** Lock or unlock all rotations */
+  lockRotations(locked: boolean, wakeUp?: boolean): void
+  /** Enable/disable translations per axis */
+  setEnabledTranslations(
+    x: boolean,
+    y: boolean,
+    z: boolean,
+    wakeUp?: boolean,
+  ): void
+  /** Enable/disable rotations per axis */
+  setEnabledRotations(
+    x: boolean,
+    y: boolean,
+    z: boolean,
+    wakeUp?: boolean,
+  ): void
+
+  // Dominance
+  /** Get the dominance group */
+  getDominanceGroup(): number
+  /** Set the dominance group */
+  setDominanceGroup(group: number): void
 }
 
 export interface RigidBodyProps extends Omit<
@@ -119,6 +190,8 @@ export interface RigidBodyProps extends Omit<
   gravityScale?: number
   linearDamping?: number
   angularDamping?: number
+  /** Additional mass on top of collider-computed mass */
+  additionalMass?: number
   linearVelocity?: Triplet | Vector3
   angularVelocity?: Triplet | Vector3
   ccd?: boolean
@@ -157,6 +230,7 @@ export function RigidBody({
   gravityScale = 1,
   linearDamping = 0,
   angularDamping = 0,
+  additionalMass = 0,
   linearVelocity,
   angularVelocity,
   ccd = false,
@@ -209,6 +283,7 @@ export function RigidBody({
           gravityScale,
           linearDamping,
           angularDamping,
+          additionalMass,
           ccd,
           softCcdPrediction: 0,
           canSleep,
@@ -261,6 +336,32 @@ export function RigidBody({
       getAngularVelocity: () => getAngularVelocity(entity),
       setAngularVelocity: (velocity, wakeUp) =>
         setAngularVelocity(entity, velocity, wakeUp),
+      // Mass property methods
+      getMass: () => getMass(entity),
+      getLocalCenterOfMass: () => getLocalCenterOfMass(entity),
+      getWorldCenterOfMass: () => getWorldCenterOfMass(entity),
+      getPrincipalInertia: () => getPrincipalInertia(entity),
+      setAdditionalMass: (mass, wakeUp) =>
+        setAdditionalMass(entity, mass, wakeUp),
+      // Gravity and damping
+      getGravityScale: () => getGravityScale(entity),
+      setGravityScale: (scale, wakeUp) =>
+        setGravityScale(entity, scale, wakeUp),
+      getLinearDamping: () => getLinearDamping(entity),
+      setLinearDamping: (damping) => setLinearDamping(entity, damping),
+      getAngularDamping: () => getAngularDamping(entity),
+      setAngularDamping: (damping) => setAngularDamping(entity, damping),
+      // Locked axes
+      lockTranslations: (locked, wakeUp) =>
+        lockTranslations(entity, locked, wakeUp),
+      lockRotations: (locked, wakeUp) => lockRotations(entity, locked, wakeUp),
+      setEnabledTranslations: (x, y, z, wakeUp) =>
+        setEnabledTranslations(entity, x, y, z, wakeUp),
+      setEnabledRotations: (x, y, z, wakeUp) =>
+        setEnabledRotations(entity, x, y, z, wakeUp),
+      // Dominance
+      getDominanceGroup: () => getDominanceGroup(entity),
+      setDominanceGroup: (group) => setDominanceGroup(entity, group),
     }
   }, [])
 
