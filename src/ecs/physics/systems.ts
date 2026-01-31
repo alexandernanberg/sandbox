@@ -1,4 +1,4 @@
-import * as RAPIER from '@dimforge/rapier3d-simd-compat'
+import * as RAPIER from '@alexandernanberg/rapier3d/compat-simd'
 import type {World} from 'koota'
 import {createQuery, Not} from 'koota'
 import {Matrix4, Object3D} from 'three'
@@ -246,10 +246,7 @@ function createRigidBodyDesc(type: RigidBodyType): RAPIER.RigidBodyDesc {
 // Reusable scale object to avoid allocations
 const _scale = {x: 1, y: 1, z: 1}
 
-export function createColliders(
-  world: World,
-  rapierWorld: RAPIER.World,
-): void {
+export function createColliders(world: World, rapierWorld: RAPIER.World): void {
   const colliders = world.query(uninitializedCollidersQuery)
 
   for (const entity of colliders) {

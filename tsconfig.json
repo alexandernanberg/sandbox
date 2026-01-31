@@ -10,7 +10,7 @@
     "forceConsistentCasingInFileNames": true,
     "allowSyntheticDefaultImports": true,
     "noUncheckedIndexedAccess": true,
-    "moduleResolution": "node",
+    "moduleResolution": "bundler",
     "isolatedModules": true,
     "resolveJsonModule": true,
     "paths": {

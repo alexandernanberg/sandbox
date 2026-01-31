@@ -1,4 +1,4 @@
-import type * as RAPIER from '@dimforge/rapier3d-simd-compat'
+import type * as RAPIER from '@alexandernanberg/rapier3d/compat-simd'
 import {trait, createQuery} from 'koota'
 import type {Entity, World} from 'koota'
 import {CollisionCallbacks} from './traits'

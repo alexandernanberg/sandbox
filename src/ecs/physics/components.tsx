@@ -1,4 +1,4 @@
-import type * as RAPIER from '@dimforge/rapier3d-simd-compat'
+import type * as RAPIER from '@alexandernanberg/rapier3d/compat-simd'
 import type {Entity} from 'koota'
 import {useWorld} from 'koota/react'
 import type {ComponentProps, ReactNode} from 'react'

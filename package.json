@@ -15,6 +15,7 @@
     "test": "bun test"
   },
   "dependencies": {
+    "@alexandernanberg/rapier3d": "^0.0.1",
     "@dimforge/rapier3d": "^0.19.3",
     "@dimforge/rapier3d-compat": "^0.19.3",
     "@dimforge/rapier3d-simd-compat": "^0.19.3",

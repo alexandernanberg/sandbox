@@ -1,4 +1,4 @@
-import type * as RAPIER from '@dimforge/rapier3d-simd-compat'
+import type * as RAPIER from '@alexandernanberg/rapier3d/compat-simd'
 import {trait, relation} from 'koota'
 import type {Entity} from 'koota'
 import type {Object3D} from 'three'

@@ -9,7 +9,7 @@ Rapier is a high-performance physics engine used for 3D physics simulation. This
 The central physics simulation container that manages gravity and all bodies/colliders.
 
 ```javascript
-import RAPIER from '@dimforge/rapier3d-simd-compat'
+import RAPIER from '@alexandernanberg/rapier3d/compat-simd'
 const gravity = {x: 0, y: -9.81, z: 0}
 const world = new RAPIER.World(gravity)
 

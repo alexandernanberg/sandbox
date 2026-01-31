@@ -1,4 +1,4 @@
-import * as RAPIER from '@dimforge/rapier3d-simd-compat'
+import * as RAPIER from '@alexandernanberg/rapier3d/compat-simd'
 import {createQuery} from 'koota'
 import type {World} from 'koota'
 import {cameraInputSystem, cameraUpdateSystem} from '../camera/systems'

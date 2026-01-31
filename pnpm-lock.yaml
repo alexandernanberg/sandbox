@@ -8,6 +8,9 @@ importers:
 
   .:
     dependencies:
+      '@alexandernanberg/rapier3d':
+        specifier: ^0.0.1
+        version: 0.0.1
       '@dimforge/rapier3d':
         specifier: ^0.19.3
         version: 0.19.3
@@ -98,6 +101,9 @@ importers:
         version: 3.5.0(vite@7.3.1(@types/node@25.0.10))
 
 packages:
+
+  '@alexandernanberg/rapier3d@0.0.1':
+    resolution: {integrity: sha512-OXCX5xdJUBAJUM3jiDNjKFQBRSKqnQfx0L49/yIF7BqEQk/Yio5UAyiZIBWHi9Bwt++9aCBGxO0+/7FGVYFGoQ==}
 
   '@babel/code-frame@7.28.6':
     resolution: {integrity: sha512-JYgintcMjRiCvS8mMECzaEn+m3PfoQiyqukOMCCVQtoJGYJw8j/8LBJEiqkHLkfwCcs74E3pbAUFNg7d9VNJ+Q==}
@@ -2067,6 +2073,10 @@ packages:
         optional: true
 
 snapshots:
+
+  '@alexandernanberg/rapier3d@0.0.1':
+    dependencies:
+      base64-js: 1.5.1
 
   '@babel/code-frame@7.28.6':
     dependencies:
