@@ -12,10 +12,50 @@ import {
 } from 'react'
 import {Vector3} from 'three'
 import type {Object3D} from 'three'
+import type {Vec3} from './forces'
+import {
+  applyImpulse,
+  applyImpulseAtPoint,
+  applyTorqueImpulse,
+  addForce,
+  addForceAtPoint,
+  addTorque,
+  resetForces,
+  resetTorques,
+  getLinearVelocity,
+  setLinearVelocity,
+  getAngularVelocity,
+  setAngularVelocity,
+} from './forces'
+import {
+  getMass,
+  getLocalCenterOfMass,
+  getWorldCenterOfMass,
+  getPrincipalInertia,
+  getGravityScale,
+  setGravityScale,
+  getLinearDamping,
+  setLinearDamping,
+  getAngularDamping,
+  setAngularDamping,
+  setAdditionalMass,
+  lockTranslations,
+  lockRotations,
+  setEnabledTranslations,
+  setEnabledRotations,
+  getDominanceGroup,
+  setDominanceGroup,
+} from './mass'
 
 // Scratch vector for getWorldScale (avoids allocation per collider setup)
 const _scaleVec3 = new Vector3()
-import type {RigidBodyType, ColliderShape, CollisionCallback} from './traits'
+import type {
+  RigidBodyType,
+  ColliderShape,
+  CollisionCallback,
+  ContactForceCallback,
+  SleepCallback,
+} from './traits'
 import {
   Transform,
   PreviousTransform,
@@ -23,6 +63,8 @@ import {
   RigidBodyConfig,
   ColliderConfig,
   CollisionCallbacks,
+  SleepState,
+  SleepCallbacks,
   Object3DRef,
   RigidBodyRef,
   IsPhysicsEntity,
@@ -55,6 +97,88 @@ export interface RigidBodyApi {
   readonly entity: Entity
   /** The Rapier rigid body (null if not yet initialized) */
   readonly body: RAPIER.RigidBody | null
+
+  // Impulse methods (instant velocity change)
+  /** Apply an impulse at the center of mass */
+  applyImpulse(impulse: Vec3, wakeUp?: boolean): void
+  /** Apply an impulse at a specific world point (causes rotation) */
+  applyImpulseAtPoint(impulse: Vec3, point: Vec3, wakeUp?: boolean): void
+  /** Apply a torque impulse (instant angular velocity change) */
+  applyTorqueImpulse(torqueImpulse: Vec3, wakeUp?: boolean): void
+
+  // Force methods (accumulated each frame)
+  /** Add a force at the center of mass */
+  addForce(force: Vec3, wakeUp?: boolean): void
+  /** Add a force at a specific world point (causes torque) */
+  addForceAtPoint(force: Vec3, point: Vec3, wakeUp?: boolean): void
+  /** Add a torque (rotational force) */
+  addTorque(torque: Vec3, wakeUp?: boolean): void
+  /** Reset all accumulated forces */
+  resetForces(wakeUp?: boolean): void
+  /** Reset all accumulated torques */
+  resetTorques(wakeUp?: boolean): void
+
+  // Velocity methods
+  /** Get the linear velocity */
+  getLinearVelocity(): Readonly<Vec3>
+  /** Set the linear velocity directly */
+  setLinearVelocity(velocity: Vec3, wakeUp?: boolean): void
+  /** Get the angular velocity */
+  getAngularVelocity(): Readonly<Vec3>
+  /** Set the angular velocity directly */
+  setAngularVelocity(velocity: Vec3, wakeUp?: boolean): void
+
+  // Mass property methods
+  /** Get the total mass of the body */
+  getMass(): number
+  /** Get the local center of mass */
+  getLocalCenterOfMass(): Readonly<Vec3>
+  /** Get the world center of mass */
+  getWorldCenterOfMass(): Readonly<Vec3>
+  /** Get the principal angular inertia */
+  getPrincipalInertia(): Readonly<Vec3>
+  /** Set additional mass (auto-scales inertia) */
+  setAdditionalMass(mass: number, wakeUp?: boolean): void
+
+  // Gravity and damping
+  /** Get the gravity scale factor */
+  getGravityScale(): number
+  /** Set the gravity scale factor */
+  setGravityScale(scale: number, wakeUp?: boolean): void
+  /** Get the linear damping coefficient */
+  getLinearDamping(): number
+  /** Set the linear damping coefficient */
+  setLinearDamping(damping: number): void
+  /** Get the angular damping coefficient */
+  getAngularDamping(): number
+  /** Set the angular damping coefficient */
+  setAngularDamping(damping: number): void
+
+  // Locked axes
+  /** Lock or unlock all translations */
+  lockTranslations(locked: boolean, wakeUp?: boolean): void
+  /** Lock or unlock all rotations */
+  lockRotations(locked: boolean, wakeUp?: boolean): void
+  /** Enable/disable translations per axis */
+  setEnabledTranslations(
+    x: boolean,
+    y: boolean,
+    z: boolean,
+    wakeUp?: boolean,
+  ): void
+  /** Enable/disable rotations per axis */
+  setEnabledRotations(
+    x: boolean,
+    y: boolean,
+    z: boolean,
+    wakeUp?: boolean,
+  ): void
+
+  // Dominance
+  /** Get the dominance group */
+  getDominanceGroup(): number
+  /** Set the dominance group */
+  setDominanceGroup(group: number): void
 }
 
 export interface RigidBodyProps extends Omit<
@@ -66,10 +190,14 @@ export interface RigidBodyProps extends Omit<
   gravityScale?: number
   linearDamping?: number
   angularDamping?: number
+  /** Additional mass on top of collider-computed mass */
+  additionalMass?: number
   linearVelocity?: Triplet | Vector3
   angularVelocity?: Triplet | Vector3
   ccd?: boolean
   canSleep?: boolean
+  /** Start the body in sleeping state. Useful for static scenes. */
+  sleeping?: boolean
   dominanceGroup?: number
   lockPosition?: boolean
   lockRotation?: boolean
@@ -85,6 +213,15 @@ export interface RigidBodyProps extends Omit<
   onCollisionEnter?: CollisionCallback
   /** Called when a collision ends */
   onCollisionExit?: CollisionCallback
+  /**
+   * Called when contact forces exceed the threshold.
+   * Requires `contactForceEvents: true` on at least one collider.
+   */
+  onContactForce?: ContactForceCallback
+  /** Called when the body falls asleep */
+  onSleep?: SleepCallback
+  /** Called when the body wakes up */
+  onWake?: SleepCallback
 }
 
 export function RigidBody({
@@ -93,10 +230,12 @@ export function RigidBody({
   gravityScale = 1,
   linearDamping = 0,
   angularDamping = 0,
+  additionalMass = 0,
   linearVelocity,
   angularVelocity,
   ccd = false,
   canSleep = true,
+  sleeping = false,
   dominanceGroup = 0,
   lockPosition = false,
   lockRotation = false,
@@ -107,6 +246,9 @@ export function RigidBody({
   entityRef,
   onCollisionEnter,
   onCollisionExit,
+  onContactForce,
+  onSleep,
+  onWake,
   ...props
 }: RigidBodyProps) {
   const world = useWorld()
@@ -135,18 +277,23 @@ export function RigidBody({
         PreviousTransform,
         RenderTransform,
         Object3DRef,
+        SleepState,
         RigidBodyConfig({
           type,
           gravityScale,
           linearDamping,
           angularDamping,
+          additionalMass,
           ccd,
+          softCcdPrediction: 0,
           canSleep,
+          sleeping,
           dominanceGroup,
           lockPosition,
           lockRotation,
           restrictPosition: restrictPosition ?? null,
           restrictRotation: restrictRotation ?? null,
+          additionalSolverIterations: 0,
           linearVelocityX: linVel.x,
           linearVelocityY: linVel.y,
           linearVelocityZ: linVel.z,
@@ -169,6 +316,52 @@ export function RigidBody({
       get body() {
         return entity.get(RigidBodyRef)?.body ?? null
       },
+      // Impulse methods
+      applyImpulse: (impulse, wakeUp) => applyImpulse(entity, impulse, wakeUp),
+      applyImpulseAtPoint: (impulse, point, wakeUp) =>
+        applyImpulseAtPoint(entity, impulse, point, wakeUp),
+      applyTorqueImpulse: (torqueImpulse, wakeUp) =>
+        applyTorqueImpulse(entity, torqueImpulse, wakeUp),
+      // Force methods
+      addForce: (force, wakeUp) => addForce(entity, force, wakeUp),
+      addForceAtPoint: (force, point, wakeUp) =>
+        addForceAtPoint(entity, force, point, wakeUp),
+      addTorque: (torque, wakeUp) => addTorque(entity, torque, wakeUp),
+      resetForces: (wakeUp) => resetForces(entity, wakeUp),
+      resetTorques: (wakeUp) => resetTorques(entity, wakeUp),
+      // Velocity methods
+      getLinearVelocity: () => getLinearVelocity(entity),
+      setLinearVelocity: (velocity, wakeUp) =>
+        setLinearVelocity(entity, velocity, wakeUp),
+      getAngularVelocity: () => getAngularVelocity(entity),
+      setAngularVelocity: (velocity, wakeUp) =>
+        setAngularVelocity(entity, velocity, wakeUp),
+      // Mass property methods
+      getMass: () => getMass(entity),
+      getLocalCenterOfMass: () => getLocalCenterOfMass(entity),
+      getWorldCenterOfMass: () => getWorldCenterOfMass(entity),
+      getPrincipalInertia: () => getPrincipalInertia(entity),
+      setAdditionalMass: (mass, wakeUp) =>
+        setAdditionalMass(entity, mass, wakeUp),
+      // Gravity and damping
+      getGravityScale: () => getGravityScale(entity),
+      setGravityScale: (scale, wakeUp) =>
+        setGravityScale(entity, scale, wakeUp),
+      getLinearDamping: () => getLinearDamping(entity),
+      setLinearDamping: (damping) => setLinearDamping(entity, damping),
+      getAngularDamping: () => getAngularDamping(entity),
+      setAngularDamping: (damping) => setAngularDamping(entity, damping),
+      // Locked axes
+      lockTranslations: (locked, wakeUp) =>
+        lockTranslations(entity, locked, wakeUp),
+      lockRotations: (locked, wakeUp) => lockRotations(entity, locked, wakeUp),
+      setEnabledTranslations: (x, y, z, wakeUp) =>
+        setEnabledTranslations(entity, x, y, z, wakeUp),
+      setEnabledRotations: (x, y, z, wakeUp) =>
+        setEnabledRotations(entity, x, y, z, wakeUp),
+      // Dominance
+      getDominanceGroup: () => getDominanceGroup(entity),
+      setDominanceGroup: (group) => setDominanceGroup(entity, group),
     }
   }, [])
 
@@ -207,7 +400,7 @@ export function RigidBody({
     const entity = spawnedEntityRef.current
     if (!entity || !entity.isAlive()) return
 
-    const hasCallbacks = onCollisionEnter || onCollisionExit
+    const hasCallbacks = onCollisionEnter || onCollisionExit || onContactForce
     if (hasCallbacks) {
       // Add or update CollisionCallbacks trait
       if (!entity.has(CollisionCallbacks)) {
@@ -216,12 +409,32 @@ export function RigidBody({
       entity.set(CollisionCallbacks, {
         onEnter: onCollisionEnter ?? null,
         onExit: onCollisionExit ?? null,
+        onContactForce: onContactForce ?? null,
       })
     } else if (entity.has(CollisionCallbacks)) {
       // Remove trait if no callbacks
       entity.remove(CollisionCallbacks)
     }
-  }, [onCollisionEnter, onCollisionExit])
+  }, [onCollisionEnter, onCollisionExit, onContactForce])
+
+  // Sync sleep callbacks to trait
+  useLayoutEffect(() => {
+    const entity = spawnedEntityRef.current
+    if (!entity || !entity.isAlive()) return
+
+    const hasSleepCallbacks = onSleep || onWake
+    if (hasSleepCallbacks) {
+      if (!entity.has(SleepCallbacks)) {
+        entity.add(SleepCallbacks)
+      }
+      entity.set(SleepCallbacks, {
+        onSleep: onSleep ?? null,
+        onWake: onWake ?? null,
+      })
+    } else if (entity.has(SleepCallbacks)) {
+      entity.remove(SleepCallbacks)
+    }
+  }, [onSleep, onWake])
 
   const context = useMemo<RigidBodyContextValue>(() => ({entityGetter}), [])
 
@@ -296,6 +509,11 @@ function useColliderSetup(shape: ColliderShape, props: BaseColliderProps) {
         scaleX,
         scaleY,
         scaleZ,
+        collisionGroups: 0xffff_ffff,
+        solverGroups: 0xffff_ffff,
+        frictionCombineRule: 'average',
+        restitutionCombineRule: 'average',
+        contactForceEvents: false,
       }),
     ))
 

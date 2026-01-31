@@ -14,6 +14,32 @@ export interface CollisionEvent {
 export type CollisionCallback = (event: CollisionEvent) => void
 
 // ============================================
+// Contact force callback type
+// ============================================
+
+export interface ContactForceEvent {
+  /** The other entity involved in the contact */
+  other: Entity
+  /** Sum of all contact forces (world-space vector) */
+  totalForce: {x: number; y: number; z: number}
+  /** Sum of the magnitudes of all contact forces */
+  totalForceMagnitude: number
+  /** Direction of the strongest force (world-space unit vector) */
+  maxForceDirection: {x: number; y: number; z: number}
+  /** Magnitude of the largest individual contact force */
+  maxForceMagnitude: number
+}
+
+export type ContactForceCallback = (event: ContactForceEvent) => void
+
+// ============================================
+// Sleep state callback type
+// ============================================
+
+/** Callback for sleep state changes */
+export type SleepCallback = () => void
+
+// ============================================
 // Kinematic body velocity (for moving platforms)
 // ============================================
 
@@ -76,19 +102,99 @@ export type RigidBodyType =
   | 'kinematic-velocity-based'
   | 'kinematic-position-based'
 
+// ============================================
+// Collision Group Helpers
+// ============================================
+
+/**
+ * Creates a collision groups bitmask from membership and filter groups.
+ *
+ * Collision groups are a 32-bit value where:
+ * - Lower 16 bits: membership groups (what groups this collider belongs to)
+ * - Upper 16 bits: filter groups (what groups this collider collides with)
+ *
+ * Two colliders A and B collide if:
+ * - A's membership has at least one bit in common with B's filter, AND
+ * - B's membership has at least one bit in common with A's filter
+ *
+ * @example
+ * ```ts
+ * // Player (group 0) collides with environment (group 1) and enemies (group 2)
+ * const PLAYER = 1 << 0
+ * const ENVIRONMENT = 1 << 1
+ * const ENEMY = 1 << 2
+ *
+ * // Player: belongs to PLAYER, collides with ENVIRONMENT and ENEMY
+ * const playerGroups = createCollisionGroups(PLAYER, ENVIRONMENT | ENEMY)
+ *
+ * // Enemy: belongs to ENEMY, collides with PLAYER and ENVIRONMENT
+ * const enemyGroups = createCollisionGroups(ENEMY, PLAYER | ENVIRONMENT)
+ * ```
+ */
+export function createCollisionGroups(
+  membership: number,
+  filter: number,
+): number {
+  return ((filter & 0xffff) << 16) | (membership & 0xffff)
+}
+
+/**
+ * Common collision group presets.
+ * Combine with bitwise OR for custom setups.
+ */
+export const CollisionGroup = {
+  /** Default group - all colliders belong here by default */
+  DEFAULT: 1 << 0,
+  /** Player character */
+  PLAYER: 1 << 1,
+  /** Enemy characters */
+  ENEMY: 1 << 2,
+  /** Static environment (floors, walls) */
+  ENVIRONMENT: 1 << 3,
+  /** Projectiles */
+  PROJECTILE: 1 << 4,
+  /** Pickups and collectibles */
+  PICKUP: 1 << 5,
+  /** Triggers and sensors */
+  TRIGGER: 1 << 6,
+  /** All groups */
+  ALL: 0xffff,
+} as const
+
 // Use factory function pattern to get proper type inference
 export const RigidBodyConfig = trait(() => ({
   type: 'dynamic' as RigidBodyType,
   gravityScale: 1,
   linearDamping: 0,
   angularDamping: 0,
+  /**
+   * Additional mass added to the body (on top of collider-computed mass).
+   * Angular inertia is automatically scaled based on this mass.
+   */
+  additionalMass: 0,
   ccd: false,
+  /**
+   * Soft CCD prediction threshold (in seconds).
+   * When > 0, enables "soft" CCD that predicts tunneling within this time window.
+   * Unlike binary CCD, this avoids false positives for slow-moving objects.
+   * Recommended: 1/60 (one physics frame) for character controllers.
+   * Set to 0 to disable soft CCD (uses binary CCD if `ccd: true`).
+   */
+  softCcdPrediction: 0,
   canSleep: true,
+  /** Start the body in sleeping state. Useful for static scenes. */
+  sleeping: false,
   dominanceGroup: 0,
   lockPosition: false,
   lockRotation: false,
   restrictPosition: null as [boolean, boolean, boolean] | null,
   restrictRotation: null as [boolean, boolean, boolean] | null,
+  /**
+   * Additional solver iterations for this body only.
+   * Useful for high-precision constraints/joints on specific bodies.
+   * 0 uses the global solver iterations setting.
+   */
+  additionalSolverIterations: 0,
   // Initial velocities (applied on body creation)
   linearVelocityX: 0,
   linearVelocityY: 0,
@@ -114,6 +220,15 @@ export type ColliderShape =
       scale: RAPIER.Vector
     }
 
+/**
+ * Combine rule for friction/restitution between two colliders.
+ * - 'average': (a + b) / 2 (default)
+ * - 'min': Math.min(a, b)
+ * - 'max': Math.max(a, b)
+ * - 'multiply': a * b
+ */
+export type CoefficientCombineRule = 'average' | 'min' | 'max' | 'multiply'
+
 // Use factory function pattern to get proper type inference
 export const ColliderConfig = trait(() => ({
   shape: null as ColliderShape | null,
@@ -133,6 +248,18 @@ export const ColliderConfig = trait(() => ({
   scaleX: 1,
   scaleY: 1,
   scaleZ: 1,
+  // Collision groups: 32-bit bitmask with membership (lower 16 bits) and filter (upper 16 bits)
+  // Use createCollisionGroups() helper to construct this value.
+  // Default: all groups, collides with all groups
+  collisionGroups: 0xffff_ffff,
+  // Solver groups: same format as collisionGroups but for contact force computation
+  // Default: all groups
+  solverGroups: 0xffff_ffff,
+  // Combine rules for friction/restitution
+  frictionCombineRule: 'average' as CoefficientCombineRule,
+  restitutionCombineRule: 'average' as CoefficientCombineRule,
+  // Enable contact force events (for onContactForce callbacks)
+  contactForceEvents: false,
 }))
 
 // ============================================
@@ -198,4 +325,30 @@ export const ColliderInitialized = trait()
 export const CollisionCallbacks = trait(() => ({
   onEnter: null as CollisionCallback | null,
   onExit: null as CollisionCallback | null,
+  onContactForce: null as ContactForceCallback | null,
+}))
+
+// ============================================
+// Sleep state tracking
+// ============================================
+
+/**
+ * Tracks the sleep state of a rigid body.
+ * Updated each frame after physics step.
+ */
+export const SleepState = trait(() => ({
+  /** Current sleep state */
+  sleeping: false,
+  /** Sleep state from previous frame (for change detection) */
+  wasSleeping: false,
+  /** True if body just fell asleep this frame */
+  justSlept: false,
+  /** True if body just woke up this frame */
+  justWoke: false,
+}))
+
+/** Stores sleep state callbacks for an entity */
+export const SleepCallbacks = trait(() => ({
+  onSleep: null as SleepCallback | null,
+  onWake: null as SleepCallback | null,
 }))

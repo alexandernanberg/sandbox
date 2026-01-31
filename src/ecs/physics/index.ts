@@ -19,24 +19,100 @@ export {
   ChildOf,
   // Kinematic bodies
   KinematicVelocity,
+  // Sleep state
+  SleepState,
+  SleepCallbacks,
   // Tags
   IsPhysicsEntity,
   IsColliderEntity,
   PhysicsInitialized,
   ColliderInitialized,
+  // Collision groups
+  createCollisionGroups,
+  CollisionGroup,
   // Types
   type RigidBodyType,
   type ColliderShape,
+  type CoefficientCombineRule,
+  type ContactForceEvent,
+  type ContactForceCallback,
+  type SleepCallback,
 } from './traits'
 
-// Event traits
+// Event traits and helpers
 export {
+  // Collision events
   CollisionEntered,
   CollisionExited,
   getCollisionsEntered,
   getCollisionsExited,
   isCollidingWith,
+  // Contact force events
+  ContactForceReceived,
+  getContactForces,
+  getTotalContactForceMagnitude,
+  getMaxContactForceMagnitude,
+  // Sleep state helpers
+  isSleeping,
+  justSlept,
+  justWoke,
+  putToSleep,
+  wakeUp,
 } from './events'
+
+// Force and impulse helpers
+export {
+  // Impulses (instant velocity change)
+  applyImpulse,
+  applyImpulseAtPoint,
+  applyTorqueImpulse,
+  // Forces (accumulated each frame)
+  addForce,
+  addForceAtPoint,
+  addTorque,
+  resetForces,
+  resetTorques,
+  // Velocity control
+  getLinearVelocity,
+  setLinearVelocity,
+  getAngularVelocity,
+  setAngularVelocity,
+  // Utilities
+  getSpeed,
+  getAngularSpeed,
+  applyExplosion,
+} from './forces'
+
+// Mass properties helpers
+export {
+  // Mass getters
+  getMass,
+  getInverseMass,
+  getLocalCenterOfMass,
+  getWorldCenterOfMass,
+  getPrincipalInertia,
+  getInversePrincipalInertia,
+  // Gravity scale
+  getGravityScale,
+  setGravityScale,
+  // Damping
+  getLinearDamping,
+  setLinearDamping,
+  getAngularDamping,
+  setAngularDamping,
+  // Mass setters
+  setAdditionalMass,
+  setAdditionalMassProperties,
+  recomputeMassPropertiesFromColliders,
+  // Locked axes
+  lockTranslations,
+  lockRotations,
+  setEnabledTranslations,
+  setEnabledRotations,
+  // Dominance groups
+  getDominanceGroup,
+  setDominanceGroup,
+} from './mass'
 
 // Character controller
 export {
@@ -56,10 +132,17 @@ export {
   getEventQueue,
   onBeforeStep,
   onAfterStep,
+  // Runtime configuration
+  setSolverIterations,
+  setInternalPgsIterations,
+  setMaxCcdSubsteps,
+  // Profiling
+  setProfilerEnabled,
+  getPhysicsTimings,
   FIXED_TIMESTEP,
   MAX_DELTA,
 } from './world'
-export type {PhysicsWorldState, PhysicsConfig} from './world'
+export type {PhysicsWorldState, PhysicsConfig, PhysicsTimings} from './world'
 
 // Step function (runs all physics systems)
 export {stepPhysics, getInterpolationAlpha} from './step'
@@ -123,9 +206,30 @@ export {
   syncTransformFromPhysics,
   interpolateTransforms,
   syncToObject3D,
+  updateSleepStates,
 } from './systems'
 
-export {processCollisionEvents, clearCollisionEvents} from './events'
+export {
+  processCollisionEvents,
+  processContactForceEvents,
+  clearCollisionEvents,
+} from './events'
+
+// Scene queries (raycasting, shape casting)
+export {
+  castRay,
+  castRayAndGetNormal,
+  castShape,
+  pointIntersection,
+  projectPoint,
+  QueryFilterFlags,
+} from './queries'
+export type {
+  RaycastHit,
+  RaycastOptions,
+  ShapeCastHit,
+  ShapeCastOptions,
+} from './queries'
 
 export {
   characterControllerSystem,
@@ -139,3 +243,57 @@ export type {
   CharacterControllerProps,
   CharacterControllerApi,
 } from './character-controller'
+
+// Joints (imperative API)
+export {
+  // Joint creation
+  createFixedJoint,
+  createRevoluteJoint,
+  createPrismaticJoint,
+  createSphericalJoint,
+  createRopeJoint,
+  createSpringJoint,
+  createGenericJoint,
+  destroyJoint,
+  // Motor configuration
+  configureMotorVelocity,
+  configureMotorPosition,
+  configureMotor,
+  setMotorModel,
+  // Limit configuration
+  setJointLimits,
+  areLimitsEnabled,
+  getJointLimits,
+  // Anchor configuration
+  setAnchor1,
+  setAnchor2,
+  getAnchor1,
+  getAnchor2,
+  // Contact control
+  setContactsEnabled,
+  areContactsEnabled,
+  // Re-exported Rapier types
+  JointAxesMask,
+  MotorModel,
+} from './joints'
+export type {
+  JointHandle,
+  FixedJointOptions,
+  RevoluteJointOptions,
+  PrismaticJointOptions,
+  SphericalJointOptions,
+  RopeJointOptions,
+  SpringJointOptions,
+  GenericJointOptions,
+} from './joints'
+
+// Joint hooks (React integration)
+export {
+  useFixedJoint,
+  useRevoluteJoint,
+  usePrismaticJoint,
+  useSphericalJoint,
+  useRopeJoint,
+  useSpringJoint,
+  useGenericJoint,
+} from './joint-hooks'

@@ -13,7 +13,11 @@ import {
   _quat,
   _vec3,
 } from '~/lib/math'
-import type {RigidBodyType, ColliderShape} from './traits'
+import type {
+  RigidBodyType,
+  ColliderShape,
+  CoefficientCombineRule,
+} from './traits'
 import {CharacterMovement, IsCharacterController} from './character'
 import {
   Transform,
@@ -30,6 +34,8 @@ import {
   Object3DRef,
   ParentInverseMatrix,
   ChildOf,
+  SleepState,
+  SleepCallbacks,
 } from './traits'
 
 // ============================================
@@ -153,6 +159,7 @@ export function createPhysicsBodies(
       .setAngularDamping(config.angularDamping)
       .setCcdEnabled(config.ccd)
       .setCanSleep(config.canSleep)
+      .setSleeping(config.sleeping)
       .setDominanceGroup(config.dominanceGroup)
       .setTranslation(transform.x, transform.y, transform.z)
       .setRotation({
@@ -161,6 +168,23 @@ export function createPhysicsBodies(
         z: transform.qz,
         w: transform.qw,
       })
+
+    // Soft CCD prediction (time-based threshold to avoid false positives)
+    if (config.softCcdPrediction > 0) {
+      rigidBodyDesc.setSoftCcdPrediction(config.softCcdPrediction)
+    }
+
+    // Additional mass (on top of collider-computed mass)
+    if (config.additionalMass !== 0) {
+      rigidBodyDesc.setAdditionalMass(config.additionalMass)
+    }
+
+    // Additional solver iterations for high-precision constraints
+    if (config.additionalSolverIterations > 0) {
+      rigidBodyDesc.setAdditionalSolverIterations(
+        config.additionalSolverIterations,
+      )
+    }
 
     if (config.restrictPosition) {
       const [x, y, z] = config.restrictPosition
@@ -239,6 +263,23 @@ function createRigidBodyDesc(type: RigidBodyType): RAPIER.RigidBodyDesc {
   }
 }
 
+function getCombineRule(
+  rule: CoefficientCombineRule,
+): RAPIER.CoefficientCombineRule {
+  switch (rule) {
+    case 'average':
+      return RAPIER.CoefficientCombineRule.Average
+    case 'min':
+      return RAPIER.CoefficientCombineRule.Min
+    case 'max':
+      return RAPIER.CoefficientCombineRule.Max
+    case 'multiply':
+      return RAPIER.CoefficientCombineRule.Multiply
+    default:
+      return RAPIER.CoefficientCombineRule.Average
+  }
+}
+
 // ============================================
 // Collider Creation System
 // ============================================
@@ -246,10 +287,7 @@ function createRigidBodyDesc(type: RigidBodyType): RAPIER.RigidBodyDesc {
 // Reusable scale object to avoid allocations
 const _scale = {x: 1, y: 1, z: 1}
 
-export function createColliders(
-  world: World,
-  rapierWorld: RAPIER.World,
-): void {
+export function createColliders(world: World, rapierWorld: RAPIER.World): void {
   const colliders = world.query(uninitializedCollidersQuery)
 
   for (const entity of colliders) {
@@ -290,8 +328,25 @@ export function createColliders(
         w: config.offsetQw,
       })
 
-    // Enable collision events
-    colliderDesc.setActiveEvents(RAPIER.ActiveEvents.COLLISION_EVENTS)
+    // Collision and solver groups for filtering
+    colliderDesc.setCollisionGroups(config.collisionGroups)
+    colliderDesc.setSolverGroups(config.solverGroups)
+
+    // Friction/restitution combine rules
+    colliderDesc.setFrictionCombineRule(
+      getCombineRule(config.frictionCombineRule),
+    )
+    colliderDesc.setRestitutionCombineRule(
+      getCombineRule(config.restitutionCombineRule),
+    )
+
+    // Enable collision events (always enabled for collision detection)
+    // Optionally enable contact force events for force-based callbacks
+    let activeEvents = RAPIER.ActiveEvents.COLLISION_EVENTS
+    if (config.contactForceEvents) {
+      activeEvents |= RAPIER.ActiveEvents.CONTACT_FORCE_EVENTS
+    }
+    colliderDesc.setActiveEvents(activeEvents)
 
     // Create the collider attached to parent rigid body
     const collider = rapierWorld.createCollider(colliderDesc, bodyRef.body)
@@ -394,6 +449,12 @@ export function storePreviousTransforms(world: World): void {
 export function syncTransformFromPhysics(world: World): void {
   for (const entity of world.query(syncFromPhysicsQuery)) {
     const body = entity.get(RigidBodyRef)!.body
+    // Skip bodies that don't need syncing:
+    // - sleeping: not moving (will wake up if touched)
+    // - fixed: never moves
+    // Note: kinematic bodies MUST be synced for interpolation, even though
+    // their positions are set by user code. The sync ensures the ECS Transform
+    // trait stays in sync with Rapier for correct interpolation and rendering.
     if (!body || body.isSleeping() || body.isFixed()) continue
 
     copyFromRapier(_transform, body.translation(), body.rotation())
@@ -496,5 +557,49 @@ export function smoothCharacterVisuals(world: World, delta: number): void {
       m.visualY = newVisualY
       return m
     })
+  }
+}
+
+// ============================================
+// Sleep State Tracking System
+// ============================================
+
+const sleepStateQuery = createQuery(
+  RigidBodyRef,
+  SleepState,
+  PhysicsInitialized,
+)
+
+/**
+ * Updates sleep state for all rigid bodies and fires callbacks on state changes.
+ * Call this after the physics step.
+ */
+export function updateSleepStates(world: World): void {
+  for (const entity of world.query(sleepStateQuery)) {
+    const body = entity.get(RigidBodyRef)!.body
+    if (!body) continue
+
+    const currentSleeping = body.isSleeping()
+
+    entity.set(SleepState, (state) => {
+      state.wasSleeping = state.sleeping
+      state.sleeping = currentSleeping
+      state.justSlept = !state.wasSleeping && currentSleeping
+      state.justWoke = state.wasSleeping && !currentSleeping
+      return state
+    })
+
+    // Fire callbacks on state changes
+    if (entity.has(SleepCallbacks)) {
+      const callbacks = entity.get(SleepCallbacks)!
+      const state = entity.get(SleepState)!
+
+      if (state.justSlept && callbacks.onSleep) {
+        callbacks.onSleep()
+      }
+      if (state.justWoke && callbacks.onWake) {
+        callbacks.onWake()
+      }
+    }
   }
 }
