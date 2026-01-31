@@ -56,10 +56,17 @@ export {
   getEventQueue,
   onBeforeStep,
   onAfterStep,
+  // Runtime configuration
+  setSolverIterations,
+  setInternalPgsIterations,
+  setMaxCcdSubsteps,
+  // Profiling
+  setProfilerEnabled,
+  getPhysicsTimings,
   FIXED_TIMESTEP,
   MAX_DELTA,
 } from './world'
-export type {PhysicsWorldState, PhysicsConfig} from './world'
+export type {PhysicsWorldState, PhysicsConfig, PhysicsTimings} from './world'
 
 // Step function (runs all physics systems)
 export {stepPhysics, getInterpolationAlpha} from './step'
