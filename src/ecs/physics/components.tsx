@@ -5,6 +5,7 @@ import type {ComponentProps, ReactNode} from 'react'
 import {
   createContext,
   use,
+  useEffectEvent,
   useImperativeHandle,
   useLayoutEffect,
   useMemo,
@@ -53,7 +54,9 @@ import type {
   RigidBodyType,
   ColliderShape,
   CollisionCallback,
+  CollisionEvent,
   ContactForceCallback,
+  ContactForceEvent,
   SleepCallback,
 } from './traits'
 import {
@@ -255,6 +258,23 @@ export function RigidBody({
   const object3dRef = useRef<Object3D>(null)
   const spawnedEntityRef = useRef<Entity | null>(null)
 
+  // Wrap callbacks in useEffectEvent to avoid effect re-runs
+  const handleCollisionEnter = useEffectEvent((event: CollisionEvent) => {
+    onCollisionEnter?.(event)
+  })
+  const handleCollisionExit = useEffectEvent((event: CollisionEvent) => {
+    onCollisionExit?.(event)
+  })
+  const handleContactForce = useEffectEvent((event: ContactForceEvent) => {
+    onContactForce?.(event)
+  })
+  const handleSleep = useEffectEvent(() => {
+    onSleep?.()
+  })
+  const handleWake = useEffectEvent(() => {
+    onWake?.()
+  })
+
   // Parse velocities (stable references for the getter)
   const linVel = linearVelocity
     ? Array.isArray(linearVelocity)
@@ -395,46 +415,34 @@ export function RigidBody({
     }
   }, [])
 
-  // Update collision callbacks on entity when they change
+  // Set up collision callbacks using useEffectEvent handlers
   useLayoutEffect(() => {
     const entity = spawnedEntityRef.current
     if (!entity || !entity.isAlive()) return
 
-    const hasCallbacks = onCollisionEnter || onCollisionExit || onContactForce
-    if (hasCallbacks) {
-      // Add or update CollisionCallbacks trait
-      if (!entity.has(CollisionCallbacks)) {
-        entity.add(CollisionCallbacks)
-      }
-      entity.set(CollisionCallbacks, {
-        onEnter: onCollisionEnter ?? null,
-        onExit: onCollisionExit ?? null,
-        onContactForce: onContactForce ?? null,
-      })
-    } else if (entity.has(CollisionCallbacks)) {
-      // Remove trait if no callbacks
-      entity.remove(CollisionCallbacks)
+    if (!entity.has(CollisionCallbacks)) {
+      entity.add(CollisionCallbacks)
     }
-  }, [onCollisionEnter, onCollisionExit, onContactForce])
+    entity.set(CollisionCallbacks, {
+      onEnter: handleCollisionEnter,
+      onExit: handleCollisionExit,
+      onContactForce: handleContactForce,
+    })
+  }, [handleCollisionEnter, handleCollisionExit, handleContactForce])
 
-  // Sync sleep callbacks to trait
+  // Set up sleep callbacks using useEffectEvent handlers
   useLayoutEffect(() => {
     const entity = spawnedEntityRef.current
     if (!entity || !entity.isAlive()) return
 
-    const hasSleepCallbacks = onSleep || onWake
-    if (hasSleepCallbacks) {
-      if (!entity.has(SleepCallbacks)) {
-        entity.add(SleepCallbacks)
-      }
-      entity.set(SleepCallbacks, {
-        onSleep: onSleep ?? null,
-        onWake: onWake ?? null,
-      })
-    } else if (entity.has(SleepCallbacks)) {
-      entity.remove(SleepCallbacks)
+    if (!entity.has(SleepCallbacks)) {
+      entity.add(SleepCallbacks)
     }
-  }, [onSleep, onWake])
+    entity.set(SleepCallbacks, {
+      onSleep: handleSleep,
+      onWake: handleWake,
+    })
+  }, [handleSleep, handleWake])
 
   const context = useMemo<RigidBodyContextValue>(() => ({entityGetter}), [])
 

@@ -47,12 +47,55 @@ function getEntity(ref: BodyRef): Entity | null {
 }
 
 // ============================================
+// Generic Joint Hook Factory
+// ============================================
+
+/**
+ * Creates a joint hook for any joint type.
+ * Options are captured at creation time - changing options won't update the joint.
+ * The joint is created once when both bodies are ready and destroyed on unmount.
+ */
+function useJoint<T>(
+  body1: BodyRef,
+  body2: BodyRef,
+  options: T,
+  createFn: (entity1: Entity, entity2: Entity, opts: T) => JointHandle | null,
+): JointHandle | null {
+  const jointRef = useRef<JointHandle | null>(null)
+  // Capture options in ref - joints are created once, not updated
+  const optionsRef = useRef(options)
+
+  useEffect(() => {
+    const entity1 = getEntity(body1)
+    const entity2 = getEntity(body2)
+
+    if (!entity1 || !entity2) return
+
+    jointRef.current = createFn(entity1, entity2, optionsRef.current)
+
+    return () => {
+      if (jointRef.current) {
+        destroyJoint(jointRef.current)
+        jointRef.current = null
+      }
+    }
+    // Only depend on body refs - options captured at first render
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [body1, body2])
+
+  return jointRef.current
+}
+
+// ============================================
 // Joint Hooks
 // ============================================
 
 /**
  * Create a fixed joint between two bodies.
  * The joint is automatically destroyed when the component unmounts.
+ *
+ * Note: Options are captured when bodies become available. Changing options
+ * after creation has no effect - use the returned handle to modify the joint.
  *
  * @param body1 - Ref to the first body (RigidBodyApi ref or Entity ref)
  * @param body2 - Ref to the second body
@@ -75,25 +118,7 @@ export function useFixedJoint(
   body2: BodyRef,
   options: FixedJointOptions = {},
 ): JointHandle | null {
-  const jointRef = useRef<JointHandle | null>(null)
-
-  useEffect(() => {
-    const entity1 = getEntity(body1)
-    const entity2 = getEntity(body2)
-
-    if (!entity1 || !entity2) return
-
-    jointRef.current = createFixedJoint(entity1, entity2, options)
-
-    return () => {
-      if (jointRef.current) {
-        destroyJoint(jointRef.current)
-        jointRef.current = null
-      }
-    }
-  }, [body1, body2, options])
-
-  return jointRef.current
+  return useJoint(body1, body2, options, createFixedJoint)
 }
 
 /**
@@ -118,25 +143,7 @@ export function useRevoluteJoint(
   body2: BodyRef,
   options: RevoluteJointOptions = {},
 ): JointHandle | null {
-  const jointRef = useRef<JointHandle | null>(null)
-
-  useEffect(() => {
-    const entity1 = getEntity(body1)
-    const entity2 = getEntity(body2)
-
-    if (!entity1 || !entity2) return
-
-    jointRef.current = createRevoluteJoint(entity1, entity2, options)
-
-    return () => {
-      if (jointRef.current) {
-        destroyJoint(jointRef.current)
-        jointRef.current = null
-      }
-    }
-  }, [body1, body2, options])
-
-  return jointRef.current
+  return useJoint(body1, body2, options, createRevoluteJoint)
 }
 
 /**
@@ -159,25 +166,7 @@ export function usePrismaticJoint(
   body2: BodyRef,
   options: PrismaticJointOptions = {},
 ): JointHandle | null {
-  const jointRef = useRef<JointHandle | null>(null)
-
-  useEffect(() => {
-    const entity1 = getEntity(body1)
-    const entity2 = getEntity(body2)
-
-    if (!entity1 || !entity2) return
-
-    jointRef.current = createPrismaticJoint(entity1, entity2, options)
-
-    return () => {
-      if (jointRef.current) {
-        destroyJoint(jointRef.current)
-        jointRef.current = null
-      }
-    }
-  }, [body1, body2, options])
-
-  return jointRef.current
+  return useJoint(body1, body2, options, createPrismaticJoint)
 }
 
 /**
@@ -200,25 +189,7 @@ export function useSphericalJoint(
   body2: BodyRef,
   options: SphericalJointOptions = {},
 ): JointHandle | null {
-  const jointRef = useRef<JointHandle | null>(null)
-
-  useEffect(() => {
-    const entity1 = getEntity(body1)
-    const entity2 = getEntity(body2)
-
-    if (!entity1 || !entity2) return
-
-    jointRef.current = createSphericalJoint(entity1, entity2, options)
-
-    return () => {
-      if (jointRef.current) {
-        destroyJoint(jointRef.current)
-        jointRef.current = null
-      }
-    }
-  }, [body1, body2, options])
-
-  return jointRef.current
+  return useJoint(body1, body2, options, createSphericalJoint)
 }
 
 /**
@@ -240,25 +211,7 @@ export function useRopeJoint(
   body2: BodyRef,
   options: RopeJointOptions,
 ): JointHandle | null {
-  const jointRef = useRef<JointHandle | null>(null)
-
-  useEffect(() => {
-    const entity1 = getEntity(body1)
-    const entity2 = getEntity(body2)
-
-    if (!entity1 || !entity2) return
-
-    jointRef.current = createRopeJoint(entity1, entity2, options)
-
-    return () => {
-      if (jointRef.current) {
-        destroyJoint(jointRef.current)
-        jointRef.current = null
-      }
-    }
-  }, [body1, body2, options])
-
-  return jointRef.current
+  return useJoint(body1, body2, options, createRopeJoint)
 }
 
 /**
@@ -282,25 +235,7 @@ export function useSpringJoint(
   body2: BodyRef,
   options: SpringJointOptions,
 ): JointHandle | null {
-  const jointRef = useRef<JointHandle | null>(null)
-
-  useEffect(() => {
-    const entity1 = getEntity(body1)
-    const entity2 = getEntity(body2)
-
-    if (!entity1 || !entity2) return
-
-    jointRef.current = createSpringJoint(entity1, entity2, options)
-
-    return () => {
-      if (jointRef.current) {
-        destroyJoint(jointRef.current)
-        jointRef.current = null
-      }
-    }
-  }, [body1, body2, options])
-
-  return jointRef.current
+  return useJoint(body1, body2, options, createSpringJoint)
 }
 
 /**
@@ -325,23 +260,5 @@ export function useGenericJoint(
   body2: BodyRef,
   options: GenericJointOptions,
 ): JointHandle | null {
-  const jointRef = useRef<JointHandle | null>(null)
-
-  useEffect(() => {
-    const entity1 = getEntity(body1)
-    const entity2 = getEntity(body2)
-
-    if (!entity1 || !entity2) return
-
-    jointRef.current = createGenericJoint(entity1, entity2, options)
-
-    return () => {
-      if (jointRef.current) {
-        destroyJoint(jointRef.current)
-        jointRef.current = null
-      }
-    }
-  }, [body1, body2, options])
-
-  return jointRef.current
+  return useJoint(body1, body2, options, createGenericJoint)
 }
