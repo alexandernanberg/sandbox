@@ -243,3 +243,57 @@ export type {
   CharacterControllerProps,
   CharacterControllerApi,
 } from './character-controller'
+
+// Joints (imperative API)
+export {
+  // Joint creation
+  createFixedJoint,
+  createRevoluteJoint,
+  createPrismaticJoint,
+  createSphericalJoint,
+  createRopeJoint,
+  createSpringJoint,
+  createGenericJoint,
+  destroyJoint,
+  // Motor configuration
+  configureMotorVelocity,
+  configureMotorPosition,
+  configureMotor,
+  setMotorModel,
+  // Limit configuration
+  setJointLimits,
+  areLimitsEnabled,
+  getJointLimits,
+  // Anchor configuration
+  setAnchor1,
+  setAnchor2,
+  getAnchor1,
+  getAnchor2,
+  // Contact control
+  setContactsEnabled,
+  areContactsEnabled,
+  // Re-exported Rapier types
+  JointAxesMask,
+  MotorModel,
+} from './joints'
+export type {
+  JointHandle,
+  FixedJointOptions,
+  RevoluteJointOptions,
+  PrismaticJointOptions,
+  SphericalJointOptions,
+  RopeJointOptions,
+  SpringJointOptions,
+  GenericJointOptions,
+} from './joints'
+
+// Joint hooks (React integration)
+export {
+  useFixedJoint,
+  useRevoluteJoint,
+  usePrismaticJoint,
+  useSphericalJoint,
+  useRopeJoint,
+  useSpringJoint,
+  useGenericJoint,
+} from './joint-hooks'
