@@ -394,7 +394,12 @@ export function storePreviousTransforms(world: World): void {
 export function syncTransformFromPhysics(world: World): void {
   for (const entity of world.query(syncFromPhysicsQuery)) {
     const body = entity.get(RigidBodyRef)!.body
-    if (!body || body.isSleeping() || body.isFixed()) continue
+    // Skip bodies that don't need syncing:
+    // - sleeping: not moving
+    // - fixed: never moves
+    // - kinematic: position set directly by user code (character controllers, etc.)
+    if (!body || body.isSleeping() || body.isFixed() || body.isKinematic())
+      continue
 
     copyFromRapier(_transform, body.translation(), body.rotation())
     entity.set(Transform, _transform)
