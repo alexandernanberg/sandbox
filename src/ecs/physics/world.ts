@@ -218,11 +218,14 @@ export function setMaxCcdSubsteps(substeps: number): void {
 // ============================================
 
 export interface PhysicsTimings {
+  /** Total step time in milliseconds */
   step: number
+  /** Collision detection time (broad + narrow phase) in milliseconds */
   collisionDetection: number
+  /** Constraint solver time in milliseconds */
   solver: number
-  ccdSolver: number
-  queryPipeline: number
+  /** Continuous collision detection time in milliseconds */
+  ccd: number
 }
 
 /**
@@ -245,10 +248,9 @@ export function getPhysicsTimings(): PhysicsTimings | null {
   }
 
   return {
-    step: physicsWorld.rapier.timingStep,
-    collisionDetection: physicsWorld.rapier.timingCollisionDetection,
-    solver: physicsWorld.rapier.timingSolver,
-    ccdSolver: physicsWorld.rapier.timingCcdSolver,
-    queryPipeline: physicsWorld.rapier.timingQueryPipeline,
+    step: physicsWorld.rapier.timingStep(),
+    collisionDetection: physicsWorld.rapier.timingCollisionDetection(),
+    solver: physicsWorld.rapier.timingSolver(),
+    ccd: physicsWorld.rapier.timingCcd(),
   }
 }

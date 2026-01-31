@@ -51,6 +51,11 @@ const ballCollider = (radius: number, restitution = 0, friction = 0.5) =>
     scaleX: 1,
     scaleY: 1,
     scaleZ: 1,
+    collisionGroups: 0xffff_ffff,
+    solverGroups: 0xffff_ffff,
+    frictionCombineRule: 'average',
+    restitutionCombineRule: 'average',
+    contactForceEvents: false,
   })
 
 // ============================================

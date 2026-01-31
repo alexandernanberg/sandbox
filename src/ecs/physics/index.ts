@@ -24,9 +24,13 @@ export {
   IsColliderEntity,
   PhysicsInitialized,
   ColliderInitialized,
+  // Collision groups
+  createCollisionGroups,
+  CollisionGroup,
   // Types
   type RigidBodyType,
   type ColliderShape,
+  type CoefficientCombineRule,
 } from './traits'
 
 // Event traits

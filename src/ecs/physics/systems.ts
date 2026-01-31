@@ -13,7 +13,7 @@ import {
   _quat,
   _vec3,
 } from '~/lib/math'
-import type {RigidBodyType, ColliderShape} from './traits'
+import type {RigidBodyType, ColliderShape, CoefficientCombineRule} from './traits'
 import {CharacterMovement, IsCharacterController} from './character'
 import {
   Transform,
@@ -162,6 +162,16 @@ export function createPhysicsBodies(
         w: transform.qw,
       })
 
+    // Soft CCD prediction (time-based threshold to avoid false positives)
+    if (config.softCcdPrediction > 0) {
+      rigidBodyDesc.setSoftCcdPrediction(config.softCcdPrediction)
+    }
+
+    // Additional solver iterations for high-precision constraints
+    if (config.additionalSolverIterations > 0) {
+      rigidBodyDesc.setAdditionalSolverIterations(config.additionalSolverIterations)
+    }
+
     if (config.restrictPosition) {
       const [x, y, z] = config.restrictPosition
       rigidBodyDesc.enabledTranslations(!x, !y, !z)
@@ -239,6 +249,21 @@ function createRigidBodyDesc(type: RigidBodyType): RAPIER.RigidBodyDesc {
   }
 }
 
+function getCombineRule(rule: CoefficientCombineRule): RAPIER.CoefficientCombineRule {
+  switch (rule) {
+    case 'average':
+      return RAPIER.CoefficientCombineRule.Average
+    case 'min':
+      return RAPIER.CoefficientCombineRule.Min
+    case 'max':
+      return RAPIER.CoefficientCombineRule.Max
+    case 'multiply':
+      return RAPIER.CoefficientCombineRule.Multiply
+    default:
+      return RAPIER.CoefficientCombineRule.Average
+  }
+}
+
 // ============================================
 // Collider Creation System
 // ============================================
@@ -290,8 +315,21 @@ export function createColliders(
         w: config.offsetQw,
       })
 
-    // Enable collision events
-    colliderDesc.setActiveEvents(RAPIER.ActiveEvents.COLLISION_EVENTS)
+    // Collision and solver groups for filtering
+    colliderDesc.setCollisionGroups(config.collisionGroups)
+    colliderDesc.setSolverGroups(config.solverGroups)
+
+    // Friction/restitution combine rules
+    colliderDesc.setFrictionCombineRule(getCombineRule(config.frictionCombineRule))
+    colliderDesc.setRestitutionCombineRule(getCombineRule(config.restitutionCombineRule))
+
+    // Enable collision events (always enabled for collision detection)
+    // Optionally enable contact force events for force-based callbacks
+    let activeEvents = RAPIER.ActiveEvents.COLLISION_EVENTS
+    if (config.contactForceEvents) {
+      activeEvents |= RAPIER.ActiveEvents.CONTACT_FORCE_EVENTS
+    }
+    colliderDesc.setActiveEvents(activeEvents)
 
     // Create the collider attached to parent rigid body
     const collider = rapierWorld.createCollider(colliderDesc, bodyRef.body)
