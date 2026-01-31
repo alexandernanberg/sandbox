@@ -31,15 +31,23 @@ export {
   type RigidBodyType,
   type ColliderShape,
   type CoefficientCombineRule,
+  type ContactForceEvent,
+  type ContactForceCallback,
 } from './traits'
 
-// Event traits
+// Event traits and helpers
 export {
+  // Collision events
   CollisionEntered,
   CollisionExited,
   getCollisionsEntered,
   getCollisionsExited,
   isCollidingWith,
+  // Contact force events
+  ContactForceReceived,
+  getContactForces,
+  getTotalContactForceMagnitude,
+  getMaxContactForceMagnitude,
 } from './events'
 
 // Character controller
@@ -136,7 +144,11 @@ export {
   syncToObject3D,
 } from './systems'
 
-export {processCollisionEvents, clearCollisionEvents} from './events'
+export {
+  processCollisionEvents,
+  processContactForceEvents,
+  clearCollisionEvents,
+} from './events'
 
 // Scene queries (raycasting, shape casting)
 export {

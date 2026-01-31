@@ -14,7 +14,11 @@ import {
   characterControllerSystem,
   characterPostStepSystem,
 } from './character'
-import {processCollisionEvents, clearCollisionEvents} from './events'
+import {
+  processCollisionEvents,
+  processContactForceEvents,
+  clearCollisionEvents,
+} from './events'
 import {
   initializeTransformFromObject3D,
   createPhysicsBodies,
@@ -116,8 +120,9 @@ export function stepPhysics(ecsWorld: World, delta: number): StepResult {
     // Post-step: push characters out of kinematic bodies that moved into them
     characterPostStepSystem(ecsWorld, rapier, FIXED_TIMESTEP)
 
-    // Process collision events
+    // Process collision and contact force events
     processCollisionEvents(rapier, eventQueue)
+    processContactForceEvents(rapier, eventQueue)
 
     // Run after-step callbacks
     for (const cb of afterStepCallbacks) {

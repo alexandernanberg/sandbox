@@ -14,6 +14,25 @@ export interface CollisionEvent {
 export type CollisionCallback = (event: CollisionEvent) => void
 
 // ============================================
+// Contact force callback type
+// ============================================
+
+export interface ContactForceEvent {
+  /** The other entity involved in the contact */
+  other: Entity
+  /** Sum of all contact forces (world-space vector) */
+  totalForce: {x: number; y: number; z: number}
+  /** Sum of the magnitudes of all contact forces */
+  totalForceMagnitude: number
+  /** Direction of the strongest force (world-space unit vector) */
+  maxForceDirection: {x: number; y: number; z: number}
+  /** Magnitude of the largest individual contact force */
+  maxForceMagnitude: number
+}
+
+export type ContactForceCallback = (event: ContactForceEvent) => void
+
+// ============================================
 // Kinematic body velocity (for moving platforms)
 // ============================================
 
@@ -105,7 +124,10 @@ export type RigidBodyType =
  * const enemyGroups = createCollisionGroups(ENEMY, PLAYER | ENVIRONMENT)
  * ```
  */
-export function createCollisionGroups(membership: number, filter: number): number {
+export function createCollisionGroups(
+  membership: number,
+  filter: number,
+): number {
   return ((filter & 0xffff) << 16) | (membership & 0xffff)
 }
 
@@ -289,4 +311,5 @@ export const ColliderInitialized = trait()
 export const CollisionCallbacks = trait(() => ({
   onEnter: null as CollisionCallback | null,
   onExit: null as CollisionCallback | null,
+  onContactForce: null as ContactForceCallback | null,
 }))

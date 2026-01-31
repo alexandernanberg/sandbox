@@ -15,7 +15,12 @@ import type {Object3D} from 'three'
 
 // Scratch vector for getWorldScale (avoids allocation per collider setup)
 const _scaleVec3 = new Vector3()
-import type {RigidBodyType, ColliderShape, CollisionCallback} from './traits'
+import type {
+  RigidBodyType,
+  ColliderShape,
+  CollisionCallback,
+  ContactForceCallback,
+} from './traits'
 import {
   Transform,
   PreviousTransform,
@@ -85,6 +90,11 @@ export interface RigidBodyProps extends Omit<
   onCollisionEnter?: CollisionCallback
   /** Called when a collision ends */
   onCollisionExit?: CollisionCallback
+  /**
+   * Called when contact forces exceed the threshold.
+   * Requires `contactForceEvents: true` on at least one collider.
+   */
+  onContactForce?: ContactForceCallback
 }
 
 export function RigidBody({
@@ -107,6 +117,7 @@ export function RigidBody({
   entityRef,
   onCollisionEnter,
   onCollisionExit,
+  onContactForce,
   ...props
 }: RigidBodyProps) {
   const world = useWorld()
@@ -209,7 +220,7 @@ export function RigidBody({
     const entity = spawnedEntityRef.current
     if (!entity || !entity.isAlive()) return
 
-    const hasCallbacks = onCollisionEnter || onCollisionExit
+    const hasCallbacks = onCollisionEnter || onCollisionExit || onContactForce
     if (hasCallbacks) {
       // Add or update CollisionCallbacks trait
       if (!entity.has(CollisionCallbacks)) {
@@ -218,12 +229,13 @@ export function RigidBody({
       entity.set(CollisionCallbacks, {
         onEnter: onCollisionEnter ?? null,
         onExit: onCollisionExit ?? null,
+        onContactForce: onContactForce ?? null,
       })
     } else if (entity.has(CollisionCallbacks)) {
       // Remove trait if no callbacks
       entity.remove(CollisionCallbacks)
     }
-  }, [onCollisionEnter, onCollisionExit])
+  }, [onCollisionEnter, onCollisionExit, onContactForce])
 
   const context = useMemo<RigidBodyContextValue>(() => ({entityGetter}), [])
 

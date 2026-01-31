@@ -1,7 +1,7 @@
 import type * as RAPIER from '@dimforge/rapier3d-simd-compat'
 import {trait, createQuery} from 'koota'
 import type {Entity, World} from 'koota'
-import {CollisionCallbacks} from './traits'
+import {CollisionCallbacks, type ContactForceEvent} from './traits'
 
 // ============================================
 // Collision Event Traits
@@ -15,6 +15,15 @@ export const CollisionEntered = trait(() => ({
 // Stores entities that stopped colliding this frame (Set for O(1) lookup)
 export const CollisionExited = trait(() => ({
   entities: new Set<Entity>(),
+}))
+
+// ============================================
+// Contact Force Event Traits
+// ============================================
+
+/** Stores contact force events received this frame */
+export const ContactForceReceived = trait(() => ({
+  events: [] as ContactForceEvent[],
 }))
 
 // ============================================
@@ -101,11 +110,115 @@ function ensureCollisionExited(entity: Entity) {
 }
 
 // ============================================
-// Collision Event Cleanup
+// Contact Force Event Processing
+// ============================================
+
+// Reusable contact force event object to avoid allocations
+const _contactForceEvent: ContactForceEvent = {
+  other: null! as Entity,
+  totalForce: {x: 0, y: 0, z: 0},
+  totalForceMagnitude: 0,
+  maxForceDirection: {x: 0, y: 0, z: 0},
+  maxForceMagnitude: 0,
+}
+
+export function processContactForceEvents(
+  rapierWorld: RAPIER.World,
+  eventQueue: RAPIER.EventQueue,
+) {
+  eventQueue.drainContactForceEvents((event) => {
+    // O(1) lookup via userData stored on parent rigid bodies
+    const collider1 = rapierWorld.getCollider(event.collider1()) as
+      | RAPIER.Collider
+      | undefined
+    const collider2 = rapierWorld.getCollider(event.collider2()) as
+      | RAPIER.Collider
+      | undefined
+
+    const parent1 = collider1?.parent()
+    const parent2 = collider2?.parent()
+
+    const entity1 = parent1?.userData as Entity | undefined
+    const entity2 = parent2?.userData as Entity | undefined
+
+    if (!entity1 || !entity2) return
+
+    // Get force data from Rapier event
+    const totalForce = event.totalForce()
+    const maxForceDir = event.maxForceDirection()
+
+    // Process for entity1 (force applied TO entity1 FROM entity2)
+    processContactForcePair(
+      entity1,
+      entity2,
+      totalForce,
+      event.totalForceMagnitude(),
+      maxForceDir,
+      event.maxForceMagnitude(),
+    )
+
+    // Process for entity2 (force applied TO entity2 FROM entity1, opposite direction)
+    processContactForcePair(
+      entity2,
+      entity1,
+      {x: -totalForce.x, y: -totalForce.y, z: -totalForce.z},
+      event.totalForceMagnitude(),
+      {x: -maxForceDir.x, y: -maxForceDir.y, z: -maxForceDir.z},
+      event.maxForceMagnitude(),
+    )
+  })
+}
+
+function processContactForcePair(
+  entity: Entity,
+  other: Entity,
+  totalForce: {x: number; y: number; z: number},
+  totalForceMagnitude: number,
+  maxForceDirection: {x: number; y: number; z: number},
+  maxForceMagnitude: number,
+) {
+  // Store in ContactForceReceived trait for ECS querying
+  const forceData = ensureContactForceReceived(entity)
+  forceData.events.push({
+    other,
+    totalForce: {...totalForce},
+    totalForceMagnitude,
+    maxForceDirection: {...maxForceDirection},
+    maxForceMagnitude,
+  })
+
+  // Fire callback if registered
+  if (entity.has(CollisionCallbacks)) {
+    const callback = entity.get(CollisionCallbacks)!.onContactForce
+    if (callback) {
+      _contactForceEvent.other = other
+      _contactForceEvent.totalForce.x = totalForce.x
+      _contactForceEvent.totalForce.y = totalForce.y
+      _contactForceEvent.totalForce.z = totalForce.z
+      _contactForceEvent.totalForceMagnitude = totalForceMagnitude
+      _contactForceEvent.maxForceDirection.x = maxForceDirection.x
+      _contactForceEvent.maxForceDirection.y = maxForceDirection.y
+      _contactForceEvent.maxForceDirection.z = maxForceDirection.z
+      _contactForceEvent.maxForceMagnitude = maxForceMagnitude
+      callback(_contactForceEvent)
+    }
+  }
+}
+
+function ensureContactForceReceived(entity: Entity) {
+  if (!entity.has(ContactForceReceived)) {
+    entity.add(ContactForceReceived)
+  }
+  return entity.get(ContactForceReceived)!
+}
+
+// ============================================
+// Event Cleanup
 // ============================================
 
 const collisionEnteredQuery = createQuery(CollisionEntered)
 const collisionExitedQuery = createQuery(CollisionExited)
+const contactForceQuery = createQuery(ContactForceReceived)
 
 export function clearCollisionEvents(world: World) {
   // Use updateEach for batched trait access
@@ -116,6 +229,11 @@ export function clearCollisionEvents(world: World) {
   world.query(collisionExitedQuery).updateEach(([collision]) => {
     collision.entities.clear()
   })
+
+  // Clear contact force events
+  world.query(contactForceQuery).updateEach(([force]) => {
+    force.events.length = 0
+  })
 }
 
 // ============================================
@@ -123,6 +241,7 @@ export function clearCollisionEvents(world: World) {
 // ============================================
 
 const _emptySet = new Set<Entity>()
+const _emptyArray: readonly ContactForceEvent[] = []
 
 export function getCollisionsEntered(entity: Entity): ReadonlySet<Entity> {
   if (!entity.has(CollisionEntered)) return _emptySet
@@ -137,4 +256,46 @@ export function getCollisionsExited(entity: Entity): ReadonlySet<Entity> {
 export function isCollidingWith(entity: Entity, other: Entity): boolean {
   if (!entity.has(CollisionEntered)) return false
   return entity.get(CollisionEntered)!.entities.has(other)
+}
+
+// ============================================
+// Contact Force Query Helpers
+// ============================================
+
+/**
+ * Get all contact force events received by an entity this frame.
+ * Returns an empty array if no contact forces were received.
+ */
+export function getContactForces(entity: Entity): readonly ContactForceEvent[] {
+  if (!entity.has(ContactForceReceived)) return _emptyArray
+  return entity.get(ContactForceReceived)!.events
+}
+
+/**
+ * Get the total force magnitude received by an entity this frame.
+ * Sums all contact force magnitudes from all contacts.
+ */
+export function getTotalContactForceMagnitude(entity: Entity): number {
+  if (!entity.has(ContactForceReceived)) return 0
+  const events = entity.get(ContactForceReceived)!.events
+  let total = 0
+  for (const event of events) {
+    total += event.totalForceMagnitude
+  }
+  return total
+}
+
+/**
+ * Get the maximum force magnitude received in any single contact this frame.
+ */
+export function getMaxContactForceMagnitude(entity: Entity): number {
+  if (!entity.has(ContactForceReceived)) return 0
+  const events = entity.get(ContactForceReceived)!.events
+  let max = 0
+  for (const event of events) {
+    if (event.maxForceMagnitude > max) {
+      max = event.maxForceMagnitude
+    }
+  }
+  return max
 }
