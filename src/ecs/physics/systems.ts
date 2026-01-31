@@ -13,7 +13,11 @@ import {
   _quat,
   _vec3,
 } from '~/lib/math'
-import type {RigidBodyType, ColliderShape, CoefficientCombineRule} from './traits'
+import type {
+  RigidBodyType,
+  ColliderShape,
+  CoefficientCombineRule,
+} from './traits'
 import {CharacterMovement, IsCharacterController} from './character'
 import {
   Transform,
@@ -30,6 +34,8 @@ import {
   Object3DRef,
   ParentInverseMatrix,
   ChildOf,
+  SleepState,
+  SleepCallbacks,
 } from './traits'
 
 // ============================================
@@ -153,6 +159,7 @@ export function createPhysicsBodies(
       .setAngularDamping(config.angularDamping)
       .setCcdEnabled(config.ccd)
       .setCanSleep(config.canSleep)
+      .setSleeping(config.sleeping)
       .setDominanceGroup(config.dominanceGroup)
       .setTranslation(transform.x, transform.y, transform.z)
       .setRotation({
@@ -169,7 +176,9 @@ export function createPhysicsBodies(
 
     // Additional solver iterations for high-precision constraints
     if (config.additionalSolverIterations > 0) {
-      rigidBodyDesc.setAdditionalSolverIterations(config.additionalSolverIterations)
+      rigidBodyDesc.setAdditionalSolverIterations(
+        config.additionalSolverIterations,
+      )
     }
 
     if (config.restrictPosition) {
@@ -249,7 +258,9 @@ function createRigidBodyDesc(type: RigidBodyType): RAPIER.RigidBodyDesc {
   }
 }
 
-function getCombineRule(rule: CoefficientCombineRule): RAPIER.CoefficientCombineRule {
+function getCombineRule(
+  rule: CoefficientCombineRule,
+): RAPIER.CoefficientCombineRule {
   switch (rule) {
     case 'average':
       return RAPIER.CoefficientCombineRule.Average
@@ -271,10 +282,7 @@ function getCombineRule(rule: CoefficientCombineRule): RAPIER.CoefficientCombine
 // Reusable scale object to avoid allocations
 const _scale = {x: 1, y: 1, z: 1}
 
-export function createColliders(
-  world: World,
-  rapierWorld: RAPIER.World,
-): void {
+export function createColliders(world: World, rapierWorld: RAPIER.World): void {
   const colliders = world.query(uninitializedCollidersQuery)
 
   for (const entity of colliders) {
@@ -320,8 +328,12 @@ export function createColliders(
     colliderDesc.setSolverGroups(config.solverGroups)
 
     // Friction/restitution combine rules
-    colliderDesc.setFrictionCombineRule(getCombineRule(config.frictionCombineRule))
-    colliderDesc.setRestitutionCombineRule(getCombineRule(config.restitutionCombineRule))
+    colliderDesc.setFrictionCombineRule(
+      getCombineRule(config.frictionCombineRule),
+    )
+    colliderDesc.setRestitutionCombineRule(
+      getCombineRule(config.restitutionCombineRule),
+    )
 
     // Enable collision events (always enabled for collision detection)
     // Optionally enable contact force events for force-based callbacks
@@ -540,5 +552,49 @@ export function smoothCharacterVisuals(world: World, delta: number): void {
       m.visualY = newVisualY
       return m
     })
+  }
+}
+
+// ============================================
+// Sleep State Tracking System
+// ============================================
+
+const sleepStateQuery = createQuery(
+  RigidBodyRef,
+  SleepState,
+  PhysicsInitialized,
+)
+
+/**
+ * Updates sleep state for all rigid bodies and fires callbacks on state changes.
+ * Call this after the physics step.
+ */
+export function updateSleepStates(world: World): void {
+  for (const entity of world.query(sleepStateQuery)) {
+    const body = entity.get(RigidBodyRef)!.body
+    if (!body) continue
+
+    const currentSleeping = body.isSleeping()
+
+    entity.set(SleepState, (state) => {
+      state.wasSleeping = state.sleeping
+      state.sleeping = currentSleeping
+      state.justSlept = !state.wasSleeping && currentSleeping
+      state.justWoke = state.wasSleeping && !currentSleeping
+      return state
+    })
+
+    // Fire callbacks on state changes
+    if (entity.has(SleepCallbacks)) {
+      const callbacks = entity.get(SleepCallbacks)!
+      const state = entity.get(SleepState)!
+
+      if (state.justSlept && callbacks.onSleep) {
+        callbacks.onSleep()
+      }
+      if (state.justWoke && callbacks.onWake) {
+        callbacks.onWake()
+      }
+    }
   }
 }

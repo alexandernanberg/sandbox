@@ -1,7 +1,12 @@
 import type * as RAPIER from '@dimforge/rapier3d-simd-compat'
 import {trait, createQuery} from 'koota'
 import type {Entity, World} from 'koota'
-import {CollisionCallbacks, type ContactForceEvent} from './traits'
+import {
+  CollisionCallbacks,
+  RigidBodyRef,
+  SleepState,
+  type ContactForceEvent,
+} from './traits'
 
 // ============================================
 // Collision Event Traits
@@ -298,4 +303,55 @@ export function getMaxContactForceMagnitude(entity: Entity): number {
     }
   }
   return max
+}
+
+// ============================================
+// Sleep State Helpers
+// ============================================
+
+/**
+ * Check if an entity's rigid body is currently sleeping.
+ */
+export function isSleeping(entity: Entity): boolean {
+  if (!entity.has(SleepState)) return false
+  return entity.get(SleepState)!.sleeping
+}
+
+/**
+ * Check if an entity's rigid body just fell asleep this frame.
+ */
+export function justSlept(entity: Entity): boolean {
+  if (!entity.has(SleepState)) return false
+  return entity.get(SleepState)!.justSlept
+}
+
+/**
+ * Check if an entity's rigid body just woke up this frame.
+ */
+export function justWoke(entity: Entity): boolean {
+  if (!entity.has(SleepState)) return false
+  return entity.get(SleepState)!.justWoke
+}
+
+/**
+ * Force a rigid body to sleep.
+ * The body will wake up automatically if touched by another body.
+ */
+export function putToSleep(entity: Entity): void {
+  if (!entity.has(RigidBodyRef)) return
+  const body = entity.get(RigidBodyRef)!.body
+  if (body) {
+    body.sleep()
+  }
+}
+
+/**
+ * Force a rigid body to wake up.
+ */
+export function wakeUp(entity: Entity): void {
+  if (!entity.has(RigidBodyRef)) return
+  const body = entity.get(RigidBodyRef)!.body
+  if (body) {
+    body.wakeUp()
+  }
 }

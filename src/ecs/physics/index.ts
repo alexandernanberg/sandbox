@@ -19,6 +19,9 @@ export {
   ChildOf,
   // Kinematic bodies
   KinematicVelocity,
+  // Sleep state
+  SleepState,
+  SleepCallbacks,
   // Tags
   IsPhysicsEntity,
   IsColliderEntity,
@@ -33,6 +36,7 @@ export {
   type CoefficientCombineRule,
   type ContactForceEvent,
   type ContactForceCallback,
+  type SleepCallback,
 } from './traits'
 
 // Event traits and helpers
@@ -48,6 +52,12 @@ export {
   getContactForces,
   getTotalContactForceMagnitude,
   getMaxContactForceMagnitude,
+  // Sleep state helpers
+  isSleeping,
+  justSlept,
+  justWoke,
+  putToSleep,
+  wakeUp,
 } from './events'
 
 // Character controller
@@ -142,6 +152,7 @@ export {
   syncTransformFromPhysics,
   interpolateTransforms,
   syncToObject3D,
+  updateSleepStates,
 } from './systems'
 
 export {

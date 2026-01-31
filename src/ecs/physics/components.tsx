@@ -20,6 +20,7 @@ import type {
   ColliderShape,
   CollisionCallback,
   ContactForceCallback,
+  SleepCallback,
 } from './traits'
 import {
   Transform,
@@ -28,6 +29,8 @@ import {
   RigidBodyConfig,
   ColliderConfig,
   CollisionCallbacks,
+  SleepState,
+  SleepCallbacks,
   Object3DRef,
   RigidBodyRef,
   IsPhysicsEntity,
@@ -75,6 +78,8 @@ export interface RigidBodyProps extends Omit<
   angularVelocity?: Triplet | Vector3
   ccd?: boolean
   canSleep?: boolean
+  /** Start the body in sleeping state. Useful for static scenes. */
+  sleeping?: boolean
   dominanceGroup?: number
   lockPosition?: boolean
   lockRotation?: boolean
@@ -95,6 +100,10 @@ export interface RigidBodyProps extends Omit<
    * Requires `contactForceEvents: true` on at least one collider.
    */
   onContactForce?: ContactForceCallback
+  /** Called when the body falls asleep */
+  onSleep?: SleepCallback
+  /** Called when the body wakes up */
+  onWake?: SleepCallback
 }
 
 export function RigidBody({
@@ -107,6 +116,7 @@ export function RigidBody({
   angularVelocity,
   ccd = false,
   canSleep = true,
+  sleeping = false,
   dominanceGroup = 0,
   lockPosition = false,
   lockRotation = false,
@@ -118,6 +128,8 @@ export function RigidBody({
   onCollisionEnter,
   onCollisionExit,
   onContactForce,
+  onSleep,
+  onWake,
   ...props
 }: RigidBodyProps) {
   const world = useWorld()
@@ -146,6 +158,7 @@ export function RigidBody({
         PreviousTransform,
         RenderTransform,
         Object3DRef,
+        SleepState,
         RigidBodyConfig({
           type,
           gravityScale,
@@ -154,6 +167,7 @@ export function RigidBody({
           ccd,
           softCcdPrediction: 0,
           canSleep,
+          sleeping,
           dominanceGroup,
           lockPosition,
           lockRotation,
@@ -236,6 +250,25 @@ export function RigidBody({
       entity.remove(CollisionCallbacks)
     }
   }, [onCollisionEnter, onCollisionExit, onContactForce])
+
+  // Sync sleep callbacks to trait
+  useLayoutEffect(() => {
+    const entity = spawnedEntityRef.current
+    if (!entity || !entity.isAlive()) return
+
+    const hasSleepCallbacks = onSleep || onWake
+    if (hasSleepCallbacks) {
+      if (!entity.has(SleepCallbacks)) {
+        entity.add(SleepCallbacks)
+      }
+      entity.set(SleepCallbacks, {
+        onSleep: onSleep ?? null,
+        onWake: onWake ?? null,
+      })
+    } else if (entity.has(SleepCallbacks)) {
+      entity.remove(SleepCallbacks)
+    }
+  }, [onSleep, onWake])
 
   const context = useMemo<RigidBodyContextValue>(() => ({entityGetter}), [])
 

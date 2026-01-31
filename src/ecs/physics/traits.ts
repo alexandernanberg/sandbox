@@ -33,6 +33,13 @@ export interface ContactForceEvent {
 export type ContactForceCallback = (event: ContactForceEvent) => void
 
 // ============================================
+// Sleep state callback type
+// ============================================
+
+/** Callback for sleep state changes */
+export type SleepCallback = () => void
+
+// ============================================
 // Kinematic body velocity (for moving platforms)
 // ============================================
 
@@ -170,6 +177,8 @@ export const RigidBodyConfig = trait(() => ({
    */
   softCcdPrediction: 0,
   canSleep: true,
+  /** Start the body in sleeping state. Useful for static scenes. */
+  sleeping: false,
   dominanceGroup: 0,
   lockPosition: false,
   lockRotation: false,
@@ -312,4 +321,29 @@ export const CollisionCallbacks = trait(() => ({
   onEnter: null as CollisionCallback | null,
   onExit: null as CollisionCallback | null,
   onContactForce: null as ContactForceCallback | null,
+}))
+
+// ============================================
+// Sleep state tracking
+// ============================================
+
+/**
+ * Tracks the sleep state of a rigid body.
+ * Updated each frame after physics step.
+ */
+export const SleepState = trait(() => ({
+  /** Current sleep state */
+  sleeping: false,
+  /** Sleep state from previous frame (for change detection) */
+  wasSleeping: false,
+  /** True if body just fell asleep this frame */
+  justSlept: false,
+  /** True if body just woke up this frame */
+  justWoke: false,
+}))
+
+/** Stores sleep state callbacks for an entity */
+export const SleepCallbacks = trait(() => ({
+  onSleep: null as SleepCallback | null,
+  onWake: null as SleepCallback | null,
 }))

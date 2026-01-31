@@ -28,6 +28,7 @@ import {
   interpolateTransforms,
   smoothCharacterVisuals,
   syncToObject3D,
+  updateSleepStates,
 } from './systems'
 import {physicsWorld, FIXED_TIMESTEP, MAX_DELTA} from './world'
 
@@ -116,6 +117,9 @@ export function stepPhysics(ecsWorld: World, delta: number): StepResult {
 
     // Sync physics state back to ECS
     syncTransformFromPhysics(ecsWorld)
+
+    // Update sleep states and fire callbacks
+    updateSleepStates(ecsWorld)
 
     // Post-step: push characters out of kinematic bodies that moved into them
     characterPostStepSystem(ecsWorld, rapier, FIXED_TIMESTEP)
