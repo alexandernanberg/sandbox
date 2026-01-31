@@ -395,11 +395,12 @@ export function syncTransformFromPhysics(world: World): void {
   for (const entity of world.query(syncFromPhysicsQuery)) {
     const body = entity.get(RigidBodyRef)!.body
     // Skip bodies that don't need syncing:
-    // - sleeping: not moving
+    // - sleeping: not moving (will wake up if touched)
     // - fixed: never moves
-    // - kinematic: position set directly by user code (character controllers, etc.)
-    if (!body || body.isSleeping() || body.isFixed() || body.isKinematic())
-      continue
+    // Note: kinematic bodies MUST be synced for interpolation, even though
+    // their positions are set by user code. The sync ensures the ECS Transform
+    // trait stays in sync with Rapier for correct interpolation and rendering.
+    if (!body || body.isSleeping() || body.isFixed()) continue
 
     copyFromRapier(_transform, body.translation(), body.rotation())
     entity.set(Transform, _transform)
