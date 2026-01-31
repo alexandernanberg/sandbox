@@ -1,4 +1,4 @@
-import type * as RAPIER from '@dimforge/rapier3d-simd-compat'
+import * as RAPIER from '@dimforge/rapier3d-simd-compat'
 import {trait, createQuery} from 'koota'
 import type {Entity, World} from 'koota'
 import {setVec3} from '~/lib/math'
@@ -204,21 +204,10 @@ const characterCreationQuery = createQuery(
 // Ground Detection via Shapecast
 // ============================================
 
-// Cached static filter state (avoids closure allocation per call)
-let _filterSelfCollider: RAPIER.Collider | null = null
-
-// Static filter callback - filters out dynamic bodies and the character's own collider
-function staticFilterCallback(collider: RAPIER.Collider): boolean {
-  if (collider === _filterSelfCollider) return false
-  const body = collider.parent()
-  // Only collide with fixed/kinematic bodies, not dynamic
-  return body ? !body.isDynamic() : true
-}
-
-// Set the collider to exclude from static filter queries
-function setStaticFilterCollider(selfCollider: RAPIER.Collider): void {
-  _filterSelfCollider = selfCollider
-}
+// Use QueryFilterFlags for efficient native-level filtering
+// EXCLUDE_DYNAMIC (4) filters out dynamic bodies at Rapier's native level,
+// which is faster than a JavaScript filter predicate callback
+const STATIC_QUERY_FILTER = RAPIER.QueryFilterFlags.EXCLUDE_DYNAMIC
 
 // Scratch objects for edge verification
 const _edgeVerifyPos = {x: 0, y: 0, z: 0}
@@ -758,9 +747,6 @@ function moveAndSlide(
   _moveResult.steppedUp = false
   _moveResult.stepUpAmount = 0
 
-  // Set filter collider once for all casts in this function
-  setStaticFilterCollider(selfCollider)
-
   setVec3(_slideVel, velocity.x, velocity.y, velocity.z)
   setVec3(_prevMoveDir, 0, 0, 0)
 
@@ -816,8 +802,8 @@ function moveAndSlide(
       startPos.z + _moveResult.z,
     )
 
-    // First, check for dynamic bodies to push (but not block movement)
-    const dynamicHit = rapierWorld.castShape(
+    // Single cast to find ANY obstacle (dynamic or static)
+    const anyHit = rapierWorld.castShape(
       _castPos,
       _identityRot,
       _moveDir,
@@ -825,47 +811,48 @@ function moveAndSlide(
       0,
       speed,
       true,
-      undefined,
+      undefined, // no filter - find all
       undefined,
       selfCollider,
     )
 
-    if (dynamicHit) {
-      const dynamicBody = dynamicHit.collider.parent()
-      if (dynamicBody?.isDynamic()) {
+    // Determine if the hit is dynamic (pushable) or static (blocking)
+    let hit: typeof anyHit = null
+    if (anyHit) {
+      const hitBody = anyHit.collider.parent()
+      if (hitBody?.isDynamic()) {
         // Push the dynamic body aside (horizontal only)
         const horizSpeed = Math.sqrt(
           _moveDir.x * _moveDir.x + _moveDir.z * _moveDir.z,
         )
         if (horizSpeed > 0.001) {
           const pushStrength = config.mass * speed * PUSH_FORCE_MULTIPLIER
-          // Reuse scratch objects to avoid allocations
           _impulse.x = (_moveDir.x / horizSpeed) * pushStrength * horizSpeed
           _impulse.y = 0
           _impulse.z = (_moveDir.z / horizSpeed) * pushStrength * horizSpeed
-          _contactPoint.x = _castPos.x + _moveDir.x * dynamicHit.time_of_impact
-          _contactPoint.y = _castPos.y + _moveDir.y * dynamicHit.time_of_impact
-          _contactPoint.z = _castPos.z + _moveDir.z * dynamicHit.time_of_impact
-          dynamicBody.applyImpulseAtPoint(_impulse, _contactPoint, true)
+          _contactPoint.x = _castPos.x + _moveDir.x * anyHit.time_of_impact
+          _contactPoint.y = _castPos.y + _moveDir.y * anyHit.time_of_impact
+          _contactPoint.z = _castPos.z + _moveDir.z * anyHit.time_of_impact
+          hitBody.applyImpulseAtPoint(_impulse, _contactPoint, true)
         }
+        // Dynamic body pushed - need second cast to find static obstacles behind it
+        hit = rapierWorld.castShape(
+          _castPos,
+          _identityRot,
+          _moveDir,
+          shape,
+          0,
+          speed,
+          true,
+          STATIC_QUERY_FILTER,
+          undefined,
+          selfCollider,
+        )
+      } else {
+        // Hit was static/kinematic - use it directly (no second cast needed)
+        hit = anyHit
       }
     }
-
-    // Now check for static/kinematic bodies that actually block movement
-    const hit = rapierWorld.castShape(
-      _castPos,
-      _identityRot,
-      _moveDir,
-      shape,
-      0,
-      speed,
-      true,
-      undefined, // filterFlags
-      undefined, // filterGroups
-      undefined, // excludeCollider (handled by filter)
-      undefined, // excludeRigidBody
-      staticFilterCallback, // filterPredicate
-    )
 
     if (!hit || hit.time_of_impact >= speed - MIN_MOVE_DISTANCE) {
       _moveResult.x += _slideVel.x
@@ -1019,13 +1006,11 @@ function attemptStepUp(
   velocity: {x: number; y: number; z: number},
   shape: RAPIER.Capsule,
   config: CharacterConfig,
-  _selfCollider: RAPIER.Collider,
+  selfCollider: RAPIER.Collider,
   target: {x: number; y: number; z: number},
 ): boolean {
   const hSpeed = Math.sqrt(velocity.x * velocity.x + velocity.z * velocity.z)
   if (hSpeed < MIN_MOVE_DISTANCE) return false
-
-  // Note: staticFilterCallback already set by caller (moveAndSlide)
 
   // Check room above
   const upHit = rapierWorld.castShape(
@@ -1036,11 +1021,9 @@ function attemptStepUp(
     0,
     config.stepHeight,
     true,
-    undefined, // filterFlags
-    undefined, // filterGroups
-    undefined, // excludeCollider (handled by filter)
-    undefined, // excludeRigidBody
-    staticFilterCallback, // filterPredicate
+    STATIC_QUERY_FILTER,
+    undefined,
+    selfCollider,
   )
 
   if (upHit && upHit.time_of_impact < config.stepHeight - 0.01) {
@@ -1061,11 +1044,9 @@ function attemptStepUp(
     0,
     hSpeed + config.stepMinWidth,
     true,
-    undefined, // filterFlags
-    undefined, // filterGroups
-    undefined, // excludeCollider (handled by filter)
-    undefined, // excludeRigidBody
-    staticFilterCallback, // filterPredicate
+    STATIC_QUERY_FILTER,
+    undefined,
+    selfCollider,
   )
 
   if (horizHit && horizHit.time_of_impact < hSpeed) {
@@ -1088,11 +1069,9 @@ function attemptStepUp(
     0,
     config.stepHeight + config.skinWidth,
     true,
-    undefined, // filterFlags
-    undefined, // filterGroups
-    undefined, // excludeCollider (handled by filter)
-    undefined, // excludeRigidBody
-    staticFilterCallback, // filterPredicate
+    STATIC_QUERY_FILTER,
+    undefined,
+    selfCollider,
   )
 
   if (!downHit) return false
@@ -1119,11 +1098,9 @@ function snapToGround(
   position: {x: number; y: number; z: number},
   shape: RAPIER.Capsule,
   config: CharacterConfig,
-  _selfCollider: RAPIER.Collider,
+  selfCollider: RAPIER.Collider,
   delta: number,
 ): number {
-  // Note: staticFilterCallback already set by caller (characterControllerSystem)
-
   // OpenKCC: Snap distance = stepHeight * 2.0
   const snapDistance = config.stepHeight * 2.0
 
@@ -1135,11 +1112,9 @@ function snapToGround(
     0,
     snapDistance,
     true,
-    undefined, // filterFlags
-    undefined, // filterGroups
-    undefined, // excludeCollider (handled by filter)
-    undefined, // excludeRigidBody
-    staticFilterCallback, // filterPredicate
+    STATIC_QUERY_FILTER,
+    undefined,
+    selfCollider,
   )
 
   if (!hit) return 0
@@ -1213,9 +1188,6 @@ export function characterControllerSystem(
     if (!shape || !body) continue
 
     const collider = body.collider(0)
-
-    // Set filter collider for all shape casts in this iteration
-    setStaticFilterCollider(collider)
 
     let posX = transform.x
     let posY = transform.y

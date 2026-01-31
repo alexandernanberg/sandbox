@@ -134,6 +134,22 @@ export {
 
 export {processCollisionEvents, clearCollisionEvents} from './events'
 
+// Scene queries (raycasting, shape casting)
+export {
+  castRay,
+  castRayAndGetNormal,
+  castShape,
+  pointIntersection,
+  projectPoint,
+  QueryFilterFlags,
+} from './queries'
+export type {
+  RaycastHit,
+  RaycastOptions,
+  ShapeCastHit,
+  ShapeCastOptions,
+} from './queries'
+
 export {
   characterControllerSystem,
   createCharacterController,
