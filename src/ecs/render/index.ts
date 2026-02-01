@@ -41,5 +41,36 @@ export {
   type MeshOptions,
 } from './prefabs'
 
-// React integration (minimal)
+// Environment & Lighting
+export {
+  // Traits
+  Light,
+  AmbientLight,
+  DirectionalLight,
+  PointLight,
+  SpotLight,
+  HemisphereLight,
+  RectAreaLight,
+  LightRef,
+  Environment,
+  Fog,
+  PostProcessing,
+  ComposerRef,
+  // Systems
+  lightSetupSystem,
+  environmentSetupSystem,
+  setupPostProcessing,
+  // Spawners
+  spawnAmbientLight,
+  spawnDirectionalLight,
+  spawnPointLight,
+  spawnSpotLight,
+  setupEnvironment,
+  setupPostProcessingConfig,
+} from './environment'
+
+// Game runner (vanilla - no React)
+export {Game, type GameConfig} from './game'
+
+// React integration (minimal wrapper)
 export {GameCanvas, type GameCanvasProps, type GameContext} from './game-canvas'
