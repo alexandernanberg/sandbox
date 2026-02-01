@@ -56,14 +56,16 @@ const _middleRig = {distance: 0, height: 0}
 const _bottomRig = {distance: 0, height: 0}
 
 // Whisker offsets for multi-ray collision (normalized offsets in camera space)
+// Weight: lower = more aggressive pull-in (center ray weighted more heavily)
 const WHISKER_OFFSETS = [
-  {x: 0, y: 0}, // Center
-  {x: 0.4, y: 0}, // Right
-  {x: -0.4, y: 0}, // Left
-  {x: 0, y: 0.3}, // Up
-  {x: 0, y: -0.25}, // Down
-  {x: 0.25, y: 0.2}, // Upper-right
-  {x: -0.25, y: 0.2}, // Upper-left
+  {x: 0, y: 0, weight: 0.85}, // Center (weighted more heavily)
+  {x: 0.4, y: 0, weight: 1}, // Right
+  {x: -0.4, y: 0, weight: 1}, // Left
+  {x: 0, y: 0.3, weight: 1}, // Up
+  {x: 0, y: -0.25, weight: 1}, // Down
+  {x: 0, y: -0.4, weight: 1}, // Lower (floor edge detection)
+  {x: 0.25, y: 0.2, weight: 1}, // Upper-right
+  {x: -0.25, y: 0.2, weight: 1}, // Upper-left
 ]
 
 // ============================================
@@ -468,19 +470,20 @@ function castWhiskerRays(
       _cachedRay.dir = _rayDirection
     }
 
-    // Cast ray with filter to exclude the player's rigid body
+    // Cast ray with filter to exclude the player's rigid body and all dynamic bodies
     const hit = rapier.castRay(
       _cachedRay,
       maxDistance + 1,
       true, // solid
-      undefined, // filterFlags
+      RAPIER.QueryFilterFlags.EXCLUDE_DYNAMIC | RAPIER.QueryFilterFlags.EXCLUDE_SENSORS, // filterFlags
       undefined, // filterGroups
       undefined, // filterExcludeCollider
       excludeRigidBody ?? undefined, // filterExcludeRigidBody
     )
 
     if (hit) {
-      const hitDistance = hit.timeOfImpact - padding
+      // Apply weight: lower weight = more aggressive pull-in
+      const hitDistance = (hit.timeOfImpact - padding) * whisker.weight
       if (hitDistance < minDistance) {
         minDistance = hitDistance
       }
