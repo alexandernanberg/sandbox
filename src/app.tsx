@@ -11,7 +11,16 @@ import {
 import {world} from '~/ecs'
 import {PhysicsProvider} from '~/ecs/physics'
 import {Playground} from '~/scenes/playground'
+import {Sandbox} from '~/scenes/sandbox'
 import {DebugControls, useControls} from './components/debug-controls'
+
+// Available scenes
+const SCENES = {
+  playground: Playground,
+  sandbox: Sandbox,
+} as const
+
+type SceneName = keyof typeof SCENES
 
 export function Root() {
   return (
@@ -32,6 +41,16 @@ export function Root() {
 function App() {
   const [physicsKey, updatePhysicsKey] = useReducer((num: number) => num + 1, 0)
 
+  const sceneControls = useControls(
+    'Scene',
+    {
+      scene: {
+        value: 'sandbox' as SceneName,
+        options: {Playground: 'playground', Sandbox: 'sandbox'},
+      },
+    },
+    {expanded: true, index: -1},
+  )
   const cameraControls = useControls(
     'Camera',
     {
@@ -58,6 +77,9 @@ function App() {
     {index: 3},
   )
 
+  // Get the current scene component
+  const SceneComponent = SCENES[sceneControls.scene as SceneName]
+
   return (
     <LightProvider debug={lightsControl.debug}>
       <Stats />
@@ -66,12 +88,12 @@ function App() {
       <Sky />
 
       <PhysicsProvider
-        key={physicsKey}
+        key={`${sceneControls.scene}-${physicsKey}`}
         debug={physicsControls.debug}
         gravity={physicsControls.gravity}
       >
         <InputManager disablePointerLock={cameraControls.debug} />
-        <Playground
+        <SceneComponent
           debugCamera={cameraControls.debug}
           showOrbitRings={cameraControls.showOrbitRings}
         />
