@@ -108,3 +108,6 @@ export * from './game'
 
 // Re-export state machine utilities
 export * from './state-machine'
+
+// Re-export collectible traits
+export * from './collectible'

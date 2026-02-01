@@ -3,6 +3,8 @@ import {Canvas} from '@react-three/fiber'
 import {WorldProvider} from 'koota/react'
 import {useReducer} from 'react'
 import {InputManager} from '~/components/input-manager'
+import {GameManager} from '~/components/game-manager'
+import {GameUI} from '~/components/game-ui'
 import {
   DirectionalLight,
   HemisphereLight,
@@ -10,7 +12,7 @@ import {
 } from '~/components/lights'
 import {world} from '~/ecs'
 import {PhysicsProvider} from '~/ecs/physics'
-import {Playground} from '~/scenes/playground'
+import {CrystalGame} from '~/scenes/crystal-game'
 import {DebugControls, useControls} from './components/debug-controls'
 
 export function Root() {
@@ -18,11 +20,14 @@ export function Root() {
     <>
       {/* WorldProvider makes the ECS world available to all components */}
       <WorldProvider world={world}>
-        <Canvas camera={{position: [6, 6, -4]}} shadows>
-          <DebugControls>
-            <App />
-          </DebugControls>
-        </Canvas>
+        <GameManager>
+          <Canvas camera={{position: [6, 6, -4]}} shadows>
+            <DebugControls>
+              <App />
+            </DebugControls>
+          </Canvas>
+          <GameUI />
+        </GameManager>
       </WorldProvider>
       <Loader />
     </>
@@ -71,7 +76,7 @@ function App() {
         gravity={physicsControls.gravity}
       >
         <InputManager disablePointerLock={cameraControls.debug} />
-        <Playground
+        <CrystalGame
           debugCamera={cameraControls.debug}
           showOrbitRings={cameraControls.showOrbitRings}
         />
