@@ -468,12 +468,12 @@ function castWhiskerRays(
       _cachedRay.dir = _rayDirection
     }
 
-    // Cast ray with filter to exclude the player's rigid body
+    // Cast ray with filter to exclude the player's rigid body and all dynamic bodies
     const hit = rapier.castRay(
       _cachedRay,
       maxDistance + 1,
       true, // solid
-      undefined, // filterFlags
+      RAPIER.QueryFilterFlags.EXCLUDE_DYNAMIC, // filterFlags
       undefined, // filterGroups
       undefined, // filterExcludeCollider
       excludeRigidBody ?? undefined, // filterExcludeRigidBody
