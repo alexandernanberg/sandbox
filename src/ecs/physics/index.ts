@@ -24,6 +24,8 @@ export {
   IsColliderEntity,
   PhysicsInitialized,
   ColliderInitialized,
+  // Collision callbacks
+  CollisionCallbacks,
   // Types
   type RigidBodyType,
   type ColliderShape,

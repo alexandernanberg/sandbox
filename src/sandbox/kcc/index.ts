@@ -1,0 +1,6 @@
+export {JumpPad} from './jump-pad'
+export {MovingPlatform, type PlatformPath} from './moving-platform'
+export {SlopeTestSuite} from './slopes'
+export {StairTestSuite} from './stairs'
+export {ConveyorBelt} from './conveyor'
+export {BoostZone} from './boost-zone'
