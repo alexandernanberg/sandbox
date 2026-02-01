@@ -1,10 +1,17 @@
-# Rocket League Browser Clone - Game Spec
+# Car Ball - Game Spec
 
 ## Overview
 
 A browser-based car soccer game inspired by Rocket League. Players control rocket-powered cars to hit a ball into the opponent's goal. Built with the ECS architecture, Rapier physics, and Three.js rendering.
 
-**Working Title:** `Boost Ball` / `Rocket Rumble` / `Car Ball` (TBD)
+**Name:** Car Ball
+
+**Art Style:** Arcade / Low-poly
+- Clean, readable visuals
+- Stylized but not too cartoony
+- Similar vibe to Rocket League but simpler geometry
+- Neon/glow accents for boost trails, goal explosions
+- Vibrant team colors (blue vs orange)
 
 ---
 
@@ -149,10 +156,14 @@ Goal depth: 3m
 - **Goals:** Ball enters = goal scored
 - **Back wall:** Behind goals, ball bounces off
 
-### Visual Style Options
-1. **Clean/Minimal:** Simple colors, clear visibility
-2. **Futuristic:** Neon, glow effects, cyber aesthetic
-3. **Stadium:** Crowd, lights, sports arena feel
+### Visual Style
+**Arcade / Low-Poly** with neon accents:
+- Simple geometry (low-poly cars, smooth arena)
+- Bright, readable colors
+- Glow effects on boost trails, ball, goals
+- Clean floor with subtle grid texture
+- Stadium lights for atmosphere
+- Team colors: Blue (#3B82F6) vs Orange (#F97316)
 
 ---
 
@@ -382,8 +393,8 @@ Build:      Vite
 
 1. **Car variety?** Start with one car type or multiple?
 2. **AI difficulty?** Simple chase or proper prediction?
-3. **Physics fidelity?** Arcade-y or RL-accurate?
-4. **Art style?** Low-poly, stylized, or realistic?
+3. ~~**Physics fidelity?**~~ → Match RL feel (wall driving, aerials, dodges)
+4. ~~**Art style?**~~ → Arcade / Low-poly with neon accents
 5. **Monetization?** Free, ads, cosmetic purchases?
 
 ---
