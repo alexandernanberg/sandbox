@@ -15,7 +15,7 @@ interface CollectibleProps {
   value?: number
   color?: string
   id: number
-  onCollect?: (id: number, value: number) => void
+  onCollect?: (value: number) => void
 }
 
 // Collection radius - how close player needs to be
@@ -90,7 +90,7 @@ export function Collectible({
         // Collect!
         collectedRef.current = true
         entity.set(CollectibleData, {...data, collected: true})
-        onCollect?.(id, value)
+        onCollect?.(value)
         entity.destroy()
         return
       }

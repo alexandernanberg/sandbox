@@ -1,13 +1,6 @@
 import {Text, useTexture} from '@react-three/drei'
 import type {Entity} from 'koota'
-import {
-  Suspense,
-  useCallback,
-  useEffect,
-  useLayoutEffect,
-  useRef,
-  useState,
-} from 'react'
+import {Suspense, useEffect, useLayoutEffect, useRef} from 'react'
 import {RepeatWrapping} from 'three'
 import {OrbitDebugVisualizer, ThirdPersonCamera} from '~/components/cameras'
 import {Collectible} from '~/components/collectible'
@@ -92,32 +85,11 @@ interface CrystalGameProps {
 
 export function CrystalGame({debugCamera, showOrbitRings}: CrystalGameProps) {
   const game = useGame()
-  const [collectedIds, setCollectedIds] = useState<Set<number>>(new Set())
-  const gameStartedRef = useRef(false)
 
   // Set total collectibles when game starts
   useEffect(() => {
     game.setTotalCollectibles(CRYSTAL_POSITIONS.length)
   }, [game])
-
-  // Reset collected when game restarts
-  useEffect(() => {
-    if (game.phase === 'main-menu') {
-      setCollectedIds(new Set())
-      gameStartedRef.current = false
-    } else if (game.phase === 'playing') {
-      gameStartedRef.current = true
-    }
-  }, [game.phase])
-
-  const handleCollect = useCallback(
-    (id: number, value: number) => {
-      if (game.phase !== 'playing') return
-      setCollectedIds((prev) => new Set([...prev, id]))
-      game.collectItem(value)
-    },
-    [game],
-  )
 
   // Only render gameplay elements when playing or paused
   const showGameplay = game.phase === 'playing' || game.phase === 'paused'
@@ -163,21 +135,18 @@ export function CrystalGame({debugCamera, showOrbitRings}: CrystalGameProps) {
       {/* Rocking board */}
       <RockingBoard position={[-8, 0.5, 12]} />
 
-      {/* Collectibles - only show uncollected during gameplay */}
+      {/* Collectibles - each manages its own visibility */}
       {showGameplay &&
-        CRYSTAL_POSITIONS.map((crystal, index) => {
-          if (collectedIds.has(index)) return null
-          return (
-            <Collectible
-              key={index}
-              id={index}
-              position={crystal.position}
-              color={crystal.color}
-              value={crystal.value}
-              onCollect={handleCollect}
-            />
-          )
-        })}
+        CRYSTAL_POSITIONS.map((crystal, index) => (
+          <Collectible
+            key={index}
+            id={index}
+            position={crystal.position}
+            color={crystal.color}
+            value={crystal.value}
+            onCollect={game.collectItem}
+          />
+        ))}
     </>
   )
 }
