@@ -62,6 +62,7 @@ const WHISKER_OFFSETS = [
   {x: -0.4, y: 0}, // Left
   {x: 0, y: 0.3}, // Up
   {x: 0, y: -0.25}, // Down
+  {x: 0, y: -0.4}, // Lower (floor edge detection)
   {x: 0.25, y: 0.2}, // Upper-right
   {x: -0.25, y: 0.2}, // Upper-left
 ]
@@ -473,7 +474,7 @@ function castWhiskerRays(
       _cachedRay,
       maxDistance + 1,
       true, // solid
-      RAPIER.QueryFilterFlags.EXCLUDE_DYNAMIC, // filterFlags
+      RAPIER.QueryFilterFlags.EXCLUDE_DYNAMIC | RAPIER.QueryFilterFlags.EXCLUDE_SENSORS, // filterFlags
       undefined, // filterGroups
       undefined, // filterExcludeCollider
       excludeRigidBody ?? undefined, // filterExcludeRigidBody
