@@ -10,6 +10,7 @@ export type GamePhase =
   | 'playing'
   | 'paused'
   | 'game-over'
+  | 'victory'
 
 // ============================================
 // Game State Singleton Trait
@@ -42,4 +43,12 @@ export const GameState = trait(() => ({
   gameTime: 0,
   /** Time spent in current phase */
   phaseTime: 0,
+  /** Player's current score */
+  score: 0,
+  /** Total collectibles in the level */
+  totalCollectibles: 0,
+  /** Collectibles the player has picked up */
+  collectedCount: 0,
+  /** Best time for completion (0 if not completed) */
+  bestTime: 0,
 }))
