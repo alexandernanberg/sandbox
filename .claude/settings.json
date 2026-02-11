@@ -1,0 +1,46 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(cat:*)",
+      "Bash(find:*)",
+      "Bash(gh pr:*)",
+      "Bash(gh issue:*)",
+      "Bash(ls:*)",
+      "Bash(mkdir:*)",
+      "Bash(mv:*)",
+      "Bash(rm:*)",
+      "Bash(pnpm:*)",
+      "Bash(tree:*)",
+      "WebFetch(domain:react.dev)",
+      "WebFetch(domain:ui.shadcn.com)",
+      "WebSearch",
+      "mcp__ide__getDiagnostics",
+      "Bash(grep:*)",
+      "Bash(npx tsc:*)"
+    ],
+    "deny": [
+      "Bash(curl:*)",
+      "Bash(wget:*)",
+      "Bash(sudo:*)",
+      "Bash(rm -rf:*)",
+      "Read(./.env*)"
+    ],
+    "ask": []
+  },
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "jq -r '.tool_input.file_path' | { read file_path; if [ -n \"$file_path\" ]; then pnpm oxfmt \"$file_path\" --no-error-on-unmatched-pattern 2>/dev/null || true; fi; }"
+          }
+        ]
+      }
+    ]
+  },
+  "enabledPlugins": {
+    "code-simplifier@claude-plugins-official": true
+  }
+}

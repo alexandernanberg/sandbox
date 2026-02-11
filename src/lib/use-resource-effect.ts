@@ -1,6 +1,5 @@
 import type {DependencyList} from 'react'
-import {useEffect, useLayoutEffect, useRef} from 'react'
-import {useEffectEvent} from './use-effect-event'
+import {useEffect, useEffectEvent, useLayoutEffect, useRef} from 'react'
 
 export function useResourceEffect<T>(
   create: () => T,

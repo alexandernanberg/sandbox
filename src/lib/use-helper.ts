@@ -1,7 +1,6 @@
 import {useFrame, useThree} from '@react-three/fiber'
-import {useLayoutEffect, useRef} from 'react'
+import {useEffectEvent, useLayoutEffect, useRef} from 'react'
 import type {Object3D} from 'three'
-import {useEffectEvent} from './use-effect-event'
 
 interface Helper extends Object3D {
   update: () => void

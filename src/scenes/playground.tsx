@@ -1,88 +1,74 @@
-/* eslint-disable @typescript-eslint/no-unused-vars */
-
 import {Text, useTexture} from '@react-three/drei'
 import type {Color} from '@react-three/fiber'
-import {useFrame} from '@react-three/fiber'
-import type {ComponentProps, RefObject} from 'react'
-import {Suspense, useImperativeHandle, useRef, useState} from 'react'
-import seedrandom from 'seedrandom'
-import type {Object3D} from 'three'
+import type {Entity} from 'koota'
+import {useActions} from 'koota/react'
+import type {ComponentProps} from 'react'
+import {Suspense, useLayoutEffect, useRef, useState} from 'react'
 import {RepeatWrapping} from 'three'
-import {CharacterController, Player} from '~/components/character-controller'
-import {useControls} from '~/components/debug-controls'
-import type {InputManagerRef} from '~/components/input-manager'
-import {InputManager} from '~/components/input-manager'
-import type {
-  CuboidColliderProps,
-  RigidBodyApi,
-  RigidBodyProps,
-} from '~/components/physics'
+import {OrbitDebugVisualizer, ThirdPersonCamera} from '~/components/cameras'
+import {useControls, useMonitor} from '~/components/debug-controls'
 import {
+  actions,
+  IsPlayer,
+  PlayerMovementConfig,
+  PlayerVelocity,
+  FacingDirection,
+} from '~/ecs'
+import {Balls} from '~/ecs/balls'
+import {IsCameraTarget} from '~/ecs/camera'
+import {
+  RigidBody,
+  CuboidCollider,
   BallCollider,
   ConeCollider,
-  CuboidCollider,
   CylinderCollider,
-  RigidBody,
   usePhysicsUpdate,
-  useSphericalJoint,
-} from '~/components/physics'
+  RigidBodyRef,
+  CharacterController,
+  CharacterMovement,
+  KinematicVelocity,
+} from '~/ecs/physics'
+import type {CharacterControllerApi} from '~/ecs/physics'
 import Ramp from '~/models/ramp'
 import Slope from '~/models/slope'
 import Stone from '~/models/stone'
 
 interface PlaygroundProps {
   debugCamera: boolean
+  showOrbitRings: boolean
 }
 
-export function Playground({debugCamera}: PlaygroundProps) {
-  const [items, setItems] = useState<Array<number>>([])
+export function Playground({debugCamera, showOrbitRings}: PlaygroundProps) {
+  // useActions gives us ECS actions bound to the world in context
+  const {spawnBalls, clearBalls} = useActions(actions)
 
-  const spawnItems = (num = 1) => {
-    setItems((state) => [
-      ...state,
-      ...new Array(num).fill(0).map((_, i) => i * 100_000 + performance.now()),
-    ])
-  }
-
-  const objectControls = useControls(
+  const _objectControls = useControls(
     'Objects',
     {
       _spawn: {
         title: 'Spawn 10 balls',
-        action: () => spawnItems(10),
+        action: () => spawnBalls(10), // ECS action instead of setState
       },
       _reset: {
         title: 'Reset',
         index: 1,
-        action: () => setItems([]),
+        action: () => clearBalls(), // ECS action to destroy entities
       },
     },
     {expanded: true, index: 4},
   )
 
-  const inputManagerRef = useRef<InputManagerRef>(null)
-  const targetRef = useRef<Object3D>(null)
-
-  useFrame((_, delta) => {
-    // console.log(delta)
-  })
-
   return (
     <>
-      <InputManager ref={inputManagerRef} />
-
-      <Player
-        position={[0, 3, 0]}
-        inputManagerRef={inputManagerRef}
-        ref={targetRef}
-      />
+      {!debugCamera && <ThirdPersonCamera />}
+      {showOrbitRings && <OrbitDebugVisualizer />}
+      <Player position={[0, 2, 0]} />
 
       <Floor />
       <Walls />
 
-      {items.map((item) => (
-        <Ball key={item} position={[Math.random(), 6, Math.random()]} />
-      ))}
+      {/* ECS-managed balls - queries the world for all IsBall entities */}
+      <Balls />
 
       <Slopes position={[8, 0, 3]} />
 
@@ -147,6 +133,23 @@ export function Playground({debugCamera}: PlaygroundProps) {
         </RigidBody>
       </group>
 
+      {/* Spinning platforms */}
+      <SpinningPlatform position={[-12, 0.5, 8]} speed={1.5} />
+      <SpinningPlatform
+        position={[-12, 0.5, -8]}
+        speed={0.8}
+        size={[10, 0.25, 2]}
+        color={0xd94a90}
+      />
+
+      {/* Trampoline */}
+      <Trampoline position={[12, 0, 8]} />
+
+      {/* Stairs */}
+      <Stairs position={[0, 0, -10]} />
+      {/* Gentler stairs - smaller step height */}
+      <Stairs position={[4, 0, -10]} stepHeight={0.15} stepDepth={0.5} />
+
       <RigidBody position={[0, 4, -2]} scale={3} angularVelocity={[10, 0, 0]}>
         <Stone />
       </RigidBody>
@@ -174,206 +177,38 @@ export function Playground({debugCamera}: PlaygroundProps) {
   )
 }
 
-interface ChainSegmentProps extends RigidBodyProps {
-  target: RefObject<RigidBodyApi | null>
+// TODO: ChainSegment and Swing use physics joints which aren't in ECS yet
+// Uncomment and migrate when ECS joints are implemented
+
+interface BallProps {
+  position?: [number, number, number]
+  linearVelocity?: [number, number, number]
 }
 
-function ChainSegment({ref: forwardedRef, target}: ChainSegmentProps) {
-  const ref = useRef<RigidBodyApi>(null)
-
-  useImperativeHandle(forwardedRef, () => ref.current!)
-
-  useSphericalJoint(ref, target, [
-    {x: 0, y: 0.26, z: 0},
-    {x: 0, y: -0.26, z: 0},
-  ])
-
-  return (
-    <RigidBody ref={ref} position={[0, 0, 0]}>
-      <CylinderCollider args={[0.05, 0.5]}>
-        <mesh castShadow receiveShadow>
-          <cylinderGeometry args={[0.05, 0.05, 0.5, 6]} />
-          <meshPhongMaterial color={0xadadad} />
-        </mesh>
-      </CylinderCollider>
-    </RigidBody>
-  )
-}
-
-// interface ChainProps {
-//   target: MutableRefObject<RigidBodyApi | null>
-//   segments: number
-// }
-
-// const Chain = forwardRef<RigidBodyApi, ChainProps>(function Chain(
-//   { target, segments },
-//   forwardedRef,
-// ) {
-//   const segmentsArray = useMemo(() =>new Array(segments - 1), [segments])
-//   const segmentsRef = useRef(segmentsArray.map(() => createRef<RigidBodyApi>()))
-
-//   console.log(segmentsArray)
-
-//   return (<>
-
-// <ChainSegment key={index} ref={segmentsRef.current[index]} target={target} />
-//   {segmentsArray.map((_, index) => {
-//     return (
-//       <ChainSegment key={index} ref={segmentsRef.current[index]} target={} />
-//     )
-//   })}
-//   </>
-// })
-
-function Swing(props: ComponentProps<'group'>) {
-  const rackRef = useRef<RigidBodyApi>(null)
-  const chain1Ref = useRef<RigidBodyApi>(null)
-  const chain2Ref = useRef<RigidBodyApi>(null)
-  const chain3Ref = useRef<RigidBodyApi>(null)
-  const chain4Ref = useRef<RigidBodyApi>(null)
-
-  // useSphericalJoint(rackRef, chain1Ref, [
-  //   { x: 0, y: 1.7, z: 0 },
-  //   { x: 0, y: 1.4, z: 0 },
-  // ])
-
-  useSphericalJoint(chain2Ref, chain1Ref, [
-    {x: 0, y: 0.26, z: 0},
-    {x: 0, y: -0.26, z: 0},
-  ])
-
-  useSphericalJoint(chain3Ref, chain2Ref, [
-    {x: 0, y: 0.26, z: 0},
-    {x: 0, y: -0.26, z: 0},
-  ])
-  useSphericalJoint(chain4Ref, chain3Ref, [
-    {x: 0, y: 0.26, z: 0},
-    {x: 0, y: -0.26, z: 0},
-  ])
-
-  return (
-    <group {...props}>
-      <RigidBody position={[0, 1.7, 0]} type="fixed" ref={rackRef}>
-        <CylinderCollider
-          args={[0.1, 4]}
-          position={[1, 0, -1.9]}
-          rotation-z={0.52}
-        >
-          <mesh castShadow receiveShadow>
-            <cylinderGeometry args={[0.1, 0.1, 4, 10]} />
-            <meshPhongMaterial color={0x964b00} />
-          </mesh>
-        </CylinderCollider>
-        <CylinderCollider
-          args={[0.1, 4]}
-          position={[-1, 0, -1.9]}
-          rotation-z={-0.52}
-        >
-          <mesh castShadow receiveShadow>
-            <cylinderGeometry args={[0.1, 0.1, 4, 10]} />
-            <meshPhongMaterial color={0x964b00} />
-          </mesh>
-        </CylinderCollider>
-
-        <CylinderCollider
-          args={[0.1, 4]}
-          position={[1, 0, 1.9]}
-          rotation-z={0.52}
-        >
-          <mesh castShadow receiveShadow>
-            <cylinderGeometry args={[0.1, 0.1, 4, 10]} />
-            <meshPhongMaterial color={0x964b00} />
-          </mesh>
-        </CylinderCollider>
-        <CylinderCollider
-          args={[0.1, 4]}
-          position={[-1, 0, 1.9]}
-          rotation-z={-0.52}
-        >
-          <mesh castShadow receiveShadow>
-            <cylinderGeometry args={[0.1, 0.1, 4, 10]} />
-            <meshPhongMaterial color={0x964b00} />
-          </mesh>
-        </CylinderCollider>
-        <CylinderCollider
-          args={[0.1, 4]}
-          position={[0, 1.75, 0]}
-          rotation={[Math.PI / 2, 0, 0]}
-        >
-          <mesh castShadow receiveShadow>
-            <cylinderGeometry args={[0.1, 0.1, 4, 10]} />
-            <meshPhongMaterial color={0x964b00} />
-          </mesh>
-        </CylinderCollider>
-      </RigidBody>
-
-      <group position={[0, 1.75, 1]}>
-        <RigidBody ref={chain1Ref} position={[0, 1.5, 0]}>
-          <CylinderCollider args={[0.05, 0.5]}>
-            <mesh castShadow receiveShadow>
-              <cylinderGeometry args={[0.05, 0.05, 0.5, 6]} />
-              <meshPhongMaterial color={0xadadad} />
-            </mesh>
-          </CylinderCollider>
-        </RigidBody>
-        <RigidBody ref={chain2Ref} position={[0, 1, 0]}>
-          <CylinderCollider args={[0.05, 0.5]}>
-            <mesh castShadow receiveShadow>
-              <cylinderGeometry args={[0.05, 0.05, 0.5, 6]} />
-              <meshPhongMaterial color={0xadadad} />
-            </mesh>
-          </CylinderCollider>
-        </RigidBody>
-        <RigidBody ref={chain3Ref} position={[0, 0, 0]}>
-          <CylinderCollider args={[0.05, 0.5]}>
-            <mesh castShadow receiveShadow>
-              <cylinderGeometry args={[0.05, 0.05, 0.5, 6]} />
-              <meshPhongMaterial color={0xadadad} />
-            </mesh>
-          </CylinderCollider>
-        </RigidBody>
-
-        <ChainSegment ref={chain1Ref} target={chain1Ref} />
-        <ChainSegment ref={chain1Ref} target={chain2Ref} />
-        <ChainSegment ref={chain1Ref} target={chain3Ref} />
-        <ChainSegment ref={chain1Ref} target={chain4Ref} />
-      </group>
-    </group>
-  )
-}
-
-function Ball(props: RigidBodyProps) {
+function Ball({position, linearVelocity}: BallProps) {
   const colors = ['red', 'green', 'blue', 'yellow', 'purple']
-  const [color, setColor] = useState(
+  const [color] = useState(
     () => colors[Math.floor(Math.random() * colors.length)],
   )
-  const ref = useRef<RigidBodyApi>(null)
+  const entityRef = useRef<Entity | null>(null)
+
+  const handlePointerDown = () => {
+    const entity = entityRef.current
+    if (!entity) return
+    const bodyRef = entity.get(RigidBodyRef)
+    if (bodyRef?.body) {
+      bodyRef.body.applyImpulse({x: 0, y: 5, z: 0}, true)
+    }
+  }
 
   return (
     <RigidBody
-      {...props}
-      ref={ref}
-      onPointerDown={() => {
-        ref.current?.applyImpulse({x: 0, y: 5, z: 0}, true)
-      }}
-      // onCollision={() => {
-      // ref.current?.setLinvel({ x: 0, y: 5, z: 0 }, true)
-      // setColor((s) => {
-      // const currentIndex = colors.indexOf(s)
-      // const arr = [...colors]
-      // arr.splice(currentIndex, 1)
-      // return arr[Math.floor(Math.random() * arr.length)]
-      // })
-      // }}
-      // onCollisionEnter={() => {
-      //   setColor('green')
-      // }}
-      // onCollisionExit={() => {
-      //   setColor('red')
-      // }}
+      position={position}
+      linearVelocity={linearVelocity}
+      entityRef={entityRef}
     >
-      <BallCollider args={[0.5]} restitution={1} friction={0.9} density={1}>
-        <mesh castShadow receiveShadow>
+      <BallCollider radius={0.5} restitution={1} friction={0.9} density={1}>
+        <mesh castShadow receiveShadow onPointerDown={handlePointerDown}>
           <sphereGeometry args={[0.5]} />
           <meshPhongMaterial color={color} />
         </mesh>
@@ -416,11 +251,16 @@ function RockingBoard(props: ComponentProps<'group'>) {
   )
 }
 
-function Box({
-  args = [1, 1, 1],
-  color = 0xfffff0,
-  ...props
-}: CuboidColliderProps & {color?: Color}) {
+interface BoxProps {
+  args?: [number, number, number]
+  color?: Color
+  friction?: number
+  restitution?: number
+  density?: number
+  position?: [number, number, number]
+}
+
+function Box({args = [1, 1, 1], color = 0xfffff0, ...props}: BoxProps) {
   return (
     <CuboidCollider args={args} {...props}>
       <mesh castShadow receiveShadow>
@@ -441,13 +281,7 @@ function Slopes(props: ComponentProps<'group'>) {
     const run = runFromAngleAndRaise(angle, 2)
     return (
       <group key={angle}>
-        <CuboidCollider
-          args={[2, 4, 2]}
-          position={[0, 2, 2 * index]}
-          onContactForce={(event) => {
-            console.log(event.totalForce())
-          }}
-        >
+        <CuboidCollider args={[2, 4, 2]} position={[0, 2, 2 * index]}>
           <Suspense fallback={null}>
             <Text
               position={[-1.01, 1, 0]}
@@ -530,6 +364,7 @@ function Floor() {
   )
 }
 
+// eslint-disable-next-line @typescript-eslint/no-unused-vars -- kept for future use
 function Wall() {
   const wallTexture = useTexture('/textures/prototype/light/texture_12.png')
 
@@ -549,19 +384,62 @@ function clamp(value: number, min: number, max: number) {
   return Math.min(Math.max(value, min), max)
 }
 
-function Elevator(props: RigidBodyProps) {
-  const ref = useRef<RigidBodyApi>(null)
+interface ElevatorProps {
+  position?: [number, number, number]
+}
 
-  usePhysicsUpdate(() => {
-    // const rigidBody = ref.current
-    // if (!rigidBody) return
-    // const vec = rigidBody.translation()
-    // vec.y = clamp(3.875 + Math.sin(performance.now() / 1000) * 5, 0.25, 7.75)
-    // rigidBody.setNextKinematicTranslation(vec)
+function Elevator({position}: ElevatorProps) {
+  const entityRef = useRef<Entity | null>(null)
+  const prevY = useRef<number | null>(null)
+  const physicsTime = useRef(0)
+
+  useLayoutEffect(() => {
+    const entity = entityRef.current
+    if (!entity) return
+    entity.add(KinematicVelocity)
+    return () => {
+      if (entity.isAlive()) {
+        entity.remove(KinematicVelocity)
+      }
+    }
+  }, [])
+
+  usePhysicsUpdate((delta) => {
+    const entity = entityRef.current
+    if (!entity) return
+    const bodyRef = entity.get(RigidBodyRef)
+    if (!bodyRef?.body) return
+
+    // Use physics time instead of wall time to ensure consistent velocity
+    // across multiple physics steps per frame
+    physicsTime.current += delta
+
+    const vec = bodyRef.body.translation()
+    const newY = clamp(3.875 + Math.sin(physicsTime.current) * 5, 0.25, 7.75)
+
+    // Set velocity (per-frame delta)
+    if (prevY.current !== null) {
+      entity.set(KinematicVelocity, {
+        x: 0,
+        y: newY - prevY.current,
+        z: 0,
+        ax: 0,
+        ay: 0,
+        az: 0,
+      })
+    }
+    prevY.current = newY
+
+    vec.y = newY
+    bodyRef.body.setNextKinematicTranslation(vec)
   })
 
   return (
-    <RigidBody ref={ref} type="kinematic-position-based" {...props}>
+    <RigidBody
+      position={position}
+      entityRef={entityRef}
+      type="kinematic-position-based"
+    >
       <CuboidCollider args={[2, 0.5, 2]}>
         <mesh castShadow receiveShadow>
           <boxGeometry args={[2, 0.5, 2]} />
@@ -594,67 +472,263 @@ function Tower() {
   )
 }
 
-function generateHeightfield(nsubdivs: number): Float32Array {
-  const heights: Array<number> = []
+// ============================================
+// Spinning Platform
+// ============================================
 
-  const rng = seedrandom('heightfield')
-
-  let i: number
-  let j: number
-  for (i = 0; i <= nsubdivs; ++i) {
-    for (j = 0; j <= nsubdivs; ++j) {
-      heights.push(rng())
-    }
-  }
-
-  return new Float32Array(heights)
+interface SpinningPlatformProps {
+  position?: [number, number, number]
+  speed?: number
+  size?: [number, number, number]
+  color?: number
 }
 
-function generateConvexPolyhedron() {
-  const rng = seedrandom('convexPolyhedron')
-  const scale = 2.0
+function SpinningPlatform({
+  position,
+  speed = 1,
+  size = [4, 0.25, 4],
+  color = 0x4a90d9,
+}: SpinningPlatformProps) {
+  const entityRef = useRef<Entity | null>(null)
+  const angle = useRef(0)
 
-  const vertices = []
-  for (let l = 0; l < 10; ++l) {
-    vertices.push(rng() * scale, rng() * scale, rng() * scale)
-  }
+  useLayoutEffect(() => {
+    const entity = entityRef.current
+    if (!entity) return
+    entity.add(KinematicVelocity)
+    return () => {
+      if (entity.isAlive()) {
+        entity.remove(KinematicVelocity)
+      }
+    }
+  }, [])
 
-  return {vertices: new Float32Array(vertices)}
+  usePhysicsUpdate((delta) => {
+    const entity = entityRef.current
+    if (!entity) return
+    const bodyRef = entity.get(RigidBodyRef)
+    if (!bodyRef?.body) return
+
+    const angularVelocity = speed * delta
+    angle.current += angularVelocity
+    const body = bodyRef.body
+    const pos = body.translation()
+
+    // Set angular velocity (radians per physics step around Y axis)
+    entity.set(KinematicVelocity, {
+      x: 0,
+      y: 0,
+      z: 0,
+      ax: 0,
+      ay: angularVelocity,
+      az: 0,
+    })
+
+    // Set next kinematic rotation (quaternion for Y-axis rotation)
+    const halfAngle = angle.current / 2
+    body.setNextKinematicRotation({
+      x: 0,
+      y: Math.sin(halfAngle),
+      z: 0,
+      w: Math.cos(halfAngle),
+    })
+    body.setNextKinematicTranslation(pos)
+  })
+
+  return (
+    <RigidBody
+      position={position}
+      entityRef={entityRef}
+      type="kinematic-position-based"
+    >
+      <CuboidCollider args={size}>
+        <mesh castShadow receiveShadow>
+          <boxGeometry args={size} />
+          <meshStandardMaterial color={color} />
+        </mesh>
+      </CuboidCollider>
+    </RigidBody>
+  )
 }
 
-function generateTrimesh(nsubdivs: number, wx: number, wy: number, wz: number) {
-  const vertices = []
-  const indices = []
+// ============================================
+// Trampoline
+// ============================================
 
-  const elementWidth = 1.0 / nsubdivs
-  const rng = seedrandom('trimesh')
+interface TrampolineProps {
+  position?: [number, number, number]
+}
 
-  let i: number
-  let j: number
-  for (i = 0; i <= nsubdivs; ++i) {
-    for (j = 0; j <= nsubdivs; ++j) {
-      const x = (j * elementWidth - 0.5) * wx
-      const y = rng() * wy
-      const z = (i * elementWidth - 0.5) * wz
+function Trampoline({position}: TrampolineProps) {
+  return (
+    <RigidBody type="fixed" position={position}>
+      {/* Frame */}
+      <CuboidCollider args={[3, 0.2, 3]} position={[0, -0.1, 0]}>
+        <mesh castShadow receiveShadow position={[0, -0.1, 0]}>
+          <boxGeometry args={[3, 0.2, 3]} />
+          <meshStandardMaterial color={0x333333} />
+        </mesh>
+      </CuboidCollider>
+      {/* Bouncy surface */}
+      <CuboidCollider
+        args={[2.5, 0.1, 2.5]}
+        position={[0, 0.1, 0]}
+        restitution={2}
+        friction={0.8}
+      >
+        <mesh castShadow receiveShadow position={[0, 0.1, 0]}>
+          <boxGeometry args={[2.5, 0.1, 2.5]} />
+          <meshStandardMaterial color={0xff4444} />
+        </mesh>
+      </CuboidCollider>
+    </RigidBody>
+  )
+}
 
-      vertices.push(x, y, z)
+// ============================================
+// Stairs
+// ============================================
+
+interface StairsProps {
+  position?: [number, number, number]
+  stepCount?: number
+  stepHeight?: number
+  stepDepth?: number
+  stepWidth?: number
+}
+
+function Stairs({
+  position = [0, 0, 0],
+  stepCount = 8,
+  stepHeight = 0.25,
+  stepDepth = 0.4,
+  stepWidth = 3,
+}: StairsProps) {
+  const steps = []
+
+  for (let i = 0; i < stepCount; i++) {
+    const y = stepHeight / 2 + i * stepHeight
+    const z = -i * stepDepth
+    steps.push(
+      <CuboidCollider
+        key={i}
+        args={[stepWidth, stepHeight, stepDepth]}
+        position={[0, y, z]}
+      >
+        <mesh castShadow receiveShadow>
+          <boxGeometry args={[stepWidth, stepHeight, stepDepth]} />
+          <meshStandardMaterial color={0x808080} />
+        </mesh>
+      </CuboidCollider>,
+    )
+  }
+
+  return (
+    <RigidBody type="fixed" position={position}>
+      {steps}
+    </RigidBody>
+  )
+}
+
+// ============================================
+// Player with ECS-driven movement
+// ============================================
+
+interface PlayerProps {
+  position?: [number, number, number]
+}
+
+function Player({position}: PlayerProps) {
+  const controllerRef = useRef<CharacterControllerApi | null>(null)
+
+  // KCC debug monitor
+  const kccDebug = useMonitor(
+    'KCC Debug',
+    {
+      state: {label: 'State', type: 'string'},
+      groundY: {label: 'Ground Y', format: (v) => v.toFixed(3)},
+      groundDist: {label: 'Ground Dist', format: (v) => v.toFixed(3)},
+      coyote: {label: 'Coyote'},
+      inputVel: {label: 'Input Vel', type: 'string'},
+      moveVel: {label: 'Move Vel', type: 'string'},
+      posY: {label: 'Pos Y', format: (v) => v.toFixed(3)},
+    },
+    {expanded: true, index: 0},
+  )
+
+  // Update debug values each physics frame
+  usePhysicsUpdate(() => {
+    const controller = controllerRef.current
+    if (!controller || !controller.entity.isAlive()) return
+
+    const movement = controller.entity.get(CharacterMovement)
+    if (!movement) return
+
+    // State as readable string
+    const state = movement.grounded
+      ? 'Grounded'
+      : movement.sliding
+        ? 'Sliding'
+        : 'Airborne'
+    // eslint-disable-next-line react-compiler/react-compiler -- intentional mutation for debug monitor
+    kccDebug.current.state = state
+    kccDebug.current.groundY = movement.groundNormalY
+    kccDebug.current.groundDist = movement.groundDistance
+    kccDebug.current.coyote = movement.coyoteCounter
+
+    // Format vectors as strings
+    const fmt = (x: number, y: number, z: number) =>
+      `${x.toFixed(2)} ${y.toFixed(2)} ${z.toFixed(2)}`
+    kccDebug.current.inputVel = fmt(movement.vx, movement.vy, movement.vz)
+    kccDebug.current.moveVel = fmt(movement.mx, movement.my, movement.mz)
+
+    // Get Y position from rigid body
+    const bodyRef = controller.entity.get(RigidBodyRef)
+    if (bodyRef?.body) {
+      kccDebug.current.posY = bodyRef.body.translation().y
     }
-  }
+  })
 
-  for (i = 0; i < nsubdivs; ++i) {
-    for (j = 0; j < nsubdivs; ++j) {
-      const i1 = (i + 0) * (nsubdivs + 1) + (j + 0)
-      const i2 = (i + 0) * (nsubdivs + 1) + (j + 1)
-      const i3 = (i + 1) * (nsubdivs + 1) + (j + 0)
-      const i4 = (i + 1) * (nsubdivs + 1) + (j + 1)
+  // Add player traits to the character controller entity
+  useLayoutEffect(() => {
+    const controller = controllerRef.current
+    if (!controller) return
 
-      indices.push(i1, i3, i2)
-      indices.push(i3, i4, i2)
+    const entity = controller.entity
+
+    // Add player traits
+    entity.add(IsPlayer)
+    entity.add(PlayerMovementConfig)
+    entity.add(PlayerVelocity)
+    entity.add(FacingDirection)
+    entity.add(IsCameraTarget)
+
+    return () => {
+      if (entity.isAlive()) {
+        entity.remove(IsPlayer)
+        entity.remove(PlayerMovementConfig)
+        entity.remove(PlayerVelocity)
+        entity.remove(FacingDirection)
+        entity.remove(IsCameraTarget)
+      }
     }
-  }
+  }, [])
 
-  return {
-    vertices: new Float32Array(vertices),
-    indices: new Uint32Array(indices),
-  }
+  return (
+    <CharacterController
+      ref={controllerRef}
+      position={position}
+      height={1.75}
+      radius={0.5}
+    >
+      <mesh castShadow receiveShadow>
+        <capsuleGeometry args={[0.5, 1.75, 4, 8]} />
+        <meshPhongMaterial color={0xf0f0f0} />
+      </mesh>
+      <mesh castShadow receiveShadow position={[0, 1.15, 0.3]}>
+        <boxGeometry args={[0.5, 0.25, 0.5]} />
+        <meshPhongMaterial color={0xf0f0f0} />
+      </mesh>
+    </CharacterController>
+  )
 }
