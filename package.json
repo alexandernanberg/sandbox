@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "build": "vite build",
-    "dev": "vite --host --port 3001",
+    "dev": "vite --port 3001",
     "serve": "vite preview",
     "lint": "eslint ."
   },
@@ -41,7 +41,7 @@
     "eslint-config-alexandernanberg": "^4.0.5",
     "prettier": "^3.8.1",
     "typescript": "^5.9.3",
-    "vite": "^7.3.1",
+    "vite": "^7.3.7",
     "vite-plugin-wasm": "^3.5.0"
   },
   "overrides": {
